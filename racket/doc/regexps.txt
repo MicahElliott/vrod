@@ -1,0 +1,1218 @@
+Regular Expressions
+
++[missing] in [missing] introduces regular expressions.
+
+Regular expressions are specified as strings or byte strings, using the
+same pattern language as either the Unix utility egrep or Perl. A
+string-specified pattern produces a character regexp matcher, and a
+byte-string pattern produces a byte regexp matcher. If a character
+regexp is used with a byte string or input port, it matches UTF-8
+encodings (see [missing]) of matching character streams; if a byte
+regexp is used with a character string, it matches bytes in the UTF-8
+encoding of the string.
+
+A regular expression that is represented as a string or byte string can
+be compiled to a regexp value, which can be used more efficiently by
+functions such as regexp-match compared to the string or byte string
+form. The regexp and byte-regexp procedures convert a string or byte
+string (respectively) into a regexp value using a syntax of regular
+expressions that is most compatible to egrep. The pregexp and
+byte-pregexp procedures produce a regexp value using a slightly
+different syntax of regular expressions that is more compatible with
+Perl.
+
+Two regexp values are equal? if they have the same source, use the same
+pattern language, and are both character regexps or both byte regexps.
+
+A literal or printed regexp value starts with #rx or #px. See [missing]
+for information on reading     regular expressions and [missing]     for
+information on printing regular expressions. Regexp values produced by
+the default reader are interned in read-syntax mode.
+
+The internal size of a regexp value is limited to 32 kilobytes; this
+limit roughly corresponds to a source string with 32,000 literal
+characters or 5,000 operators.
+
+1. Regexp Syntax
+
+The following syntax specifications describe the content of a string
+that represents a regular expression. The syntax of the corresponding
+string may involve extra escape characters. For example, the regular
+expression (.*)\1 can be represented with the string "(.*)\\1" or the
+regexp constant #rx"(.*)\\1"; the \ in the regular expression must be
+escaped to include it in a string or regexp constant.
+
+The regexp and pregexp syntaxes share a common core:
+
+ >regexp< ::= >pces<                 Match >pces< ~
+           |  >regexp<|>regexp<      Match either >regexp<, try left first        ex1
+ >pces<   ::= >pce<                  Match >pce< ~
+           |  >pce<>pces<            Match >pce< followed by >pces<
+ >pce<    ::= >repeat<               Match >repeat<, longest possible             ex3 ~
+           |  >repeat<?              Match >repeat<, shortest possible            ex6
+           |  >atom<                 Match >atom< exactly once
+ >repeat< ::= >atom<*                Match >atom< 0 or more times                 ex3 ~
+           |  >atom<+                Match >atom< 1 or more times                 ex4
+           |  >atom<?                Match >atom< 0 or 1 times                    ex5
+ >atom<   ::= (>regexp<)             Match sub-expression >regexp< and report     ex11 ~
+           |  [>rng<]                Match any character in >rng<                 ex2
+           |  [^>rng<]               Match any character not in >rng<             ex12
+           |  .                      Match any (except newline in multi mode)     ex13
+           |  ^                      Match start (or after newline in multi mode) ex14
+           |  $                      Match end (or before newline in multi mode)  ex15
+           |  >literal<              Match a single literal character             ex1
+           |  (?>mode<:>regexp<)     Match >regexp< using >mode<                  ex35 ~
+           |  (?>>regexp<)           Match >regexp<, only first possible
+           |  >look<                 Match empty if >look< matches
+           |  (?>tst<>pces<|>pces<)  Match 1st >pces< if >tst<, else 2nd >pces<   ex36
+           |  (?>tst<>pces<)         Match >pces< if >tst<, empty if not >tst<
+ >rng<    ::= ]                      >rng< contains ] only                        ex27 ~
+           |  -                      >rng< contains - only                        ex28
+           |  >mrng<                 >rng< contains everything in >mrng<
+           |  >mrng<-                >rng< contains - and everything in >mrng<
+ >mrng<   ::= ]>lrng<                >mrng< contains ] and everything in >lrng<   ex29 ~
+           |  ->lrng<                >mrng< contains - and everything in >lrng<   ex29
+           |  >lirng<                >mrng< contains everything in >lirng<
+ >lirng<  ::= >riliteral<            >lirng< contains a literal character ~
+           |  >riliteral<->rliteral< >lirng< contains Unicode range inclusive     ex22
+           |  >lirng<>lrng<          >lirng< contains everything in both
+ >lrng<   ::= ^                      >lrng< contains ^                            ex30 ~
+           |  >rliteral<->rliteral<  >lrng< contains Unicode range inclusive
+           |  ^>lrng<                >lrng< contains ^ and more
+           |  >lirng<                >lrng< contains everything in >lirng<
+ >look<   ::= (?=>regexp<)           Match if >regexp< matches                    ex31 ~
+           |  (?!>regexp<)           Match if >regexp< doesn't match              ex32
+           |  (?<=>regexp<)          Match if >regexp< matches preceding          ex33
+           |  (?<!>regexp<)          Match if >regexp< doesn't match preceding    ex34
+ >tst<    ::= (>n<)                  True if Nth ( has a match ~
+           |  >look<                 True if >look< matches                       ex36
+ >mode<   ::=                        Like the enclosing mode ~
+           |  >mode<i                Like >mode<, but case-insensitive            ex35
+           |  >mode<-i               Like >mode<, but sensitive
+           |  >mode<s                Like >mode<, but not in multi mode
+           |  >mode<-s               Like >mode<, but in multi mode
+           |  >mode<m                Like >mode<, but in multi mode
+           |  >mode<-m               Like >mode<, but not in multi mode
+
+The following completes the grammar for regexp, which treats { and } as
+literals, \ as a literal within ranges, and \ as a literal producer
+outside of ranges.
+
+ >literal<   ::= Any character except (, ), *, +, ?, [, ., ^, \, or | ~
+              |  \>aliteral<                                          Match >aliteral< ex21
+ >aliteral<  ::= Any character ~
+ >riliteral< ::= Any character except ], -, or ^ ~
+ >rliteral<  ::= Any character except ] or - ~
+
+The following completes the grammar for pregexp, which uses { and }
+bounded repetition and uses \ for meta-characters both inside and
+outside of ranges.
+
+ >repeat<    ::= ...                                                           ... ~
+              |  >atom<{>n<}                                                   Match >atom< exactly >n< times                 ex7
+              |  >atom<{>n<,}                                                  Match >atom< >n< or more times                 ex8
+              |  >atom<{,>m<}                                                  Match >atom< between 0 and >m< times           ex9
+              |  >atom<{>n<,>m<}                                               Match >atom< between >n< and >m< times         ex10
+ >atom<      ::= ...                                                           ... ~
+              |  \>n<                                                          Match latest reported match for >n<th (        ex16
+              |  >class<                                                       Match any character in >class<
+              |  \b                                                            Match \w* boundary                             ex17
+              |  \B                                                            Match where \b does not                        ex18
+              |  \p{>property<}                                                Match (UTF-8 encoded) in >property<            ex19
+              |  \P{>property<}                                                Match (UTF-8 encoded) not in >property<        ex20
+ >literal<   ::= Any character except (, ), *, +, ?, [, ], {, }, ., ^, \, or | ~
+              |  \>aliteral<                                                   Match >aliteral<                               ex21
+ >aliteral<  ::= Any character except a-z, A-Z, 0-9 ~
+ >lirng<     ::= ...                                                           ... ~
+              |  >class<                                                       >lirng< contains all characters in >class<
+              |  >posix<                                                       >lirng< contains all characters in >posix<     ex26
+              |  \>eliteral<                                                   >lirng< contains >eliteral<
+ >riliteral< ::= Any character except ], \, -, or ^ ~
+ >rliteral<  ::= Any character except ], \, or - ~
+ >eliteral<  ::= Any character except a-z, A-Z ~
+ >class<     ::= \d                                                            Contains 0-9                                   ex23 ~
+              |  \D                                                            Contains ASCII other than those in \d
+              |  \w                                                            Contains a-z, A-Z, 0-9, _                      ex24
+              |  \W                                                            Contains ASCII other than those in \w
+              |  \s                                                            Contains space, tab, newline, formfeed, return ex25
+              |  \S                                                            Contains ASCII other than those in \s
+ >posix<     ::= [:alpha:]                                                     Contains a-z, A-Z ~
+              |  [:upper:]                                                     Contains A-Z ~
+              |  [:lower:]                                                     Contains a-z                                   ex26 ~
+              |  [:digit:]                                                     Contains 0-9 ~
+              |  [:xdigit:]                                                    Contains 0-9, a-f, A-F ~
+              |  [:alnum:]                                                     Contains a-z, A-Z, 0-9 ~
+              |  [:word:]                                                      Contains a-z, A-Z, 0-9, _ ~
+              |  [:blank:]                                                     Contains space and tab ~
+              |  [:space:]                                                     Contains space, tab, newline, formfeed, return ~
+              |  [:graph:]                                                     Contains all ASCII characters that use ink ~
+              |  [:print:]                                                     Contains space, tab, and ASCII ink users ~
+              |  [:cntrl:]                                                     Contains all characters with scalar value < 32 ~
+              |  [:ascii:]                                                     Contains all ASCII characters ~
+ >property<  ::= >category<                                                    Includes all characters in >category< ~
+              |  ^>category<                                                   Includes all characters not in >category<
+
+The Unicode categories follow.
+
+ >category< ::= Ll Letter, lowercase                       ex19 ~
+             |  Lu Letter, uppercase
+             |  Lt Letter, titlecase
+             |  Lm Letter, modifier
+             |  L& Union of Ll, Lu, Lt, and Lm
+             |  Lo Letter, other
+             |  L  Union of L& and Lo
+             |  Nd Number, decimal digit
+             |  Nl Number, letter
+             |  No Number, other
+             |  N  Union of Nd, Nl, and No
+             |  Ps Punctuation, open
+             |  Pe Punctuation, close
+             |  Pi Punctuation, initial quote
+             |  Pf Punctuation, final quote
+             |  Pc Punctuation, connector
+             |  Pd Punctuation, dash
+             |  Po Punctuation, other
+             |  P  Union of Ps, Pe, Pi, Pf, Pc, Pd, and Po
+             |  Mn Mark, non-spacing
+             |  Mc Mark, spacing combining
+             |  Me Mark, enclosing
+             |  M  Union of Mn, Mc, and Me
+             |  Sc Symbol, currency
+             |  Sk Symbol, modifier
+             |  Sm Symbol, math
+             |  So Symbol, other
+             |  S  Union of Sc, Sk, Sm, and So
+             |  Zl Separator, line
+             |  Zp Separator, paragraph
+             |  Zs Separator, space
+             |  Z  Union of Zl, Zp, and Zs
+             |  Cc Other, control
+             |  Cf Other, format
+             |  Cs Other, surrogate
+             |  Cn Other, not assigned
+             |  Co Other, private use
+             |  C  Union of Cc, Cf, Cs, Cn, and Co
+             |  .  Union of all Unicode categories
+
+Examples:
+  > (regexp-match #rx"a|b" "cat") ; ex1
+  '("a")
+  > (regexp-match #rx"[at]" "cat") ; ex2
+  '("a")
+  > (regexp-match #rx"ca*[at]" "caaat") ; ex3
+  '("caaat")
+  > (regexp-match #rx"ca+[at]" "caaat") ; ex4
+  '("caaat")
+  > (regexp-match #rx"ca?t?" "ct") ; ex5
+  '("ct")
+  > (regexp-match #rx"ca*?[at]" "caaat") ; ex6
+  '("ca")
+  > (regexp-match #px"ca{2}" "caaat") ; ex7, uses #px
+  '("caa")
+  > (regexp-match #px"ca{2,}t" "catcaat") ; ex8, uses #px
+  '("caat")
+  > (regexp-match #px"ca{,2}t" "caaatcat") ; ex9, uses #px
+  '("cat")
+  > (regexp-match #px"ca{1,2}t" "caaatcat") ; ex10, uses #px
+  '("cat")
+  > (regexp-match #rx"(c*)(a*)" "caat") ; ex11
+  '("caa" "c" "aa")
+  > (regexp-match #rx"[^ca]" "caat") ; ex12
+  '("t")
+  > (regexp-match #rx".(.)." "cat") ; ex13
+  '("cat" "a")
+  > (regexp-match #rx"^a|^c" "cat") ; ex14
+  '("c")
+  > (regexp-match #rx"a$|t$" "cat") ; ex15
+  '("t")
+  > (regexp-match #px"c(.)\\1t" "caat") ; ex16, uses #px
+  '("caat" "a")
+  > (regexp-match #px".\\b." "cat in hat") ; ex17, uses #px
+  '("t ")
+  > (regexp-match #px".\\B." "cat in hat") ; ex18, uses #px
+  '("ca")
+  > (regexp-match #px"\\p{Ll}" "Cat") ; ex19, uses #px
+  '("a")
+  > (regexp-match #px"\\P{Ll}" "cat!") ; ex20, uses #px
+  '("!")
+  > (regexp-match #rx"\\|" "c|t") ; ex21
+  '("|")
+  > (regexp-match #rx"[a-f]*" "cat") ; ex22
+  '("ca")
+  > (regexp-match #px"[a-f\\d]*" "1cat") ; ex23, uses #px
+  '("1ca")
+  > (regexp-match #px" [\\w]" "cat hat") ; ex24, uses #px
+  '(" h")
+  > (regexp-match #px"t[\\s]" "cat\nhat") ; ex25, uses #px
+  '("t\n")
+  > (regexp-match #px"[[:lower:]]+" "Cat") ; ex26, uses #px
+  '("at")
+  > (regexp-match #rx"[]]" "c]t") ; ex27
+  '("]")
+  > (regexp-match #rx"[-]" "c-t") ; ex28
+  '("-")
+  > (regexp-match #rx"[]a[]+" "c[a]t") ; ex29
+  '("[a]")
+  > (regexp-match #rx"[a^]+" "ca^t") ; ex30
+  '("a^")
+  > (regexp-match #rx".a(?=p)" "cat nap") ; ex31
+  '("na")
+  > (regexp-match #rx".a(?!t)" "cat nap") ; ex32
+  '("na")
+  > (regexp-match #rx"(?<=n)a." "cat nap") ; ex33
+  '("ap")
+  > (regexp-match #rx"(?<!c)a." "cat nap") ; ex34
+  '("ap")
+  > (regexp-match #rx"(?i:a)[tp]" "cAT nAp") ; ex35
+  '("Ap")
+  > (regexp-match #rx"(?(?<=c)a|b)+" "cabal") ; ex36
+  '("ab")
+
+2. Additional Syntactic Constraints
+
+In addition to matching a grammar, regular expressions must meet two
+syntactic restrictions:
+
+* In a >repeat< other than >atom<?, the >atom< must not match an empty
+  sequence.
+
+* In a (?<=>regexp<) or (?<!>regexp<), the >regexp< must match a bounded
+  sequence only.
+
+These constraints are checked syntactically by the following type
+system. A type [n, m] corresponds to an expression that matches between
+n and m characters. In the rule for (>Regexp<), N means the number such
+that the opening parenthesis is the Nth opening parenthesis for
+collecting match reports.  Non-emptiness is inferred for a backreference
+pattern, \>N<, so that a backreference can be used for repetition
+patterns; in the case of mutual dependencies among backreferences, the
+inference chooses the fixpoint that maximizes non-emptiness.  Finiteness
+is not inferred for backreferences (i.e., a backreference is assumed to
+match an arbitrarily large sequence).
+
+        >regexp<1 : [n1, m1]   >regexp<2 : [n2, m2]  ~
+      >regexp<1|>regexp<2 : [min(n1, n2), max(m1, m2)]  ~
+                              
+            >pce< : [n1, m1]   >pces< : [n2, m2]  ~
+                >pce<>pces< : [n1+n2, m1+m2]  ~
+                              
+       >repeat< : [n, m]      >atom< : [n, m]   n > 0  ~
+       >repeat<? : [0, m]        >atom<* : [0, ∞]  ~
+                              
+        >atom< : [n, m]   n > 0     >atom< : [n, m]  ~
+           >atom<+ : [1, ∞]         >atom<? : [0, m]  ~
+                              
+                  >atom< : [n, m]   n > 0  ~
+                >atom<{>n<} : [n*>n<, m*>n<]  ~
+                              
+                  >atom< : [n, m]   n > 0  ~
+                 >atom<{>n<,} : [n*>n<, ∞]  ~
+                              
+                  >atom< : [n, m]   n > 0  ~
+                 >atom<{,>m<} : [0, m*>m<]  ~
+                              
+                  >atom< : [n, m]   n > 0  ~
+              >atom<{>n<,>m<} : [n*>n<, m*>m<]  ~
+                              
+                     >regexp< : [n, m]  ~
+                 (>regexp<) : [n, m]   αN=n  ~
+                              
+                     >regexp< : [n, m]  ~
+                (?>mode<:>regexp<) : [n, m]  ~
+                              
+        >regexp< : [n, m]         >regexp< : [n, m]  ~
+      (?=>regexp<) : [0, 0]     (?!>regexp<) : [0, 0]  ~
+                              
+  >regexp< : [n, m]   m < ∞     >regexp< : [n, m]   m < ∞  ~
+   (?<=>regexp<) : [0, 0]        (?<!>regexp<) : [0, 0]  ~
+                              
+                     >regexp< : [n, m]  ~
+                   (?>>regexp<) : [n, m]  ~
+                              
+ >tst< : [n0, m0]   >pces<1 : [n1, m1]   >pces<2 : [n2, m2]  ~
+    (?>tst<>pces<1|>pces<2) : [min(n1, n2), max(m1, m2)]  ~
+                              
+            >tst< : [n0, m0]   >pces< : [n1, m1]  ~
+                  (?>tst<>pces<) : [0, m1]  ~
+                              
+   (>n<) : [αN, ∞]   [>rng<] : [1, 1]   [^>rng<] : [1, 1] ~
+                              
+            . : [1, 1]   ^ : [0, 0]   $ : [0, 0] ~
+                              
+   >literal< : [1, 1]   \>n< : [αN, ∞]   >class< : [1, 1] ~
+                              
+                 \b : [0, 0]   \B : [0, 0] ~
+                              
+     \p{>property<} : [1, 6]   \P{>property<} : [1, 6] ~
+
+3. Regexp Constructors
+
+                                        *regexp?*
+(regexp? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a regexp value created by regexp or pregexp, #f
+otherwise.
+
+                                        *pregexp?*
+(pregexp? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a regexp value created by pregexp (not regexp), #f
+otherwise.
+
+                                        *byte-regexp?*
+(byte-regexp? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a regexp value created by byte-regexp or
+byte-pregexp, #f otherwise.
+
+                                        *byte-pregexp?*
+(byte-pregexp? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a regexp value created by byte-pregexp (not
+byte-regexp), #f otherwise.
+
+                                        *regexp*
+(regexp str) -> regexp? ~
+  str : string? ~
+
+Takes a string representation of a regular expression (using the syntax
+in Regexp Syntax) and compiles it into a regexp value. Other regular
+expression procedures accept either a string or a regexp value as the
+matching pattern. If a regular expression string is used multiple times,
+it is faster to compile the string once to a regexp value and use it for
+repeated matches instead of using the string each time.
+
+The object-name procedure returns the source string for a regexp value.
+
+Examples:
+  > (regexp "ap*le")
+  #rx"ap*le"
+  > (object-name #rx"ap*le")
+  "ap*le"
+
+                                        *pregexp*
+(pregexp string) -> pregexp? ~
+  string : string? ~
+
+Like regexp, except that it uses a slightly different syntax (see Regexp
+Syntax). The result can be used with regexp-match, etc., just like the
+result from regexp.
+
+Examples:
+  > (pregexp "ap*le")
+  #px"ap*le"
+  > (regexp? #px"ap*le")
+  #t
+
+                                        *byte-regexp*
+(byte-regexp bstr) -> byte-regexp? ~
+  bstr : bytes? ~
+
+Takes a byte-string representation of a regular expression (using the
+syntax in Regexp Syntax) and compiles it into a byte-regexp value.
+
+The object-name procedure returns the source byte string for a regexp
+value.
+
+Examples:
+  > (byte-regexp #"ap*le")
+  #rx#"ap*le"
+  > (object-name #rx#"ap*le")
+  #"ap*le"
+  > (byte-regexp "ap*le")
+  byte-regexp: contract violation
+    expected: byte? ~
+    given: "ap*le" ~
+
+                                        *byte-pregexp*
+(byte-pregexp bstr) -> byte-pregexp? ~
+  bstr : bytes? ~
+
+Like byte-regexp, except that it uses a slightly different syntax (see
+Regexp Syntax). The result can be used with regexp-match, etc., just
+like the result from byte-regexp.
+
+Example:
+  > (byte-pregexp #"ap*le")
+  #px#"ap*le"
+
+                                        *regexp-quote*
+(regexp-quote str [case-sensitive?]) -> string? ~
+  str : string? ~
+  case-sensitive? : any/c = #t ~
+(regexp-quote bstr [case-sensitive?]) -> bytes?
+  bstr : bytes? ~
+  case-sensitive? : any/c = #t ~
+
+Produces a string or byte string suitable for use with regexp to match
+the literal sequence of characters in str or sequence of bytes in bstr.
+If case-sensitive? is true (the default), the resulting regexp matches
+letters in str or bytes case-sensitively, otherwise it matches
+case-insensitively.
+
+Examples:
+  > (regexp-match "." "apple.scm")
+  '("a")
+  > (regexp-match (regexp-quote ".") "apple.scm")
+  '(".")
+
+                                        *regexp-max-lookbehind*
+(regexp-max-lookbehind pattern) -> exact-nonnegative-integer? ~
+  pattern : (or/c regexp? byte-regexp?) ~
+
+Returns the maximum number of bytes that pattern may consult before the
+starting position of a match to determine the match. For example, the
+pattern (?<=abc)d consults three bytes preceding a matching d, while
+e(?<=a..)d consults two bytes before a matching ed. A ^ pattern may
+consult a preceding byte to determine whether the current position is
+the start of the input or of a line.
+
+4. Regexp Matching
+
+                                        *regexp-match*
+(regexp-match  pattern         ~
+               input          
+              [start-pos      
+               end-pos        
+               output-port    
+               input-prefix]) 
+ -> (if (and (or (string? pattern) (regexp? pattern))
+             (or (string? input) (path? input)))
+        (or/c #f (cons/c string? (listof (or/c string? #f))))
+        (or/c #f (cons/c bytes?  (listof (or/c bytes?  #f)))))
+  pattern : (or/c string? bytes? regexp? byte-regexp?) ~
+  input : (or/c string? bytes? path? input-port?) ~
+  start-pos : exact-nonnegative-integer? = 0 ~
+  end-pos : (or/c exact-nonnegative-integer? #f) = #f ~
+  output-port : (or/c output-port? #f) = #f ~
+  input-prefix : bytes? = #"" ~
+
+Attempts to match pattern (a string, byte string, regexp value, or
+byte-regexp value) once to a portion of input.  The matcher finds a
+portion of input that matches and is closest to the start of the input
+(after start-pos).
+
+If input is a path, it is converted to a byte string with path->bytes if
+pattern is a byte string or a byte-based regexp. Otherwise, input is
+converted to a string with path->string.
+
+The optional start-pos and end-pos arguments select a portion of input
+for matching; the default is the entire string or the stream up to an
+end-of-file. When input is a string, start-pos is a character position;
+when input is a byte string, then start-pos is a byte position; and when
+input is an input port, start-pos is the number of bytes to skip before
+starting to match. The end-pos argument can be #f, which corresponds to
+the end of the string or an end-of-file in the stream; otherwise, it is
+a character or byte position, like start-pos. If input is an input port,
+and if an end-of-file is reached before start-pos bytes are skipped,
+then the match fails.
+
+In pattern, a start-of-string ^ refers to the first position of input
+after start-pos, assuming that input-prefix is #"".  The end-of-input $
+refers to the end-posth position or (in the case of an input port) an
+end-of-file, whichever comes first.
+
+The input-prefix specifies bytes that effectively precede input for the
+purposes of ^ and other look-behind matching. For example, a #"" prefix
+means that ^ matches at the beginning of the stream, while a #"\n"
+input-prefix means that a start-of-line ^ can match the beginning of the
+input, while a start-of-file ^ cannot.
+
+If the match fails, #f is returned. If the match succeeds, a list
+containing strings or byte string, and possibly #f, is returned. The
+list contains strings only if input is a string and pattern is not a
+byte regexp. Otherwise, the list contains byte strings (substrings of
+the UTF-8 encoding of input, if input is a string).
+
+The first [byte] string in a result list is the portion of input that
+matched pattern. If two portions of input can match pattern, then the
+match that starts earliest is found.
+
+Additional [byte] strings are returned in the list if pattern contains
+parenthesized sub-expressions (but not when the opening parenthesis is
+followed by ?). Matches for the sub-expressions are provided in the
+order of the opening parentheses in pattern. When sub-expressions occur
+in branches of an | “or” pattern, in a * “zero or more” pattern, or
+other places where the overall pattern can succeed without a match for
+the sub-expression, then a #f is returned for the sub-expression if it
+did not contribute to the final match. When a single sub-expression
+occurs within a * “zero or more” pattern or other multiple-match
+positions, then the rightmost match associated with the sub-expression
+is returned in the list.
+
+If the optional output-port is provided as an output port, the part of
+input from its beginning (not start-pos) that precedes the match is
+written to the port. All of input up to end-pos is written to the port
+if no match is found. This functionality is most useful when input is an
+input port.
+
+When matching an input port, a match failure reads up to end-pos bytes
+(or end-of-file), even if pattern begins with a start-of-string ^; see
+also regexp-try-match. On success, all bytes up to and including the
+match are eventually read from the port, but matching proceeds by first
+peeking bytes from the port (using peek-bytes-avail!), and then
+(re‑)reading matching bytes to discard them after the match result is
+determined. Non-matching bytes may be read and discarded before the
+match is determined. The matcher peeks in blocking mode only as far as
+necessary to determine a match, but it may peek extra bytes to fill an
+internal buffer if immediately available (i.e., without blocking).
+Greedy repeat operators in pattern, such as * or +, tend to force
+reading the entire content of the port (up to end-pos) to determine a
+match.
+
+If the input port is read simultaneously by another thread, or if the
+port is a custom port with inconsistent reading and peeking procedures
+(see [missing]), then the bytes that are peeked and used for matching
+may be different than the bytes read and discarded after the match
+completes; the matcher inspects only the peeked bytes. To avoid such
+interleaving, use regexp-match-peek (with a progress-evt argument)
+followed by port-commit-peeked.
+
+Examples:
+  > (regexp-match #rx"x." "12x4x6")
+  '("x4")
+  > (regexp-match #rx"y." "12x4x6")
+  #f
+  > (regexp-match #rx"x." "12x4x6" 3)
+  '("x6")
+  > (regexp-match #rx"x." "12x4x6" 3 4)
+  #f
+  > (regexp-match #rx#"x." "12x4x6")
+  '(#"x4")
+  > (regexp-match #rx"x." "12x4x6" 0 #f (current-output-port))
+  12
+  '("x4")
+  > (regexp-match #rx"(-[0-9]*)+" "a-12--345b")
+  '("-12--345" "-345")
+
+                                        *regexp-match**
+(regexp-match*  pattern                      ~
+                input                       
+               [start-pos                   
+                end-pos                     
+                input-prefix                
+                #:match-select match-select  ~
+                #:gap-select? gap-select])   ~
+ -> (if (and (or (string? pattern) (regexp? pattern))
+             (or (string? input) (path? input)))
+        (listof (or/c string? (listof (or/c #f string?))))
+        (listof (or/c bytes? (listof (or/c #f bytes?)))))
+  pattern : (or/c string? bytes? regexp? byte-regexp?) ~
+  input : (or/c string? bytes? path? input-port?) ~
+  start-pos : exact-nonnegative-integer? = 0 ~
+  end-pos : (or/c exact-nonnegative-integer? #f) = #f ~
+  input-prefix : bytes? = #"" ~
+  match-select : (or/c (list? . -> . (or/c any/c list?)) = car ~
+                       #f)
+  gap-select : any/c = #f ~
+
+Like regexp-match, but the result is a list of strings or byte strings
+corresponding to a sequence of matches of pattern in input.
+
+The pattern is used in order to find matches, where each match attempt
+starts at the end of the last match, and ^ is allowed to match the
+beginning of the input (if input-prefix is #"") only for the first
+match.  Empty matches are handled like other matches, returning a
+zero-length string or byte sequence (they are more useful in making this
+a complement of regexp-split), but pattern is restricted from matching
+an empty sequence immediately after an empty match.
+
+If input contains no matches (in the range start-pos to end-pos), null
+is returned. Otherwise, each item in the resulting list is a distinct
+substring or byte sequence from input that matches pattern. The end-pos
+argument can be #f to match to the end of input (which corresponds to an
+end-of-file if input is an input port).
+
+Examples:
+  > (regexp-match* #rx"x." "12x4x6")
+  '("x4" "x6")
+  > (regexp-match* #rx"x*" "12x4x6")
+  '("" "" "x" "" "x" "" "")
+
+match-select specifies the collected results.  The default of car means
+that the result is the list of matches without returning parenthesized
+sub-patterns.  It can be given as a ‘selector’ function which chooses an
+item from a list, or it can choose a list of items.  For example, you
+can use cdr to get a list of lists of parenthesized sub-patterns
+matches, or values (as an identity function) to get the full matches as
+well.  (Note that the selector must choose an element of its input list
+or a list of elements, but it must not inspect its input as they can be
+either a list of strings or a list of position pairs.  Furthermore, the
+selector must be consistent in its choice(s).)
+
+Examples:
+  > (regexp-match* #rx"x(.)" "12x4x6" #:match-select cadr) ~
+  '("4" "6")
+  > (regexp-match* #rx"x(.)" "12x4x6" #:match-select values) ~
+  '(("x4" "4") ("x6" "6"))
+
+In addition, specifying gap-select as a non-#f value will make the
+result an interleaved list of the matches as well as the separators
+between them matches, starting and ending with a separator. In this
+case, match-select can be given as #f to return only the separators,
+making such uses equivalent to regexp-split.
+
+Examples:
+  >
+  (regexp-match* #rx"x(.)" "12x4x6" #:match-select cadr #:gap-select? #t) ~
+  '("12" "4" "" "6" "")
+  > (regexp-match* #rx"x(.)" "12x4x6" #:match-select #f #:gap-select? #t) ~
+  '("12" "" "")
+
+                                        *regexp-try-match*
+(regexp-try-match  pattern         ~
+                   input          
+                  [start-pos      
+                   end-pos        
+                   output-port    
+                   input-prefix]) 
+ -> (if (and (or (string? pattern) (regexp? pattern))
+             (string? input))
+        (or/c #f (cons/c string? (listof (or/c string? #f))))
+        (or/c #f (cons/c bytes?  (listof (or/c bytes?  #f)))))
+  pattern : (or/c string? bytes? regexp? byte-regexp?) ~
+  input : input-port? ~
+  start-pos : exact-nonnegative-integer? = 0 ~
+  end-pos : (or/c exact-nonnegative-integer? #f) = #f ~
+  output-port : (or/c output-port? #f) = #f ~
+  input-prefix : bytes? = #"" ~
+
+Like regexp-match on input ports, except that if the match fails, no
+characters are read and discarded from in.
+
+This procedure is especially useful with a pattern that begins with a
+start-of-string ^ or with a non-#f end-pos, since each limits the amount
+of peeking into the port. Otherwise, beware that a large portion of the
+stream may be peeked (and therefore pulled into memory) before the match
+succeeds or fails.
+
+                                        *regexp-match-positions*
+(regexp-match-positions  pattern         ~
+                         input          
+                        [start-pos      
+                         end-pos        
+                         output-port    
+                         input-prefix]) 
+ -> (or/c (cons/c (cons/c exact-nonnegative-integer?
+                          exact-nonnegative-integer?)
+                  (listof (or/c (cons/c exact-nonnegative-integer?
+                                        exact-nonnegative-integer?)
+                                #f)))
+          #f)
+  pattern : (or/c string? bytes? regexp? byte-regexp?) ~
+  input : (or/c string? bytes? path? input-port?) ~
+  start-pos : exact-nonnegative-integer? = 0 ~
+  end-pos : (or/c exact-nonnegative-integer? #f) = #f ~
+  output-port : (or/c output-port? #f) = #f ~
+  input-prefix : bytes? = #"" ~
+
+Like regexp-match, but returns a list of number pairs (and #f) instead
+of a list of strings. Each pair of numbers refers to a range of
+characters or bytes in input. If the result for the same arguments with
+regexp-match would be a list of byte strings, the resulting ranges
+correspond to byte ranges; in that case, if input is a character string,
+the byte ranges correspond to bytes in the UTF-8 encoding of the string.
+
+Range results are returned in a substring- and subbytes-compatible
+manner, independent of start-pos. In the case of an input port, the
+returned positions indicate the number of bytes that were read,
+including start-pos, before the first matching byte.
+
+Examples:
+  > (regexp-match-positions #rx"x." "12x4x6")
+  '((2 . 4))
+  > (regexp-match-positions #rx"x." "12x4x6" 3)
+  '((4 . 6))
+  > (regexp-match-positions #rx"(-[0-9]*)+" "a-12--345b")
+  '((1 . 9) (5 . 9))
+
+                                        *regexp-match-positions**
+(regexp-match-positions*  pattern                        ~
+                          input                         
+                         [start-pos                     
+                          end-pos                       
+                          input-prefix                  
+                          #:match-select match-select])  ~
+ -> (or/c (listof (cons/c exact-nonnegative-integer?
+                          exact-nonnegative-integer?))
+          (listof (listof (or/c #f (cons/c exact-nonnegative-integer?
+                                           exact-nonnegative-integer?)))))
+  pattern : (or/c string? bytes? regexp? byte-regexp?) ~
+  input : (or/c string? bytes? path? input-port?) ~
+  start-pos : exact-nonnegative-integer? = 0 ~
+  end-pos : (or/c exact-nonnegative-integer? #f) = #f ~
+  input-prefix : bytes? = #"" ~
+  match-select : (list? . -> . (or/c any/c list?)) = car ~
+
+Like regexp-match-positions, but returns multiple matches like
+regexp-match*.
+
+Examples:
+  > (regexp-match-positions* #rx"x." "12x4x6")
+  '((2 . 4) (4 . 6))
+  > (regexp-match-positions* #rx"x(.)" "12x4x6" #:match-select cadr) ~
+  '((3 . 4) (5 . 6))
+
+Note that unlike regexp-match*, there is no #:gap-select? input keyword,
+as this information can be easily inferred from the resulting matches.
+
+                                        *regexp-match?*
+(regexp-match?  pattern             ~
+                input              
+               [start-pos          
+                end-pos            
+                output-port        
+                input-prefix]) -> boolean?
+  pattern : (or/c string? bytes? regexp? byte-regexp?) ~
+  input : (or/c string? bytes? path? input-port?) ~
+  start-pos : exact-nonnegative-integer? = 0 ~
+  end-pos : (or/c exact-nonnegative-integer? #f) = #f ~
+  output-port : (or/c output-port? #f) = #f ~
+  input-prefix : bytes? = #"" ~
+
+Like regexp-match, but returns merely #t when the match succeeds, #f
+otherwise.
+
+Examples:
+  > (regexp-match? #rx"x." "12x4x6")
+  #t
+  > (regexp-match? #rx"y." "12x4x6")
+  #f
+
+                                        *regexp-match-exact?*
+(regexp-match-exact? pattern input) -> boolean? ~
+  pattern : (or/c string? bytes? regexp? byte-regexp?) ~
+  input : (or/c string? bytes? path?) ~
+
+Like regexp-match?, but #t is only returned when the entire content of
+input matches pattern.
+
+Examples:
+  > (regexp-match-exact? #rx"x." "12x4x6")
+  #f
+  > (regexp-match-exact? #rx"1.*x." "12x4x6")
+  #t
+
+                                        *regexp-match-peek*
+(regexp-match-peek  pattern         ~
+                    input          
+                   [start-pos      
+                    end-pos        
+                    progress       
+                    input-prefix]) 
+ -> (or/c (cons/c bytes? (listof (or/c bytes? #f)))
+          #f)
+  pattern : (or/c string? bytes? regexp? byte-regexp?) ~
+  input : input-port? ~
+  start-pos : exact-nonnegative-integer? = 0 ~
+  end-pos : (or/c exact-nonnegative-integer? #f) = #f ~
+  progress : (or/c evt #f) = #f ~
+  input-prefix : bytes? = #"" ~
+
+Like regexp-match on input ports, but only peeks bytes from input
+instead of reading them. Furthermore, instead of an output port, the
+last optional argument is a progress event for input (see
+port-progress-evt). If progress becomes ready, then the match stops
+peeking from input and returns #f. The progress argument can be #f, in
+which case the peek may continue with inconsistent information if
+another process meanwhile reads from input.
+
+Examples:
+  > (define p (open-input-string "a abcd"))
+
+  > (regexp-match-peek ".*bc" p)
+  '(#"a abc")
+  > (regexp-match-peek ".*bc" p 2)
+  '(#"abc")
+  > (regexp-match ".*bc" p 2)
+  '(#"abc")
+  > (peek-char p)
+  #\d
+  > (regexp-match ".*bc" p)
+  #f
+  > (peek-char p)
+  #<eof>
+
+                                        *regexp-match-peek-positions*
+(regexp-match-peek-positions  pattern         ~
+                              input          
+                             [start-pos      
+                              end-pos        
+                              progress       
+                              input-prefix]) 
+ -> (or/c (cons/c (cons/c exact-nonnegative-integer?
+                          exact-nonnegative-integer?)
+                  (listof (or/c (cons/c exact-nonnegative-integer?
+                                        exact-nonnegative-integer?)
+                                #f)))
+          #f)
+  pattern : (or/c string? bytes? regexp? byte-regexp?) ~
+  input : input-port? ~
+  start-pos : exact-nonnegative-integer? = 0 ~
+  end-pos : (or/c exact-nonnegative-integer? #f) = #f ~
+  progress : (or/c evt #f) = #f ~
+  input-prefix : bytes? = #"" ~
+
+Like regexp-match-positions on input ports, but only peeks bytes from
+input instead of reading them, and with a progress argument like
+regexp-match-peek.
+
+                                        *regexp-match-peek-immediate*
+(regexp-match-peek-immediate  pattern         ~
+                              input          
+                             [start-pos      
+                              end-pos        
+                              progress       
+                              input-prefix]) 
+ -> (or/c (cons/c bytes? (listof (or/c bytes? #f)))
+          #f)
+  pattern : (or/c string? bytes? regexp? byte-regexp?) ~
+  input : input-port? ~
+  start-pos : exact-nonnegative-integer? = 0 ~
+  end-pos : (or/c exact-nonnegative-integer? #f) = #f ~
+  progress : (or/c evt #f) = #f ~
+  input-prefix : bytes? = #"" ~
+
+Like regexp-match-peek, but it attempts to match only bytes that are
+available from input without blocking.  The match fails if
+not-yet-available characters might be used to match pattern.
+
+                                        *regexp-match-peek-positions-immediate*
+(regexp-match-peek-positions-immediate  pattern         ~
+                                        input          
+                                       [start-pos      
+                                        end-pos        
+                                        progress       
+                                        input-prefix]) 
+ -> (or/c (cons/c (cons/c exact-nonnegative-integer?
+                          exact-nonnegative-integer?)
+                  (listof (or/c (cons/c exact-nonnegative-integer?
+                                        exact-nonnegative-integer?)
+                                #f)))
+          #f)
+  pattern : (or/c string? bytes? regexp? byte-regexp?) ~
+  input : input-port? ~
+  start-pos : exact-nonnegative-integer? = 0 ~
+  end-pos : (or/c exact-nonnegative-integer? #f) = #f ~
+  progress : (or/c evt #f) = #f ~
+  input-prefix : bytes? = #"" ~
+
+Like regexp-match-peek-positions, but it attempts to match only bytes
+that are available from input without blocking. The match fails if
+not-yet-available characters might be used to match pattern.
+
+                                        *regexp-match-peek-positions**
+(regexp-match-peek-positions*  pattern                        ~
+                               input                         
+                              [start-pos                     
+                               end-pos                       
+                               input-prefix                  
+                               #:match-select match-select])  ~
+ -> (or/c (listof (cons/c exact-nonnegative-integer?
+                          exact-nonnegative-integer?))
+          (listof (listof (or/c #f (cons/c exact-nonnegative-integer?
+                                           exact-nonnegative-integer?)))))
+  pattern : (or/c string? bytes? regexp? byte-regexp?) ~
+  input : input-port? ~
+  start-pos : exact-nonnegative-integer? = 0 ~
+  end-pos : (or/c exact-nonnegative-integer? #f) = #f ~
+  input-prefix : bytes? = #"" ~
+  match-select : (list? . -> . (or/c any/c list?)) = car ~
+
+Like regexp-match-peek-positions, but returns multiple matches like
+regexp-match-positions*.
+
+                                        *regexp-match/end*
+(regexp-match/end  pattern       ~
+                   input        
+                  [start-pos    
+                   end-pos      
+                   output-port  
+                   input-prefix 
+                   count])      
+ -> (if (and (or (string? pattern) (regexp? pattern))
+             (or/c (string? input) (path? input)))
+        (or/c #f (cons/c string? (listof (or/c string? #f))))
+        (or/c #f (cons/c bytes?  (listof (or/c bytes?  #f)))))
+    (or/c #f bytes?)
+  pattern : (or/c string? bytes? regexp? byte-regexp?) ~
+  input : (or/c string? bytes? path? input-port?) ~
+  start-pos : exact-nonnegative-integer? = 0 ~
+  end-pos : (or/c exact-nonnegative-integer? #f) = #f ~
+  output-port : (or/c output-port? #f) = #f ~
+  input-prefix : bytes? = #"" ~
+  count : nonnegative-exact-integer? = 1 ~
+
+Like regexp-match, but with a second result: a byte string of up to
+count bytes that correspond to the input (possibly including the
+input-prefix) leading to the end of the match; the second result is #f
+if no match is found.
+
+The second result can be useful as an input-prefix for attempting a
+second match on input starting from the end of the first match. In that
+case, use regexp-max-lookbehind to determine an appropriate value for
+count.
+
+                                        *regexp-match-positions/end*
+(regexp-match-positions/end  pattern       ~
+                             input        
+                            [start-pos    
+                             end-pos      
+                             input-prefix 
+                             count])      
+ -> (listof (cons/c exact-nonnegative-integer?
+                    exact-nonnegative-integer?))
+    (or/c #f bytes?)
+  pattern : (or/c string? bytes? regexp? byte-regexp?) ~
+  input : (or/c string? bytes? path? input-port?) ~
+  start-pos : exact-nonnegative-integer? = 0 ~
+  end-pos : (or/c exact-nonnegative-integer? #f) = #f ~
+  input-prefix : bytes? = #"" ~
+  count : exact-nonnegative-integer? = 1 ~
+(regexp-match-peek-positions/end  pattern      
+                                  input        
+                                 [start-pos    
+                                  end-pos      
+                                  progress     
+                                  input-prefix 
+                                  count])      
+ -> (or/c (cons/c (cons/c exact-nonnegative-integer?
+                          exact-nonnegative-integer?)
+                  (listof (or/c (cons/c exact-nonnegative-integer?
+                                        exact-nonnegative-integer?)
+                                #f)))
+          #f)
+    (or/c #f bytes?)
+  pattern : (or/c string? bytes? regexp? byte-regexp?) ~
+  input : input-port? ~
+  start-pos : exact-nonnegative-integer? = 0 ~
+  end-pos : (or/c exact-nonnegative-integer? #f) = #f ~
+  progress : (or/c evt #f) = #f ~
+  input-prefix : bytes? = #"" ~
+  count : exact-nonnegative-integer? = 1 ~
+(regexp-match-peek-positions-immediate/end  pattern      
+                                            input        
+                                           [start-pos    
+                                            end-pos      
+                                            progress     
+                                            input-prefix 
+                                            count])      
+ -> (or/c (cons/c (cons/c exact-nonnegative-integer?
+                          exact-nonnegative-integer?)
+                  (listof (or/c (cons/c exact-nonnegative-integer?
+                                        exact-nonnegative-integer?)
+                                #f)))
+          #f)
+    (or/c #f bytes?)
+  pattern : (or/c string? bytes? regexp? byte-regexp?) ~
+  input : input-port? ~
+  start-pos : exact-nonnegative-integer? = 0 ~
+  end-pos : (or/c exact-nonnegative-integer? #f) = #f ~
+  progress : (or/c evt #f) = #f ~
+  input-prefix : bytes? = #"" ~
+  count : exact-nonnegative-integer? = 1 ~
+
+Like regexp-match-positions, etc., but with a second result like
+regexp-match/end.
+
+5. Regexp Splitting
+
+                                        *regexp-split*
+(regexp-split  pattern         ~
+               input          
+              [start-pos      
+               end-pos        
+               input-prefix]) 
+ -> (if (and (or (string? pattern) (regexp? pattern))
+             (string? input))
+        (cons/c string? (listof string?))
+        (cons/c bytes? (listof bytes?)))
+  pattern : (or/c string? bytes? regexp? byte-regexp?) ~
+  input : (or/c string? bytes? input-port?) ~
+  start-pos : exact-nonnegative-integer? = 0 ~
+  end-pos : (or/c exact-nonnegative-integer? #f) = #f ~
+  input-prefix : bytes? = #"" ~
+
+The complement of regexp-match*: the result is a list of strings (if
+pattern is a string or character regexp and input is a string) or byte
+strings (otherwise) from input that are separated by matches to pattern.
+Adjacent matches are separated with "" or #"". Zero-length matches are
+treated the same as for regexp-match*.
+
+If input contains no matches (in the range start-pos to end-pos), the
+result is a list containing input’s content (from start-pos to end-pos)
+as a single element. If a match occurs at the beginning of input (at
+start-pos), the resulting list will start with an empty string or byte
+string, and if a match occurs at the end (at end-pos), the list will end
+with an empty string or byte string. The end-pos argument can be #f, in
+which case splitting goes to the end of input (which corresponds to an
+end-of-file if input is an input port).
+
+Examples:
+  > (regexp-split #rx" +" "12  34")
+  '("12" "34")
+  > (regexp-split #rx"." "12  34")
+  '("" "" "" "" "" "" "")
+  > (regexp-split #rx"" "12  34")
+  '("" "1" "2" " " " " "3" "4" "")
+  > (regexp-split #rx" *" "12  34")
+  '("" "1" "2" "" "3" "4" "")
+  > (regexp-split #px"\\b" "12, 13 and 14.")
+  '("" "12" ", " "13" " " "and" " " "14" ".")
+  > (regexp-split #rx" +" "")
+  '("")
+
+6. Regexp Substitution
+
+                                        *regexp-replace*
+(regexp-replace  pattern         ~
+                 input          
+                 insert         
+                [input-prefix]) 
+ -> (if (and (or (string? pattern) (regexp? pattern))
+             (string? input))
+        string?
+        bytes?)
+  pattern : (or/c string? bytes? regexp? byte-regexp?) ~
+  input : (or/c string? bytes?) ~
+  insert : (or/c string? bytes? ~
+                 ((string?) () #:rest (listof string?) . ->* . string?) ~
+                 ((bytes?) () #:rest (listof bytes?) . ->* . bytes?)) ~
+  input-prefix : bytes? = #"" ~
+
+Performs a match using pattern on input, and then returns a string or
+byte string in which the matching portion of input is replaced with
+insert.  If pattern matches no part of input, then input is returned
+unmodified.
+
+The insert argument can be either a (byte) string, or a function that
+returns a (byte) string. In the latter case, the function is applied on
+the list of values that regexp-match would return (i.e., the first
+argument is the complete match, and then one argument for each
+parenthesized sub-expression) to obtain a replacement (byte) string.
+
+If pattern is a string or character regexp and input is a string, then
+insert must be a string or a procedure that accept strings, and the
+result is a string. If pattern is a byte string or byte regexp, or if
+input is a byte string, then insert as a string is converted to a byte
+string, insert as a procedure is called with a byte string, and the
+result is a byte string.
+
+If insert contains &, then & is replaced with the matching portion of
+input before it is substituted into the match’s place.  If insert
+contains \>n< for some integer >n<, then it is replaced with the >n<th
+matching sub-expression from input. A & and \0 are aliases. If the >n<th
+sub-expression was not used in the match, or if >n< is greater than the
+number of sub-expressions in pattern, then \>n< is replaced with the
+empty string.
+
+To substitute a literal & or \, use \& and \\, respectively, in insert.
+A \$ in insert is equivalent to an empty sequence; this can be used to
+terminate a number >n< following \. If a \ in insert is followed by
+anything other than a digit, &, \, or $, then the \ by itself is treated
+as \0.
+
+Note that the \ described in the previous paragraphs is a character or
+byte of input. To write such an input as a Racket string literal, an
+escaping \ is needed before the \. For example, the Racket constant
+"\\1" is \1.
+
+Examples:
+  > (regexp-replace #rx"mi" "mi casa" "su")
+  "su casa"
+  > (regexp-replace #rx"mi" "mi casa" string-upcase)
+  "MI casa"
+  > (regexp-replace #rx"([Mm])i ([a-zA-Z]*)" "Mi Casa" "\\1y \\2")
+  "My Casa"
+  > (regexp-replace #rx"([Mm])i ([a-zA-Z]*)" "mi cerveza Mi Mi Mi"
+                    "\\1y \\2")
+  "my cerveza Mi Mi Mi"
+  > (regexp-replace #rx"x" "12x4x6" "\\\\")
+  "12\\4x6"
+  > (display (regexp-replace #rx"x" "12x4x6" "\\\\"))
+  12\4x6
+
+
+                                        *regexp-replace**
+(regexp-replace*  pattern             ~
+                  input              
+                  insert             
+                 [start-pos          
+                  end-pos            
+                  input-prefix]) -> (or/c string? bytes?)
+  pattern : (or/c string? bytes? regexp? byte-regexp?) ~
+  input : (or/c string? bytes?) ~
+  insert : (or/c string? bytes? ~
+                 ((string?) () #:rest (listof string?) . ->* . string?) ~
+                 ((bytes?) () #:rest (listof bytes?) . ->* . bytes?)) ~
+  start-pos : exact-nonnegative-integer? = 0 ~
+  end-pos : (or/c exact-nonnegative-integer? #f) = #f ~
+  input-prefix : bytes? = #"" ~
+
+Like regexp-replace, except that every instance of pattern in input is
+replaced with insert, instead of just the first match. Only
+non-overlapping instances of pattern in input are replaced, so instances
+of pattern within inserted strings are not replaced recursively.
+Zero-length matches are treated the same as in regexp-match*.
+
+The optional start-pos and end-pos arguments select a portion of input
+for matching; the default is the entire string or the stream up to an
+end-of-file.
+
+Examples:
+  > (regexp-replace* #rx"([Mm])i ([a-zA-Z]*)" "mi cerveza Mi Mi Mi"
+                     "\\1y \\2")
+  "my cerveza My Mi Mi"
+  > (regexp-replace* #rx"([Mm])i ([a-zA-Z]*)" "mi cerveza Mi Mi Mi"
+                     (lambda (all one two)
+                       (string-append (string-downcase one) "y"
+                                      (string-upcase two))))
+  "myCERVEZA myMI Mi"
+  > (regexp-replace* #px"\\w" "hello world" string-upcase 0 5)
+  "HELLO world"
+  > (display (regexp-replace* #rx"x" "12x4x6" "\\\\"))
+  12\4\6
+
+
+                                        *regexp-replaces*
+(regexp-replaces input replacements) -> (or/c string? bytes?) ~
+  input : (or/c string? bytes?) ~
+  replacements : (listof ~
+                  (list/c (or/c string? bytes? regexp? byte-regexp?)
+                          (or/c string? bytes?
+                              ((string?) () #:rest (listof string?) . ->* . string?) ~
+                              ((bytes?) () #:rest (listof bytes?) . ->* . bytes?)))) ~
+
+Performs a chain of regexp-replace* operations, where each element in
+replacements specifies a replacement as a (list pattern replacement).
+The replacements are done in order, so later replacements can apply to
+previous insertions.
+
+Examples:
+  > (regexp-replaces "zero-or-more?"
+                     '([#rx"-" "_"] [#rx"(.*)\\?$" "is_\\1"]))
+  "is_zero_or_more"
+  > (regexp-replaces "zero-or-more?"
+                     '([#rx"e" "o"] [#rx"o" "oo"]))
+  "zooroo-oor-mooroo?"
+
+                                        *regexp-replace-quote*
+(regexp-replace-quote str) -> string? ~
+  str : string? ~
+(regexp-replace-quote bstr) -> bytes?
+  bstr : bytes? ~
+
+Produces a string suitable for use as the third argument to
+regexp-replace to insert the literal sequence of characters in str or
+bytes in bstr as a replacement. Concretely, every \ and & in str or bstr
+is protected by a quoting \.
+
+Examples:
+  > (regexp-replace #rx"UT" "Go UT!" "A&M")
+  "Go AUTM!"
+  > (regexp-replace #rx"UT" "Go UT!" (regexp-replace-quote "A&M"))
+  "Go A&M!"

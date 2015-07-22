@@ -1,0 +1,116 @@
+Semaphores
+
+A semaphore has an internal counter; when this counter is zero, the
+semaphore can block a thread’s execution (through semaphore-wait) until
+another thread increments the counter (using semaphore-post). The
+maximum value for a semaphore’s internal counter is platform-specific,
+but always at least 10000.
+
+A semaphore’s counter is updated in a single-threaded manner, so that
+semaphores can be used for reliable synchronization. Semaphore waiting
+is fair: if a thread is blocked on a semaphore and the semaphore’s
+internal value is non-zero infinitely often, then the thread is
+eventually unblocked.
+
+In addition to its use with semaphore-specific procedures, a semaphore
+can be used as a synchronizable event (see [missing]). A semaphore is
+ready for synchronization when semaphore-wait would not block; the
+synchronization result of a semaphore is the semaphore itself.
+
+                                        *semaphore?*
+(semaphore? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a semaphore, #f otherwise.
+
+                                        *make-semaphore*
+(make-semaphore [init]) -> semaphore? ~
+  init : exact-nonnegative-integer? = 0 ~
+
+Creates and returns a new semaphore with the counter initially set to
+init. If init is larger than a semaphore’s maximum internal counter
+value, the exn:fail exception is raised.
+
+                                        *semaphore-post*
+(semaphore-post sema) -> void? ~
+  sema : semaphore? ~
+
+Increments the semaphore’s internal counter and returns #<void>. If the
+semaphore’s internal counter has already reached its maximum value, the
+exn:fail exception is raised.
+
+                                        *semaphore-wait*
+(semaphore-wait sema) -> void? ~
+  sema : semaphore? ~
+
+Blocks until the internal counter for semaphore sema is non-zero. When
+the counter is non-zero, it is decremented and semaphore-wait returns
+#<void>.
+
+                                        *semaphore-try-wait?*
+(semaphore-try-wait? sema) -> boolean? ~
+  sema : semaphore? ~
+
+Like semaphore-wait, but semaphore-try-wait? never blocks execution.  If
+sema’s internal counter is zero, semaphore-try-wait? returns #f
+immediately without decrementing the counter. If sema’s counter is
+positive, it is decremented and #t is returned.
+
+                                        *semaphore-wait/enable-break*
+(semaphore-wait/enable-break sema) -> void? ~
+  sema : semaphore? ~
+
+Like semaphore-wait, but breaking is enabled (see [missing]) while
+waiting on sema. If breaking is disabled when
+semaphore-wait/enable-break is called, then either the semaphore’s
+counter is decremented or the exn:break exception is raised, but not
+both.
+
+                                        *semaphore-peek-evt*
+(semaphore-peek-evt sema) -> semaphore-peek-evt? ~
+  sema : semaphore? ~
+
+Creates and returns a new synchronizable event (for use with sync, for
+example) that is ready for synchronization when sema is ready, but
+synchronizing the event does not decrement sema’s internal count. The
+synchronization result of a semaphore-peek event is the semaphore-peek
+event itself.
+
+                                        *semaphore-peek-evt?*
+(semaphore-peek-evt? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a semaphore wrapper produced by semaphore-peek-evt,
+#f otherwise.
+
+                                        *call-with-semaphore*
+(call-with-semaphore  sema                 ~
+                      proc                
+                     [try-fail-thunk]     
+                      arg ...)        -> any
+  sema : semaphore? ~
+  proc : procedure? ~
+  try-fail-thunk : (or/c (-> any) #f) = #f ~
+  arg : any/c ~
+
+Waits on sema using semaphore-wait, calls proc with all args, and then
+posts to sema. A continuation barrier blocks full continuation jumps
+into or out of proc (see [missing]), but escape jumps are allowed, and
+sema is posted on escape. If try-fail-thunk is provided and is not #f,
+then semaphore-try-wait? is called on sema instead of semaphore-wait,
+and try-fail-thunk is called if the wait fails.
+
+                                        *call-with-semaphore/enable-break*
+(call-with-semaphore/enable-break  sema                 ~
+                                   proc                
+                                  [try-fail-thunk]     
+                                   arg ...)        -> any
+  sema : semaphore? ~
+  proc : procedure? ~
+  try-fail-thunk : (or/c (-> any) #f) = #f ~
+  arg : any/c ~
+
+Like call-with-semaphore, except that semaphore-wait/enable-break is
+used with sema in non-try mode. When try-fail-thunk is provided and not
+#f, then breaks are enabled around the use of semaphore-try-wait? on
+sema.

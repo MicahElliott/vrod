@@ -1,0 +1,228 @@
+Fixnums
+
+ (require racket/fixnum) package: base ~
+
+The racket/fixnum library provides operations like fx+ that consume and
+produce only fixnums. The operations in this library are meant to be
+safe versions of unsafe operations like unsafe-fx+. These safe
+operations are generally no faster than using generic primitives like +.
+
+The expected use of the racket/fixnum library is for code where the
+require of racket/fixnum is replaced with
+
+  (require (filtered-in
+            (λ (name) (regexp-replace #rx"unsafe-" name ""))
+            racket/unsafe/ops))
+
+to drop in unsafe versions of the library. Alternately, when
+encountering crashes with code that uses unsafe fixnum operations, use
+the racket/fixnum library to help debug the problems.
+
+1. Fixnum Arithmetic
+
+                                        *fx+*
+(fx+ a b) -> fixnum? ~
+  a : fixnum? ~
+  b : fixnum? ~
+(fx- a b) -> fixnum?
+  a : fixnum? ~
+  b : fixnum? ~
+(fx* a b) -> fixnum?
+  a : fixnum? ~
+  b : fixnum? ~
+(fxquotient a b) -> fixnum?
+  a : fixnum? ~
+  b : fixnum? ~
+(fxremainder a b) -> fixnum?
+  a : fixnum? ~
+  b : fixnum? ~
+(fxmodulo a b) -> fixnum?
+  a : fixnum? ~
+  b : fixnum? ~
+(fxabs a) -> fixnum?
+  a : fixnum? ~
+
+Safe versions of unsafe-fx+, unsafe-fx-, unsafe-fx*, unsafe-fxquotient,
+unsafe-fxremainder, unsafe-fxmodulo, and unsafe-fxabs. The
+exn:fail:contract:non-fixnum-result exception is raised if the
+arithmetic result would not be a fixnum.
+
+                                        *fxand*
+(fxand a b) -> fixnum? ~
+  a : fixnum? ~
+  b : fixnum? ~
+(fxior a b) -> fixnum?
+  a : fixnum? ~
+  b : fixnum? ~
+(fxxor a b) -> fixnum?
+  a : fixnum? ~
+  b : fixnum? ~
+(fxnot a) -> fixnum?
+  a : fixnum? ~
+(fxlshift a b) -> fixnum?
+  a : fixnum? ~
+  b : fixnum? ~
+(fxrshift a b) -> fixnum?
+  a : fixnum? ~
+  b : fixnum? ~
+
+Safe versions of unsafe-fxand, unsafe-fxior, unsafe-fxxor, unsafe-fxnot,
+unsafe-fxlshift, and unsafe-fxrshift.  The
+exn:fail:contract:non-fixnum-result exception is raised if the
+arithmetic result would not be a fixnum.
+
+                                        *fx*
+(fx= a b) -> boolean? ~
+  a : fixnum? ~
+  b : fixnum? ~
+(fx< a b) -> boolean?
+  a : fixnum? ~
+  b : fixnum? ~
+(fx> a b) -> boolean?
+  a : fixnum? ~
+  b : fixnum? ~
+(fx<= a b) -> boolean?
+  a : fixnum? ~
+  b : fixnum? ~
+(fx>= a b) -> boolean?
+  a : fixnum? ~
+  b : fixnum? ~
+(fxmin a b) -> fixnum?
+  a : fixnum? ~
+  b : fixnum? ~
+(fxmax a b) -> fixnum?
+  a : fixnum? ~
+  b : fixnum? ~
+
+Safe versions of unsafe-fx=, unsafe-fx<,  unsafe-fx>, unsafe-fx<=,
+unsafe-fx>=,  unsafe-fxmin, and unsafe-fxmax.
+
+                                        *fx->fl*
+(fx->fl a) -> flonum? ~
+  a : fixnum? ~
+(fl->fx a) -> fixnum?
+  a : flonum? ~
+
+Safe versions of unsafe-fx->fl and unsafe-fl->fx.
+
+2. Fixnum Vectors
+
+A fxvector is like a vector, but it holds only fixnums. The only
+advantage of a fxvector over a vector is that a shared version can be
+created with functions like shared-fxvector.
+
+Two fxvectors are equal? if they have the same length, and if the values
+in corresponding slots of the fxvectors are equal?.
+
+                                        *fxvector?*
+(fxvector? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a fxvector, #f otherwise.
+
+                                        *fxvector*
+(fxvector x ...) -> fxvector? ~
+  x : fixnum? ~
+
+Creates a fxvector containing the given fixnums.
+
+Example:
+  > (fxvector 2 3 4 5)
+  (fxvector 2 3 4 5)
+
+                                        *make-fxvector*
+(make-fxvector size [x]) -> fxvector? ~
+  size : exact-nonnegative-integer? ~
+  x : fixnum? = 0 ~
+
+Creates a fxvector with size elements, where every slot in the fxvector
+is filled with x.
+
+Example:
+  > (make-fxvector 4 3)
+  (fxvector 3 3 3 3)
+
+                                        *fxvector-length*
+(fxvector-length vec) -> exact-nonnegative-integer? ~
+  vec : fxvector? ~
+
+Returns the length of vec (i.e., the number of slots in the fxvector).
+
+                                        *fxvector-ref*
+(fxvector-ref vec pos) -> fixnum? ~
+  vec : fxvector? ~
+  pos : exact-nonnegative-integer? ~
+
+Returns the fixnum in slot pos of vec. The first slot is position 0, and
+the last slot is one less than (fxvector-length vec).
+
+                                        *fxvector-set!*
+(fxvector-set! vec pos x) -> fixnum? ~
+  vec : fxvector? ~
+  pos : exact-nonnegative-integer? ~
+  x : fixnum? ~
+
+Sets the fixnum in slot pos of vec. The first slot is position 0, and
+the last slot is one less than (fxvector-length vec).
+
+                                        *fxvector-copy*
+(fxvector-copy vec [start end]) -> fxvector? ~
+  vec : fxvector? ~
+  start : exact-nonnegative-integer? = 0 ~
+  end : exact-nonnegative-integer? = (vector-length v) ~
+
+Creates a fresh fxvector of size (- end start), with all of the elements
+of vec from start (inclusive) to end (exclusive).
+
+                                        *in-fxvector*
+(in-fxvector vec [start stop step]) -> sequence? ~
+  vec : fxvector? ~
+  start : exact-nonnegative-integer? = 0 ~
+  stop : (or/c exact-integer? #f) = #f ~
+  step : (and/c exact-integer? (not/c zero?)) = 1 ~
+
+Returns a sequence equivalent to vec when no optional arguments are
+supplied.
+
+The optional arguments start, stop, and step are as in in-vector.
+
+An in-fxvector application can provide better performance for fxvector
+iteration when it appears directly in a for clause.
+
+                                        *for/fxvector*
+(for/fxvector maybe-length (for-clause ...) body ...) ~
+(for*/fxvector maybe-length (for-clause ...) body ...)
+ 
+maybe-length = 
+             | #:length length-expr ~
+             | #:length length-expr #:fill fill-expr ~
+ 
+  length-expr : exact-nonnegative-integer? ~
+  fill-expr : fixnum? ~
+
+Like for/vector or for*/vector, but for fxvectors. The default fill-expr
+produces 0.
+
+                                        *shared-fxvector*
+(shared-fxvector x ...) -> fxvector? ~
+  x : fixnum? ~
+
+Creates a fxvector containing the given fixnums. For communication among
+places, the new fxvector is allocated in the shared memory space.
+
+Example:
+  > (shared-fxvector 2 3 4 5)
+  (fxvector 2 3 4 5)
+
+                                        *make-shared-fxvector*
+(make-shared-fxvector size [x]) -> fxvector? ~
+  size : exact-nonnegative-integer? ~
+  x : fixnum? = 0 ~
+
+Creates a fxvector with size elements, where every slot in the fxvector
+is filled with x. For communication among places, the new fxvector is
+allocated in the shared memory space.
+
+Example:
+  > (make-shared-fxvector 4 3)
+  (fxvector 3 3 3 3)

@@ -1,0 +1,104 @@
+Counting Positions, Lines, and Columns
+
+By default, Racket keeps track of the position in a port as the number
+of bytes that have been read from or written to any port (independent of
+the read/write position, which is accessed or changed with
+file-position). Optionally, however, Racket can track the position in
+terms of characters (after UTF-8 decoding), instead of bytes, and it can
+track line locations and column locations; this optional tracking must
+be specifically enabled for a port via port-count-lines! or the
+port-count-lines-enabled parameter. Position, line, and column locations
+for a port are used by read-syntax. Position and line locations are
+numbered from 1; column locations are numbered from 0.
+
+When counting lines, Racket treats linefeed, return, and return-linefeed
+combinations as a line terminator and as a single position (on all
+platforms). Each tab advances the column count to one before the next
+multiple of 8. When a sequence of bytes in the range 128 to 253 forms a
+UTF-8 encoding of a character, the position/column is incremented once
+for each byte, and then decremented appropriately when a complete
+encoding sequence is discovered. See also [missing] for more information
+on UTF-8 decoding for ports.
+
+A position is known for any port as long as its value can be expressed
+as a fixnum (which is more than enough tracking for realistic
+applications in, say, syntax-error reporting).  If the position for a
+port exceeds the value of the largest fixnum, then the position for the
+port becomes unknown, and line and column tacking is disabled.
+Return-linefeed combinations are treated as a single character position
+only when line and column counting is enabled.
+
+Custom ports can define their own counting functions, which are not
+subject to the rules above, except that the counting functions are
+invoked only when tracking is specifically enabled with
+port-count-lines!.
+
+                                        *port-count-lines!*
+(port-count-lines! port) -> void? ~
+  port : port? ~
+
+Turns on line location and column location counting for a port. Counting
+can be turned on at any time, though generally it is turned on before
+any data is read from or written to a port. At the point that line
+counting is turned on, port-next-location typically starts reporting as
+its last result (one more than) the number of characters read since line
+counting was enabled, instead of (one more than) bytes read since the
+port was opened.
+
+When a port is created, if the value of the port-count-lines-enabled
+parameter is true, then line counting is automatically enabled for the
+port. Line counting cannot be disabled for a port after it is enabled.
+
+                                        *port-counts-lines?*
+(port-counts-lines? port) -> boolean? ~
+  port : port? ~
+
+Returns #t if line location and column location counting has been
+enabled for port, #f otherwise.
+
+                                        *port-next-location*
+(port-next-location port) ~
+ -> (or/c exact-positive-integer? #f)
+    (or/c exact-nonnegative-integer? #f)
+    (or/c exact-positive-integer? #f)
+  port : port? ~
+
+Returns three values: an integer or #f for the line number of the next
+read/written item, an integer or #f for the next item’s column, and an
+integer or #f for the next item’s position. The next column and position
+normally increase as bytes are read from or written to the port, but if
+line/character counting is enabled for port, the column and position
+results can decrease after reading or writing a byte that ends a UTF-8
+encoding sequence.
+
+If line counting is not enabled for a port, than the first two results
+are #f, and the last result is one more than the number of bytes read so
+far. At the point when line counting is enabled, the first two results
+typically become non-#f, and last result starts reporting characters
+instead of bytes, typically starting from the point when line counting
+is enabled.
+
+Even with line counting enabled, a port may return #f values if it
+somehow cannot keep track of lines, columns, or positions.
+
+                                        *set-port-next-location!*
+(set-port-next-location! port           ~
+                         line          
+                         column        
+                         position) -> void?
+  port : port? ~
+  line : (or/c exact-positive-integer? #f) ~
+  column : (or/c exact-nonnegative-integer? #f) ~
+  position : (or/c exact-positive-integer? #f) ~
+
+Sets the next line, column, and position for port. If line counting has
+not been enabled for port or if port is a custom port that defines its
+own counting function, then set-port-next-location! has no effect.
+
+                                        *port-count-lines-enabled*
+(port-count-lines-enabled) -> boolean? ~
+(port-count-lines-enabled on?) -> void?
+  on? : any/c ~
+
+A parameter that determines whether line counting is enabled
+automatically for newly created ports. The default value is #f.

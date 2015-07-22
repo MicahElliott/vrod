@@ -1,0 +1,138 @@
+Breaks
+
+A break is an asynchronous exception, usually triggered through an
+external source controlled by the user, or through the break-thread
+procedure. For example, the user may type Ctl-C in a terminal to trigger
+a break. On some platforms, the Racket process may receive SIGINT,
+SIGHUP, or SIGTERM; the latter two correspond to hang-up and terminate
+breaks as reflected by exn:break:hang-up and exn:break:terminate,
+respectively. Multiple breaks may be collapsed into a single exception,
+and multiple breaks of different kinds may be collapsed to a single
+“strongest” break, where a hang-up break is stronger than an interrupt
+break, and a terminate break is stronger than a hang-up break.
+
+A break exception can only occur in a thread while breaks are enabled.
+When a break is detected and enabled, the exn:break (or
+exn:break:hang-up or exn:break:terminate) exception is raised in the
+thread sometime afterward; if breaking is disabled when break-thread is
+called, the break is suspended until breaking is again enabled for the
+thread. While a thread has a suspended break, additional breaks are
+ignored.
+
+Breaks are enabled through the break-enabled parameter-like procedure
+and through the parameterize-break form, which is analogous to
+parameterize. The break-enabled procedure does not represent a parameter
+to be used with parameterize, because changing the break-enabled state
+of a thread requires an explicit check for breaks, and this check is
+incompatible with the tail evaluation of a parameterize expression’s
+body.
+
+Certain procedures, such as semaphore-wait/enable-break, enable breaks
+temporarily while performing a blocking action. If breaks are enabled
+for a thread, and if a break is triggered for the thread but not yet
+delivered as an exn:break exception, then the break is guaranteed to be
+delivered before breaks can be disabled in the thread. The timing of
+exn:break exceptions is not guaranteed in any other way.
+
+Before calling a with-handlers predicate or handler, an exception
+handler, an error display handler, an error escape handler, an error
+value conversion handler, or a pre-thunk or post-thunk for a
+dynamic-wind, the call is parameterize-breaked to disable breaks.
+Furthermore, breaks are disabled during the transitions among handlers
+related to exceptions, during the transitions between pre-thunks and
+post-thunks for dynamic-wind, and during other transitions for a
+continuation jump. For example, if breaks are disabled when a
+continuation is invoked, and if breaks are also disabled in the target
+continuation, then breaks will remain disabled from the time of the
+invocation until the target continuation executes unless a relevant
+dynamic-wind pre-thunk or post-thunk explicitly enables breaks.
+
+If a break is triggered for a thread that is blocked on a nested thread
+(see call-in-nested-thread), and if breaks are enabled in the blocked
+thread, the break is implicitly handled by transferring it to the nested
+thread.
+
+When breaks are enabled, they can occur at any point within execution,
+which makes certain implementation tasks subtle. For example, assuming
+breaks are enabled when the following code is executed,
+
+  (with-handlers ([exn:break? (lambda (x) (void))]) ~
+    (semaphore-wait s))
+
+then it is not the case that a #<void> result means the semaphore was
+decremented or a break was received, exclusively. It is possible that
+both occur: the break may occur after the semaphore is successfully
+decremented but before a #<void> result is returned by semaphore-wait. A
+break exception will never damage a semaphore, or any other built-in
+construct, but many built-in procedures (including semaphore-wait)
+contain internal sub-expressions that can be interrupted by a break.
+
+In general, it is impossible using only semaphore-wait to implement the
+guarantee that either the semaphore is decremented or an exception is
+raised, but not both.  Racket therefore supplies
+semaphore-wait/enable-break (see [missing]), which does permit the
+implementation of such an exclusive guarantee:
+
+  (parameterize-break #f
+    (with-handlers ([exn:break? (lambda (x) (void))]) ~
+      (semaphore-wait/enable-break s)))
+
+In the above expression, a break can occur at any point until breaks are
+disabled, in which case a break exception is propagated to the enclosing
+exception handler. Otherwise, the break can only occur within
+semaphore-wait/enable-break, which guarantees that if a break exception
+is raised, the semaphore will not have been decremented.
+
+To allow similar implementation patterns over blocking port operations,
+Racket provides read-bytes-avail!/enable-break,
+write-bytes-avail/enable-break, and other procedures.
+
+                                        *break-enabled*
+(break-enabled) -> boolean? ~
+(break-enabled on?) -> void?
+  on? : any/c ~
+
+Gets or sets the break enabled state of the current thread. If on? is
+not supplied, the result is #t if breaks are currently enabled, #f
+otherwise.  If on? is supplied as #f, breaks are disabled, and if on? is
+a true value, breaks are enabled.
+
+                                        *parameterize-break*
+(parameterize-break boolean-expr body ...+) ~
+
+Evaluates boolean-expr to determine whether breaks are initially enabled
+while evaluating the bodys in sequence. The result of the
+parameterize-break expression is the result of the last expr.
+
+Like parameterize (see [missing]), a fresh thread cell (see [missing])
+is allocated to hold the break-enabled state of the continuation, and
+calls to break-enabled within the continuation access or modify the new
+cell. Unlike parameters, the break setting is not inherited by new
+threads.
+
+                                        *current-break-parameterization*
+(current-break-parameterization) -> break-parameterization? ~
+
+Analogous to (current-parameterization) (see [missing]); it returns a
+break parameterization (effectively, a thread cell) that holds the
+current continuation’s break-enable state.
+
+                                        *call-with-break-parameterization*
+(call-with-break-parameterization break-param      ~
+                                  thunk)      -> any
+  break-param : break-parameterization? ~
+  thunk : (-> any) ~
+
+Analogous to (call-with-parameterization parameterization thunk) (see
+[missing]), calls thunk in a continuation whose break-enabled state is
+in break-param. The thunk is not called in tail position with respect to
+the call-with-break-parameterization call.
+
+                                        *break-parameterization?*
+(break-parameterization? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a break parameterization as produced by
+current-break-parameterization, #f otherwise.
+
+Added in version 6.1.1.8.

@@ -1,0 +1,405 @@
+Events
+
+A synchronizable event (or just event for short) works with the sync
+procedure to coordinate synchronization among threads. Certain kinds of
+objects double as events, including ports and threads. Other kinds of
+objects exist only for their use as events.
+
+At any point in time, an event is either ready for synchronization, or
+it is not; depending on the kind of event and how it is used by other
+threads, an event can switch from not ready to ready (or back), at any
+time.  If a thread synchronizes on an event when it is ready, then the
+event produces a particular synchronization result.
+
+Synchronizing an event may affect the state of the event. For example,
+when synchronizing a semaphore, then the semaphore’s internal count is
+decremented, just as with semaphore-wait. For most kinds of events,
+however (such as a port), synchronizing does not modify the event’s
+state.
+
+Racket values that act as synchronizable events include semaphores,
+channels, asynchronous channels, ports, TCP listeners, log receivers,
+threads, subprocesses, will executors, and custodian boxes. Libraries
+can define new synchronizable events, especially though prop:evt.
+
+                                        *evt?*
+(evt? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a synchronizable event, #f otherwise.
+
+Examples:
+  > (evt? never-evt)
+  #t
+  > (evt? (make-channel))
+  #t
+  > (evt? 5)
+  #f
+
+                                        *sync*
+(sync evt ...) -> any ~
+  evt : evt? ~
+
+Blocks as long as none of the synchronizable events evts are ready, as
+defined above.
+
+When at least one evt is ready, its synchronization result (often evt
+itself) is returned.  If multiple evts are ready, one of the evts is
+chosen pseudo-randomly for the result; the
+current-evt-pseudo-random-generator parameter sets the random-number
+generator that controls this choice.
+
+Examples:
+  > (define ch (make-channel))
+
+  > (thread (λ () (displayln (sync ch))))
+  #<thread>
+  > (channel-put ch 'hellooooo)
+  hellooooo
+
+
+Changed in version 6.1.0.3: Allow 0 arguments instead of 1 or more.
+
+                                        *sync/timeout*
+(sync/timeout timeout evt ...) -> any ~
+  timeout : (or/c #f (and/c real? (not/c negative?)) (-> any)) ~
+  evt : evt? ~
+
+Like sync if timeout is #f. If timeout is a real number, then the result
+is #f if timeout seconds pass without a successful synchronization. If
+timeout is a procedure, then it is called in tail position if polling
+the evts discovers no ready events.
+
+A zero value for timeout is equivalent to (lambda () #f). In either
+case, each evt is checked at least once before returning #f or calling
+timeout.
+
+See also alarm-evt for an alternative timeout mechanism.
+
+Examples:
+  ; times out before waking up
+  > (sync/timeout
+     0.5
+     (thread (λ () (sleep 1) (displayln "woke up!"))))
+  #f
+  > (sync/timeout
+     (λ () (displayln "no ready events"))
+     never-evt)
+  no ready events
+
+
+Changed in version 6.1.0.3: Allow 1 argument instead of 2 or more.
+
+                                        *sync/enable-break*
+(sync/enable-break evt ...) -> any ~
+  evt : evt? ~
+
+Like sync, but breaking is enabled (see [missing]) while waiting on the
+evts. If breaking is disabled when sync/enable-break is called, then
+either all evts remain unchosen or the exn:break exception is raised,
+but not both.
+
+                                        *sync/timeout/enable-break*
+(sync/timeout/enable-break timeout evt ...) -> any ~
+  timeout : (or/c #f (and/c real? (not/c negative?)) (-> any)) ~
+  evt : evt? ~
+
+Like sync/enable-break, but with a timeout as for sync/timeout.
+
+                                        *choice-evt*
+(choice-evt evt ...) -> evt? ~
+  evt : evt? ~
+
+Creates and returns a single event that combines the evts. Supplying the
+result to sync is the same as supplying each evt to the same call.
+
+That is, an event returned by choice-evt is ready for synchronization
+when one or more of the evts supplied to choice-evt are ready for
+synchronization. If the choice event is chosen, one of its ready evts is
+chosen pseudo-randomly, and the synchronization result is the chosen
+evt’s synchronization result.
+
+Examples:
+  > (define ch1 (make-channel))
+
+  > (define ch2 (make-channel))
+
+  > (define either-channel (choice-evt ch1 ch2))
+
+  > (thread (λ () (displayln (sync either-channel))))
+  #<thread>
+  > (channel-put
+     (if (> (random) 0.5) ch1 ch2)
+     'tuturuu)
+  tuturuu
+
+
+                                        *wrap-evt*
+(wrap-evt evt wrap) -> evt? ~
+  evt : evt? ~
+  wrap : (any/c ... . -> . any) ~
+
+Creates an event that is ready for synchronization when evt is ready for
+synchronization, but whose synchronization result is determined by
+applying wrap to the synchronization result of evt. The number of
+arguments accepted by wrap must match the number of values for the
+synchronization result of evt.
+
+The call to wrap is parameterize-breaked to disable breaks initially.
+
+Examples:
+  > (define ch (make-channel))
+
+  > (define evt (wrap-evt ch (λ (v) (format "you've got mail: ~a" v)))) ~
+
+  > (thread (λ () (displayln (sync evt))))
+  #<thread>
+  > (channel-put ch "Dear Alice ...")
+  you've got mail: Dear Alice ...
+
+
+                                        *handle-evt*
+(handle-evt evt handle) -> handle-evt? ~
+  evt : evt? ~
+  handle : (any/c ... . -> . any) ~
+
+Like wrap-evt, except that handle is called in tail position with
+respect to the synchronization request—and without breaks explicitly
+disabled—when it is not wrapped by wrap-evt, chaperone-evt, or another
+handle-evt.
+
+Examples:
+  > (define msg-ch (make-channel))
+
+  > (define exit-ch (make-channel))
+
+  > (thread
+     (λ ()
+       (let loop ([val 0])
+         (printf "val = ~a~n" val)
+         (sync (handle-evt
+                msg-ch
+                (λ (val) (loop val)))
+               (handle-evt
+                exit-ch
+                (λ (val) (displayln val)))))))
+  #<thread>
+  > (channel-put msg-ch 5)
+  val = 0
+  val = 5
+
+  > (channel-put msg-ch 7)
+
+  > (channel-put exit-ch 'done)
+  val = 7
+  done
+
+
+                                        *guard-evt*
+(guard-evt maker) -> evt? ~
+  maker : (-> (or/c evt? any/c)) ~
+
+Creates a value that behaves as an event, but that is actually an event
+maker.
+
+An event guard returned by guard-evt generates an event when guard is
+used with sync (or whenever it is part of a choice event used with sync,
+etc.), where the generated event is the result of calling maker. The
+maker procedure may be called by sync at most once for a given call to
+sync, but maker may not be called if a ready event is chosen before
+guard is even considered.
+
+If maker returns a non-event, then maker’s result is replaced with an
+event that is ready for synchronization and whose synchronization result
+is guard.
+
+                                        *nack-guard-evt*
+(nack-guard-evt maker) -> evt? ~
+  maker : (evt? . -> . (or/c evt? any/c)) ~
+
+Like guard-evt, but when maker is called, it is given a NACK (“negative
+acknowledgment”) event. After starting the call to maker, if the event
+from maker is not ultimately chosen as the ready event, then the NACK
+event supplied to maker becomes ready for synchronization with a #<void>
+value.
+
+The NACK event becomes ready for synchronization when the event is
+abandoned when either some other event is chosen, the synchronizing
+thread is dead, or control escapes from the call to sync (even if
+nack-guard’s maker has not yet returned a value). If the event returned
+by maker is chosen, then the NACK event never becomes ready for
+synchronization.
+
+                                        *poll-guard-evt*
+(poll-guard-evt maker) -> evt? ~
+  maker : (boolean? . -> . (or/c evt? any/c)) ~
+
+Like guard-evt, but when maker is called, it is provided a boolean value
+that indicates whether the event will be used for a poll, #t, or for a
+blocking synchronization, #f.
+
+If #t is supplied to maker, if breaks are disabled, if the polling
+thread is not terminated, and if polling the resulting event produces a
+synchronization result, then the event will certainly be chosen for its
+result.
+
+                                        *replace-evt*
+(replace-evt evt maker) -> evt? ~
+  evt : evt? ~
+  maker : (any/c ... . -> . (or/c evt? any/c)) ~
+
+Like guard-evt, but maker is called only after evt becomes ready for
+synchronization, and the synchronization result of evt is passed to
+maker.
+
+The attempt to synchronize on evt proceeds concurrently as the attempt
+to synchronize on the result guard from replace-evt; despite that
+concurrency, if maker is called, it is called in the thread that is
+synchronizing on guard. Synchronization can succeed for both evt and
+another synchronized with guard at the same time; the single-choice
+guarantee of synchronization applies only to the result of maker and
+other events synchronized with guard.
+
+If maker returns a non-event, then maker’s result is replaced with an
+event that is ready for synchronization and whose synchronization result
+is guard.
+
+Added in version 6.1.0.3.
+
+always-evt : evt? ~
+
+A constant event that is always ready for synchronization, with itself
+as its synchronization result.
+
+Example:
+  > (sync always-evt)
+  #<always-evt>
+
+never-evt : evt? ~
+
+A constant event that is never ready for synchronization.
+
+Example:
+  > (sync/timeout 0.1 never-evt)
+  #f
+
+                                        *system-idle-evt*
+(system-idle-evt) -> evt? ~
+
+Returns an event that is ready for synchronization when the system is
+otherwise idle: if the result event were replaced by never-evt, no
+thread in the system would be available to run. In other words, all
+threads must be suspended or blocked on events with timeouts that have
+not yet expired. The system-idle event’s synchronization result is
+#<void>. The result of the system-idle-evt procedure is always the same
+event.
+
+Examples:
+  > (define th (thread (λ () (let loop () (loop)))))
+
+  > (sync/timeout 0.1 (system-idle-evt))
+  #f
+  > (kill-thread th)
+
+  > (sync (system-idle-evt))
+
+
+                                        *alarm-evt*
+(alarm-evt msecs) -> evt? ~
+  msecs : real? ~
+
+Returns a synchronizable event that is not ready for synchronization
+when (current-inexact-milliseconds) would return a value that is less
+than msecs, and it is ready for synchronization when
+(current-inexact-milliseconds) would return a value that is more than
+msecs. The synchronization result of a alarm event is the alarm event
+itself.
+
+Examples:
+  > (define alarm (alarm-evt (+ (current-inexact-milliseconds) 100)))
+
+  > (sync alarm)
+  #<alarm-evt>
+
+                                        *handle-evt?*
+(handle-evt? evt) -> boolean? ~
+  evt : evt? ~
+
+Returns #t if evt was created by handle-evt or by choice-evt applied to
+another event for which handle-evt? produces #t. For any other event,
+handle-evt?  produces #f.
+
+Examples:
+  > (handle-evt? never-evt)
+  #f
+  > (handle-evt? (handle-evt always-evt values))
+  #t
+
+prop:evt : struct-type-property? ~
+
+A structure type property that identifies structure types whose
+instances can serve as synchronizable events. The property value can  be
+any of the following:
+
+* An event evt: In this case, using the structure as an event is
+  equivalent to using evt.
+
+* A procedure proc of one argument: In this case, the structure is
+  similar to an event generated by guard-evt, except that the would-be
+  guard procedure proc receives the structure as an argument, instead of
+  no arguments; also, a non-event result from proc is replaced with an
+  event that is already ready for synchronization and whose
+  synchronization result is the structure.
+
+* An exact, non-negative integer between 0 (inclusive) and the number of
+  non-automatic fields in the structure type (exclusive, not counting
+  supertype fields): The integer identifies a field in the structure,
+  and the field must be designated as immutable. If the field contains
+  an object or an event-generating procedure of one argument, the event
+  or procedure is used as above. Otherwise, the structure acts as an
+  event that is never ready.
+
+Instances of a structure type with the prop:input-port or
+prop:output-port property are also synchronizable events by virtue of
+being a port. If the structure type has more than one of prop:evt,
+prop:input-port, and prop:output-port, then the prop:evt value (if any)
+takes precedence for determining the instance’s behavior as an event,
+and the prop:input-port property takes precedence over prop:output-port
+for synchronization.
+
+Examples:
+  > (define-struct wt (base val)
+                   #:property prop:evt (struct-field-index base)) ~
+
+  > (define sema (make-semaphore))
+
+  > (sync/timeout 0 (make-wt sema #f))
+  #f
+  > (semaphore-post sema)
+
+  > (sync/timeout 0 (make-wt sema #f))
+  #<semaphore>
+  > (semaphore-post sema)
+
+  > (sync/timeout 0 (make-wt (lambda (self) (wt-val self)) sema))
+  #<semaphore>
+  > (semaphore-post sema)
+
+  > (define my-wt (make-wt (lambda (self) (wrap-evt
+                                           (wt-val self)
+                                           (lambda (x) self)))
+                           sema))
+
+  > (sync/timeout 0 my-wt)
+  #<wt>
+  > (sync/timeout 0 my-wt)
+  #f
+
+                                        *current-evt-pseudo-random-generator*
+(current-evt-pseudo-random-generator) ~
+ -> pseudo-random-generator?
+(current-evt-pseudo-random-generator generator) -> void?
+  generator : pseudo-random-generator? ~
+
+A parameter that determines the pseudo-random number generator used by
+sync for events created by choice-evt.

@@ -1,0 +1,122 @@
+Port Buffers and Positions
+
+Some ports—especially those that read from and write to files—are
+internally buffered:
+
+* An input port is typically block-buffered by default, which means that
+  on any read, the buffer is filled with immediately-available bytes to
+  speed up future reads. Thus, if a file is modified between a pair of
+  reads to the file, the second read can produce stale data. Calling
+  file-position to set an input port’s file position flushes its buffer.
+
+* An output port is typically block-buffered by default, though a
+  terminal output port is line-buffered, and the initial error output
+  port is unbuffered.  An output buffer is filled with a sequence of
+  written bytes to be committed as a group, either when the buffer is
+  full (in block mode), when a newline is written (in line mode), when
+  the port is closed via close-output-port, or when a flush is
+  explicitly requested via a procedure like flush-output.
+
+If a port supports buffering, its buffer mode can be changed via
+file-stream-buffer-mode (even if the port is not a file-stream port).
+
+For an input port, peeking always places peeked bytes into the port’s
+buffer, even when the port’s buffer mode is 'none; furthermore, on some
+platforms, testing the port for input (via char-ready? or sync) may be
+implemented with a peek. If an input port’s buffer mode is 'none, then
+at most one byte is read for read-bytes-avail!*, read-bytes-avail!,
+peek-bytes-avail!*, or peek-bytes-avail!; if any bytes are buffered in
+the port (e.g., to satisfy a previous peek), the procedures may access
+multiple buffered bytes, but no further bytes are read.
+
+In addition, the initial current output and error ports are
+automatically flushed when read, read-line, read-bytes, read-string,
+etc., are performed on the initial standard input port; more precisely,
+flushing is performed by the default port read handler (see
+port-read-handler).
+
+                                        *flush-output*
+(flush-output [out]) -> void? ~
+  out : output-port? = (current-output-port) ~
+
+Forces all buffered data in the given output port to be physically
+written. Only file-stream ports, TCP ports, and custom ports (see
+[missing]) use buffers; when called on a port without a buffer,
+flush-output has no effect.
+
+                                        *file-stream-buffer-mode*
+(file-stream-buffer-mode port) -> (or/c 'none 'line 'block #f) ~
+  port : port? ~
+(file-stream-buffer-mode port mode) -> void?
+  port : port? ~
+  mode : (or/c 'none 'line 'block) ~
+
+Gets or sets the buffer mode for port, if possible. File-stream ports
+support setting the buffer mode, TCP ports (see [missing]) support
+setting and getting the buffer mode, and custom ports (see [missing])
+may support getting and setting buffer modes.
+
+If mode is provided, it must be one of 'none, 'line (output only), or
+'block, and the port’s buffering is set accordingly. If the port does
+not support setting the mode, the exn:fail exception is raised.
+
+If mode is not provided, the current mode is returned, or #f is returned
+if the mode cannot be determined. If port is an input port and mode is
+'line, the exn:fail:contract exception is raised.
+
+                                        *file-position*
+(file-position port) -> exact-nonnegative-integer? ~
+  port : port? ~
+(file-position port pos) -> void?
+  port : port? ~
+  pos : (or/c exact-nonnegative-integer? eof-object?) ~
+
+Returns or sets the current read/write position of port.
+
+Calling file-position without a position on a port other than a
+file-stream port or string port returns the number of bytes that have
+been read from that port if the position is known (see [missing]),
+otherwise the exn:fail:filesystem exception is raised.
+
+For file-stream ports and string ports, the position-setting variant
+sets the read/write position to pos relative to the beginning of the
+file or (byte) string if pos is a number, or to the current end of the
+file or (byte) string if pos is eof. In position-setting mode,
+file-position raises the exn:fail:contract exception for port kinds
+other than file-stream ports and string ports. Furthermore, not all
+file-stream ports support setting the position; if file-position is
+called with a position argument on such a file-stream port, the
+exn:fail:filesystem exception is raised.
+
+When file-position sets the position pos beyond the current size of an
+output file or (byte) string, the file/string is enlarged to size pos
+and the new region is filled with 0 bytes.  If pos is beyond the end of
+an input file or (byte) string, then reading thereafter returns eof
+without changing the port’s position.
+
+When changing the file position for an output port, the port is first
+flushed if its buffer is not empty. Similarly, setting the position for
+an input port clears the port’s buffer (even if the new position is the
+same as the old position). However, although input and output ports
+produced by open-input-output-file share the file position, setting the
+position via one port does not flush the other port’s buffer.
+
+                                        *file-position**
+(file-position* port) -> (or/c exact-nonnegative-integer? #f) ~
+  port : port? ~
+
+Like file-position on a single argument, but returns #f if the position
+is not known.
+
+                                        *file-truncate*
+(file-truncate port size) -> void? ~
+  port : (and/c output-port? file-stream-port?) ~
+  size : exact-nonnegative-integer? ~
+
+Sets the size of the file written by port to size, assuming that the
+port is associated to a file whose size can be set.
+
+The new file size can be either larger or smaller than its current size,
+but “truncate” in this function’s name reflects that it is normally used
+to decrease the size of a file, since writing to a file or using
+file-position can extend a file’s size.

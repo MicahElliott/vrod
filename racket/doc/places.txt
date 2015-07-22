@@ -1,0 +1,401 @@
+Places
+
++[missing] in [missing] introduces places.
+
+ (require racket/place) package: base ~
+
+The bindings documented in this section are provided by the racket/place
+and racket libraries, but not racket/base.
+
+Places enable the development of parallel programs that take advantage
+of machines with multiple processors, cores, or hardware threads.
+
+Currently, parallel support for places is enabled only for Racket 3m
+(which is the main variant of Racket), and only by default for Windows,
+Linux x86/x86_64, and Mac OS X x86/x86_64. To enable support for other
+platforms, use --enable-places with configure when building Racket. The
+place-enabled? function reports whether places run in parallel.
+
+A place is a parallel task that is effectively a separate instance of
+the Racket virtual machine. Places communicate through place channels,
+which are endpoints for a two-way buffered communication.
+
+To a first approximation, place channels support only immutable,
+transparent values as messages. In addition, place channels themselves
+can be sent across channels to establish new (possibly more direct)
+lines of communication in addition to any existing lines. Finally,
+mutable values produced by shared-flvector, make-shared-flvector,
+shared-fxvector, make-shared-fxvector, shared-bytes, and
+make-shared-bytes can be sent across place channels; mutation of such
+values is visible to all places that share the value, because they are
+allowed in a shared memory space. See place-message-allowed?.
+
+A place channel can be used as a synchronizable event (see [missing]) to
+receive a value through the channel. A place channel is ready for
+synchronization when a message is available on the channel, and the
+place channel’s synchronization result is the message (which is removed
+on synchronization). A place can also receive messages with
+place-channel-get, and messages can be sent with place-channel-put.
+
+Two place channels are equal? if they are endpoints for the same
+underlying channels while both or neither is a place descriptor. Place
+channels can be equal? without being eq? after being sent messages
+through a place channel.
+
+Constraints on messages across a place channel—and therefore on the
+kinds of data that places share—enable greater parallelism than future,
+even including separate garbage collection of separate places. At the
+same time, the setup and communication costs for places can be higher
+than for futures.
+
+For example, the following expression launches two places, echoes a
+message to each, and then waits for the places to terminate:
+
+  (let ([pls (for/list ([i (in-range 2)])
+                (dynamic-place "place-worker.rkt" 'place-main))])
+     (for ([i (in-range 2)]
+           [p pls])
+        (place-channel-put p i)
+        (printf "~a\n" (place-channel-get p)))
+     (map place-wait pls))
+
+The "place-worker.rkt" module must export the place-main function that
+each place executes, where place-main must accept a single place channel
+argument:
+
+  #lang racket
+  (provide place-main)
+   
+  (define (place-main pch)
+    (place-channel-put pch (format "Hello from place ~a"
+                                    (place-channel-get pch))))
+
+Place channels are subject to garbage collection, like other Racket
+values, and a thread that is blocked reading from a place channel can be
+garbage collected if place channel’s writing end becomes unreachable.
+However, unlike normal channel blocking, if otherwise unreachable
+threads are mutually blocked on place channels that are reachable only
+from the same threads, the threads and place channels are all considered
+reachable, instead of unreachable.
+
+When a place is created, its parameter values are generally set to the
+initial values of the parameters in the creating place, except that the
+current values of the following parameters are used:
+current-library-collection-paths, current-library-collection-links, and
+current-compiled-file-roots.
+
+1. Using Places
+
+                                        *place-enabled?*
+(place-enabled?) -> boolean? ~
+
+Returns #t if Racket is configured so that dynamic-place and place
+create places that can run in parallel, #f if dynamic-place and place
+are simulated using thread.
+
+                                        *place?*
+(place? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a place descriptor value, #f otherwise. Every place
+descriptor is also a place channel.
+
+                                        *place-channel?*
+(place-channel? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is place channel, #f otherwise.
+
+                                        *dynamic-place*
+(dynamic-place  module-path          ~
+                start-name          
+               [#:at location        ~
+                #:named named]) -> place? ~
+  module-path : (or/c module-path? path?) ~
+  start-name : symbol? ~
+  location : (or/c #f place-location?) = #f ~
+  named : any/c = #f ~
+
+Creates a place to run the procedure that is identified by  module-path
+and start-name. The result is a  place descriptor value that represents
+the new parallel task;  the place descriptor is returned immediately.
+The place descriptor  value is also a place channel that permits
+communication with  the place.
+
+The module indicated by module-path must export a function  with the
+name start-proc. The function must accept a single  argument, which is a
+place channel that corresponds to the  other end of communication for
+the place descriptor returned  by place.
+
+If location is provided, it must be a place location, such as a
+distributed places node produced by create-place-node.
+
+When the place is created, the initial exit handler  terminates the
+place, using the argument to the exit handler as the  place’s completion
+value. Use (exit v) to  immediately terminate a place with the
+completion value  v. Since a completion value is limited to an exact
+integer  between 0 and 255, any other value for v  is converted to 0.
+
+If the function indicated by module-path and  start-proc returns, then
+the place terminates with the  completion value 0.
+
+In the created place, the current-input-port parameter is  set to an
+empty input port, while the values of the  current-output-port and
+current-error-port  parameters are connected to the current ports in the
+creating place.  If the output ports in the creating place are
+file-stream ports, then the connected ports in the created place share
+the  underlying streams, otherwise a thread in the creating place  pumps
+bytes from the created place’s ports to the current ports in the
+creating place.
+
+The module-path argument must not be a module path of the  form (quote
+sym) unless the module is predefined (see  module-predefined?).
+
+The dynamic-place binding is protected in the sense of  protect-out, so
+access to this operation can be prevented  by adjusting the code
+inspector (see [missing]).
+
+                                        *dynamic-place**
+(dynamic-place*  module-path      ~
+                 start-name      
+                [#:in in          ~
+                 #:out out        ~
+                 #:err err]) -> place? ~
+                                (or/c output-port? #f)
+                                (or/c input-port? #f)
+                                (or/c input-port? #f)
+  module-path : (or/c module-path? path?) ~
+  start-name : symbol? ~
+  in : (or/c input-port? #f) = #f ~
+  out : (or/c output-port? #f) = (current-output-port) ~
+  err : (or/c output-port? #f) = (current-error-port) ~
+
+Like dynamic-place, but accepts specific ports to the new  place’s
+ports, and returns a created port when #f is  supplied for a port. The
+in, out, and  err ports are connected to the current-input-port,
+current-output-port, and current-error-port ports,  respectively, for
+the  place.  Any of the ports can be #f, in which case a  file-stream
+port (for an operating-system pipe)  is created and returned by
+dynamic-place*. The  err argument can be 'stdout, in which case the
+same file-stream port or that is supplied as standard  output is also
+used for standard error.  For each port or  'stdout that is provided, no
+pipe is created and the  corresponding returned value is #f.
+
+The caller of dynamic-place* is responsible for closing all  returned
+ports; none are closed automatically.
+
+The dynamic-place* procedure returns four values:
+
+* a place descriptor value representing the created place;
+
+* an output port piped to the place’s standard input, or #f if in was a
+  port;
+
+* an input port piped from the place’s standard output, or #f if out was
+  a port;
+
+* an input port piped from the place’s standard error, or #f if err was
+  a port or 'stdout.
+
+The dynamic-place* binding is protected in the same way as
+dynamic-place.
+
+                                        *place*
+(place id body ...+) ~
+
+Creates a place that evaluates body   expressions with id bound to a
+place channel.  The   bodys close only over id plus the top-level
+bindings of the enclosing module, because the   bodys are lifted to a
+function that is exported by   the module. The result of place is a
+place descriptor,   like the result of dynamic-place.
+
+The place binding is protected in the same way as  dynamic-place.
+
+                                        *place**
+(place* maybe-port ... ~
+        id
+        body ...+)
+ 
+maybe-port = 
+           | #:in in-expr ~
+           | #:out out-expr ~
+           | #:err err-expr ~
+
+Like place, but supports optional #:in, #:out,  and #:err expressions
+(at most one of each) to specify ports in the same way and  with the
+same defaults as dynamic-place*. The result of  a place* form is also
+the same as for  dynamic-place*.
+
+The place* binding is protected in the same way as  dynamic-place.
+
+                                        *place-wait*
+(place-wait p) -> exact-integer? ~
+  p : place? ~
+
+Returns the completion value of the place indicated by p, blocking until
+the place has terminated.
+
+If any pumping threads were created to connect a non-file-stream port to
+the ports in the place for p (see dynamic-place), place-wait returns
+only when the pumping threads have completed.
+
+                                        *place-dead-evt*
+(place-dead-evt p) -> evt? ~
+  p : place? ~
+
+Returns a synchronizable event (see [missing]) that is ready for
+synchronization if and only if p has terminated. The synchronization
+result of a place-dead event is the place-dead event itself.
+
+If any pumping threads were created to connect a non-file-stream port to
+the ports in the place for p (see   dynamic-place), the event returned
+by   place-dead-evt may become ready even if a pumping thread is   still
+running.
+
+                                        *place-kill*
+(place-kill p) -> void? ~
+  p : place? ~
+
+Immediately terminates the place, setting the place’s completion value
+to 1 if the place does not have a completion value already.
+
+                                        *place-break*
+(place-break p [kind]) -> void? ~
+  p : place? ~
+  kind : (or/c #f 'hang-up 'terminate) = #f ~
+
+Sends the main thread of place p a break; see [missing].
+
+                                        *place-channel*
+(place-channel) -> place-channel? place-channel? ~
+
+Returns two place channels. Data sent through the first channel can be
+received through the second channel, and data sent through the second
+channel can be received from the first.
+
+Typically, one place channel is used by the current place to send
+messages to a destination place; the other place channel is sent to the
+destination place (via an existing place channel).
+
+                                        *place-channel-put*
+(place-channel-put pch v) -> void ~
+  pch : place-channel? ~
+  v : place-message-allowed? ~
+
+Sends a message v on channel pch. Since place channels  are
+asynchronous, place-channel-put calls are non-blocking.
+
+See place-message-allowed? form information on automatic coercions in v,
+such as converting a mutable string to an immutable string.
+
+                                        *place-channel-get*
+(place-channel-get pch) -> place-message-allowed? ~
+  pch : place-channel? ~
+
+Returns a message received on channel pch, blocking until a message is
+available.
+
+                                        *place-channel-put/get*
+(place-channel-put/get pch v) -> any/c ~
+  pch : place-channel? ~
+  v : any/c ~
+
+Sends an immutable message v on channel pch and then waits for a message
+(perhaps a reply) on the same channel.
+
+                                        *place-message-allowed?*
+(place-message-allowed? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is allowed as a message on a place channel, #f
+otherwise.
+
+If (place-enabled?) returns #f, then the result is always #t and no
+conversions are performed on v as a message. Otherwise, the following
+kinds of data are allowed as messages:
+
+* numbers, characters, booleans, keywords, and #<void>;
+
+* symbols, where the eq?ness of uninterned symbols is preserved within a
+  single message, but not across messages;
+
+* strings and byte strings, where mutable strings and byte strings are
+  automatically replaced by immutable variants;
+
+* paths (for any platform);
+
+* pairs, lists, vectors, and immutable prefab structures containing
+  message-allowed values, where a mutable vector is automatically
+  replaced by an immutable vector;
+
+* hash tables where mutable hash tables are automatically replaced by
+  immutable variants;
+
+* place channels, where a place descriptor is automatically replaced by
+  a plain place channel;
+
+* file-stream ports and TCP ports, where the underlying representation
+  (such as a file descriptor, socket, or handle) is duplicated and
+  attached to a fresh port in the receiving place;
+
+* C pointers as created or accessed via ffi/unsafe; and
+
+* values produced by shared-flvector, make-shared-flvector,
+  shared-fxvector, make-shared-fxvector, shared-bytes, and
+  make-shared-bytes.
+
+prop:place-location : struct-type-property? ~
+(place-location? v) -> boolean?
+  v : any/c ~
+
+A structure type property and associated predicate for implementations
+of place locations. The value of prop:place-location must be a procedure
+of four arguments: the place location itself, a module path, a symbol
+for the start function exported by the module, and a place name (which
+can be #f for an anonymous place).
+
+A place location can be passed as the #:at argument to dynamic-place,
+which in turn simply calls the prop:place-location value of the place
+location.
+
+A distributed places note created with create-place-node is an example
+of a place location.
+
+2. Places Logging
+
+Place events are reported to a logger named 'place. In addition to its
+string message, each event logged for a place has a data value that is
+an instance of a place-event prefab structure:
+
+  (struct place-event (place-id action value time)
+    #:prefab) ~
+
+The place-id field is an exact integer that identifies a place.
+
+The time field is an inexact number that represents time in the same way
+as current-inexact-milliseconds.
+
+The action field is a symbol:
+
+* 'create: a place was created. This event is logged in the creating
+  place, and the event’s value field has the ID for the created place.
+
+* 'reap: a place that was previously created in the current place has
+  exited (and that fact has been detected, possibly via place-wait). The
+  event’s value field has the ID for the exited place.
+
+* 'enter: a place has started, logged within the started place. The
+  event’s value field has #f.
+
+* 'exit: a place is exiting, logged within the exiting place. The
+  event’s value field has #f.
+
+* 'put: a place-channel message has been sent. The event’s value field
+  is a positive exact integer that approximates the message’s size.
+
+* 'get: a place-channel message has been received. The event’s value
+  field is a positive exact integer that approximates the message’s
+  size.
+
+Changed in version 6.0.0.2 of package base: Added logging via 'place and
+place-event.

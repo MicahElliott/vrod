@@ -1,0 +1,2283 @@
+Control Flow
+
+    1 Multiple Values
+
+    2 Exceptions
+      2.1 Error Message Conventions
+      2.2 Raising Exceptions
+      2.3 Handling Exceptions
+      2.4 Configuring Default Handling
+      2.5 Built-in Exception Types
+      2.6 Additional Exception Functions
+
+    3 Delayed Evaluation
+      3.1 Additional Promise Kinds
+
+    4 Continuations
+      4.1 Additional Control Operators
+
+    5 Continuation Marks
+
+    6 Breaks
+
+    7 Exiting
+
+1. Multiple Values
+
+See [missing] for general information about multiple result values. In
+addition to call-with-values (described in this section), the
+let-values, let*-values, letrec-values, and define-values forms (among
+others) create continuations that receive multiple values.
+
+                                        *values*
+(values v ...) -> any ~
+  v : any/c ~
+
+Returns the given vs. That is, values returns its provided arguments.
+
+Examples:
+  > (values 1)
+  1
+  > (values 1 2 3)
+  1
+  2
+  3
+  > (values)
+
+
+                                        *call-with-values*
+(call-with-values generator receiver) -> any ~
+  generator : (-> any) ~
+  receiver : procedure? ~
+
+Calls generator, and passes the values that generator produces as
+arguments to receiver. Thus, call-with-values creates a continuation
+that accepts any number of values that receiver can accept. The receiver
+procedure is called in tail position with respect to the
+call-with-values call.
+
+Examples:
+  > (call-with-values (lambda () (values 1 2)) +)
+  3
+  > (call-with-values (lambda () 1) (lambda (x y) (+ x y)))
+  #<procedure>: arity mismatch;
+   the expected number of arguments does not match the given
+  number
+    expected: 2 ~
+    given: 1 ~
+    arguments...: ~
+     1
+
+2. Exceptions
+
++[missing] in [missing] introduces exceptions.
+
+See [missing] for information on the Racket exception model. It is based
+on a proposal by Friedman, Haynes, and Dybvig [Friedman95].
+
+Whenever a primitive error occurs in Racket, an exception is raised.
+The value that is passed to the current exception handler for a
+primitive error is always an instance of the exn structure type. Every
+exn structure value has a message field that is a string, the primitive
+error message. The default exception handler recognizes exception values
+with the exn? predicate and passes the error message to the current
+error display handler (see error-display-handler).
+
+Primitive procedures that accept a procedure argument with a particular
+required arity (e.g., call-with-input-file, call/cc) check the
+argument’s arity immediately, raising exn:fail:contract if the arity is
+incorrect.
+
+2.1. Error Message Conventions
+
+Racket’s error message convention is to produce error messages with the
+following shape:
+
+  >srcloc<: >name<: >message<; ~
+   >continued-message< ...
+    >field<: >detail< ~
+    ...
+
+The message starts with an optional source location, >srcloc<, which is
+followed by a colon and space when present. The message continues with
+an optional >name< that usually identifies the complaining function,
+syntactic form, or other entity, but may also refer to an entity being
+complained about; the >name< is also followed by a colon and space when
+present.
+
+The >message< should be relatively short, and it should be largely
+independent of specific values that triggered the error. More detailed
+explanation that requires multiple lines should continue with each line
+indented by a single space, in which case >message< should end in a
+semi-colon (but the semi-colon should be omitted if >continued-message<
+is not present). Message text should be lowercase—using semi-colons to
+separate sentences if needed, although long explanations may be better
+deferred to extra fields.
+
+Specific values that triggered the error or other helpful information
+should appear in separate >field< lines, each of which is indented by
+two spaces. If a >detail< is especially long or takes multiple lines, it
+should start on its own line after the >field< label, and each of its
+lines should be indented by three spaces. Field names should be all
+lowercase.
+
+A >field< name should end with ... if the field provides relatively
+detailed information that might be distracting in common cases but
+useful in others. For example, when a contract failure is reported for a
+particular argument of a function, other arguments to the function might
+be shown in an “other arguments...” field. The intent is that fields
+whose names end in ... might be hidden by default in an environment such
+as DrRacket.
+
+Make >field< names as short as possible, relying on >message< or
+>continued message< text to clarify the meaning for a field. For
+example, prefer “given” to “given turtle” as a field name, where
+>message< is something like “given turtle is too sleepy” to clarify that
+“given” refers to a turtle.
+
+2.2. Raising Exceptions
+
+                                        *raise*
+(raise v [barrier?]) -> any ~
+  v : any/c ~
+  barrier? : any/c = #t ~
+
+Raises an exception, where v represents the exception being raised. The
+v argument can be anything; it is passed to the current exception
+handler.
+
+If barrier? is true, then the call to the exception handler is protected
+by a continuation barrier, so that multiple returns/escapes are
+impossible. All exceptions raised by racket functions effectively use
+raise with a #t value for barrier?.
+
+Breaks are disabled from the time the exception is raised until the
+exception handler obtains control, and the handler itself is
+parameterize-breaked to disable breaks initially; see Breaks for more
+information on breaks.
+
+Examples:
+  > (with-handlers ([number? (lambda (n)
+                               (+ n 5))])
+      (raise 18 #t))
+  23
+  > (define-struct (my-exception exn:fail:user) ()) ~
+
+  > (with-handlers ([my-exception? (lambda (e)
+                                     #f)])
+      (+ 5 (raise (make-my-exception
+                    "failed"
+                    (current-continuation-marks)))))
+  #f
+  > (raise 'failed #t)
+  uncaught exception: failed
+
+                                        *error*
+(error sym) -> any ~
+  sym : symbol? ~
+(error msg v ...) -> any
+  msg : string? ~
+  v : any/c ~
+(error src format v ...) -> any
+  src : symbol? ~
+  format : string? ~
+  v : any/c ~
+
+Raises the exception exn:fail, which contains an error string. The
+different forms produce the error string in different ways:
+
+* (error sym) creates a message string by concatenating "error: " with
+  the string form of sym. Use this form sparingly.
+
+* (error msg v ...) creates a message string by concatenating msg with
+  string versions of the vs (as produced by the current error value
+  conversion handler; see error-value->string-handler). A space is
+  inserted before each v. Use this form sparingly, because it does not
+  conform well to Racket’s error message conventions; consider
+  raise-arguments-error, instead.
+
+* (error src frmat v ...) creates a message string equivalent to the
+  string created by
+
+    (format (string-append "~s: " frmat) src v ...) ~
+
+  When possible, use functions such as raise-argument-error, instead,
+  which construct messages that follow Racket’s error message
+  conventions.
+
+In all cases, the constructed message string is passed to make-exn:fail,
+and the resulting exception is raised.
+
+Examples:
+  > (error 'failed)
+  error: failed
+  > (error "failed" 23 'pizza (list 1 2 3))
+  failed 23 pizza (1 2 3)
+  > (error 'method-a "failed because ~a" "no argument supplied")
+  method-a: failed because no argument supplied
+
+                                        *raise-user-error*
+(raise-user-error sym) -> any ~
+  sym : symbol? ~
+(raise-user-error msg v ...) -> any
+  msg : string? ~
+  v : any/c ~
+(raise-user-error src format v ...) -> any
+  src : symbol? ~
+  format : string? ~
+  v : any/c ~
+
+Like error, but constructs an exception with make-exn:fail:user instead
+of make-exn:fail. The default error display handler does not show a
+“stack trace” for exn:fail:user exceptions (see Continuation Marks), so
+raise-user-error should be used for errors that are intended for end
+users.
+
+                                        *raise-argument-error*
+(raise-argument-error name expected v) -> any ~
+  name : symbol? ~
+  expected : string? ~
+  v : any/c ~
+(raise-argument-error name         
+                      expected     
+                      bad-pos      
+                      v ...)   -> any
+  name : symbol? ~
+  expected : string? ~
+  bad-pos : exact-nonnegative-integer? ~
+  v : any/c ~
+
+Creates an exn:fail:contract value and raises it as an exception.  The
+name argument is used as the source procedure’s name in the error
+message. The expected argument is used as a description of the expected
+contract (i.e., as a string, but the string is intended to contain a
+contract expression).
+
+In the first form, v is the value received by the procedure that does
+not have the expected type.
+
+In the second form, the bad argument is indicated by an index bad-pos
+(counting from 0), and all of the original arguments v are provided (in
+order). The resulting error message names the bad argument and also
+lists the other arguments. If bad-pos is not less than the number of vs,
+the exn:fail:contract exception is raised.
+
+Examples:
+  > (define (feed-machine bits)
+      (if (not (integer? bits))
+        (raise-argument-error 'feed-machine "integer?" bits)
+        "fed the machine"))
+
+  > (feed-machine 'turkey)
+  feed-machine: contract violation
+    expected: integer? ~
+    given: 'turkey ~
+  > (define (feed-cow animal)
+      (if (not (eq? animal 'cow))
+        (raise-argument-error 'feed-cow "'cow" animal)
+        "fed the cow"))
+
+  > (feed-cow 'turkey)
+  feed-cow: contract violation
+    expected: 'cow ~
+    given: 'turkey ~
+  > (define (feed-animals cow sheep goose cat)
+      (if (not (eq? goose 'goose))
+        (raise-argument-error 'feed-animals "'goose" 2 cow sheep goose cat)
+        "fed the animals"))
+
+  > (feed-animals 'cow 'sheep 'dog 'cat)
+  feed-animals: contract violation
+    expected: 'goose ~
+    given: 'dog ~
+    argument position: 3rd ~
+    other arguments...: ~
+     'cow
+     'sheep
+     'cat
+
+                                        *raise-result-error*
+(raise-result-error name expected v) -> any ~
+  name : symbol? ~
+  expected : string? ~
+  v : any/c ~
+(raise-result-error name         
+                    expected     
+                    bad-pos      
+                    v ...)   -> any
+  name : symbol? ~
+  expected : string? ~
+  bad-pos : exact-nonnegative-integer? ~
+  v : any/c ~
+
+Like raise-argument-error, but the error message describe v as a
+“result” instead of an “argument.”
+
+                                        *raise-arguments-error*
+(raise-arguments-error name         ~
+                       message     
+                       field       
+                       v ...       
+                       ...)    -> any
+  name : symbol? ~
+  message : string? ~
+  field : string? ~
+  v : any/c ~
+
+Creates an exn:fail:contract value and raises it as an exception.  The
+name is used as the source procedure’s name in the error message. The
+message is the error message; if message contains newline characters,
+each extra line should be suitably indented (with one extra space at the
+start of each line), but it should not end with a newline character.
+Each field must have a corresponding v, and the two are rendered on
+their own line in the error message, with each v formatted using the
+error value conversion handler (see error-value->string-handler).
+
+Example:
+  > (raise-arguments-error 'eat
+                           "fish is smaller than its given meal"
+                           "fish" 12
+                           "meal" 13)
+  eat: fish is smaller than its given meal
+    fish: 12 ~
+    meal: 13 ~
+
+                                        *raise-range-error*
+(raise-range-error name                  ~
+                   type-description     
+                   index-prefix         
+                   index                
+                   in-value             
+                   lower-bound          
+                   upper-bound          
+                   alt-lower-bound) -> any
+  name : symbol? ~
+  type-description : string? ~
+  index-prefix : string? ~
+  index : exact-integer? ~
+  in-value : any/c ~
+  lower-bound : exact-integer? ~
+  upper-bound : exact-integer? ~
+  alt-lower-bound : (or/c #f exact-integer?) ~
+
+Creates an exn:fail:contract value and raises it as an exception to
+report an out-of-range error. The type-description string describes the
+value for which the index is meant to select an element, and
+index-prefix is a prefix for the word “index.” The index argument is the
+rejected index. The in-value argument is the value for which the index
+was meant. The lower-bound and upper-bound arguments specify the valid
+range of indices, inclusive; if upper-bound is below lower-bound, the
+value is characterized as “empty.” If alt-lower-bound is not #f, and if
+index is between alt-lower-bound and upper-bound, then the error is
+report as index being less than the “starting” index lower-bound.
+
+Since upper-bound is inclusive, a typical value is one less than the
+size of a collection—for example, (sub1 (vector-length vec)), (sub1
+(length lst)), and so on.
+
+Examples:
+  > (raise-range-error 'vector-ref "vector" "starting " 5 #(1 2 3 4) 0 3)
+  vector-ref: starting index is out of range
+    starting index: 5 ~
+    valid range: [0, 3] ~
+    vector: '#(1 2 3 4) ~
+  > (raise-range-error 'vector-ref "vector" "ending " 5 #(1 2 3 4) 0 3)
+  vector-ref: ending index is out of range
+    ending index: 5 ~
+    valid range: [0, 3] ~
+    vector: '#(1 2 3 4) ~
+  > (raise-range-error 'vector-ref "vector" "" 3 #() 0 -1)
+  vector-ref: index is out of range for empty vector
+    index: 3 ~
+  > (raise-range-error 'vector-ref "vector" "ending " 1 #(1 2 3 4) 2 3 0)
+  vector-ref: ending index is smaller than starting index
+    ending index: 1 ~
+    starting index: 2 ~
+    valid range: [0, 3] ~
+    vector: '#(1 2 3 4) ~
+
+                                        *raise-type-error*
+(raise-type-error name expected v) -> any ~
+  name : symbol? ~
+  expected : string? ~
+  v : any/c ~
+(raise-type-error name expected bad-pos v ...) -> any
+  name : symbol? ~
+  expected : string? ~
+  bad-pos : exact-nonnegative-integer? ~
+  v : any/c ~
+
+Like raise-argument-error, but with Racket’s old formatting conventions,
+and where expected is used as a “type” description instead of a contract
+expression. Use raise-argument-error or raise-result-error, instead.
+
+                                        *raise-mismatch-error*
+(raise-mismatch-error name         ~
+                      message     
+                      v ...+      
+                      ...+)   -> any
+  name : symbol? ~
+  message : string? ~
+  v : any/c ~
+
+Similar to raise-arguments-error, but using Racket’s old formatting
+conventions, with a required v immediately after the first message
+string, and with further message strings that are spliced into the
+message without line breaks or space. Use raise-arguments-error,
+instead.
+
+                                        *raise-arity-error*
+(raise-arity-error name arity-v arg-v ...) -> any ~
+  name : (or/c symbol? procedure?) ~
+  arity-v : (or/c exact-nonnegative-integer? ~
+                  arity-at-least?
+                  (listof
+                   (or/c exact-nonnegative-integer?
+                         arity-at-least?)))
+  arg-v : any/c ~
+
+Creates an exn:fail:contract:arity value and raises it as an exception.
+The name is used for the source procedure’s name in the error message.
+
+The arity-v value must be a possible result from procedure-arity, except
+that it does not have to be normalized (see procedure-arity? for the
+details of normalized arities); raise-arity-error will normalize the
+arity and use the normalized form in the error message. If name is a
+procedure, its actual arity is ignored.
+
+The arg-v arguments are the actual supplied arguments, which are shown
+in the error message (using the error value conversion handler; see
+error-value->string-handler); also, the number of supplied arg-vs is
+explicitly mentioned in the message.
+
+                                        *raise-syntax-error*
+(raise-syntax-error  name                 ~
+                     message             
+                    [expr                
+                     sub-expr            
+                     extra-sources]) -> any
+  name : (or/c symbol? #f) ~
+  message : string? ~
+  expr : any/c = #f ~
+  sub-expr : any/c = #f ~
+  extra-sources : (listof syntax?) = null ~
+
+Creates an exn:fail:syntax value and raises it as an exception.  Macros
+use this procedure to report syntax errors.
+
+The name argument is usually #f when expr is provided; it is described
+in more detail below. The message is used as the main body of the error
+message; if message contains newline characters, each new line should be
+suitably indented (with one space at the start), and it should not end
+with a newline character.
+
+The optional expr argument is the erroneous source syntax object or
+S-expression (but the expression #f cannot be represented by itself; it
+must be wrapped as a syntax object). The optional sub-expr argument is a
+syntax object or S-expression (again, #f cannot represent itself) within
+expr that more precisely locates the error.  Both may appear in the
+generated error-message text if error-print-source-location is #t.
+Source location information in the error-message text is similarly
+extracted from sub-expr or expr when at least one is a syntax object and
+error-print-source-location is #t.
+
+If sub-expr is provided and not #f, it is used (in syntax form) for the
+exprs field of the generated exception record, else the expr is used if
+provided and not #f. In either case, the syntax object is consed onto
+extra-sources to produce the exprs field, or extra-sources is used
+directly for exprs if neither expr nor sub-expr is provided and not #f.
+
+The form name used in the generated error message is determined through
+a combination of the name, expr, and sub-expr arguments:
+
+* When name is #f, and when expr is either an identifier or a syntax
+  pair containing an identifier as its first element, then the form name
+  from the error message is the identifier’s symbol.
+
+* When name is #f and when expr is not an identifier or a syntax pair
+  containing an identifier as its first element, then the form name in
+  the error message is "?".
+
+* When name is a symbol, then the symbol is used as the form name in the
+  generated error message.
+
+2.3. Handling Exceptions
+
+                                        *call-with-exception-handler*
+(call-with-exception-handler f thunk) -> any ~
+  f : (any/c . -> . any) ~
+  thunk : (-> any) ~
+
+Installs f as the exception handler for the dynamic extent of the call
+to thunk. If an exception is raised during the evaluation of thunk (in
+an extension of the current continuation that does not have its own
+exception handler), then f is applied to the raised value in the
+continuation of the raise call (but the continuation is normally
+extended with a continuation barrier; see [missing] and raise).
+
+Any procedure that takes one argument can be an exception handler.
+Normally, an exception handler escapes from the context of the raise
+call via abort-current-continuation or some other escape mechanism. To
+propagate an exception to the “previous” exception handler—that is, the
+exception handler associated with the rest of the continuation after the
+point where the called exception handler was associated with the
+continuation—an exception handler can simply return a result instead of
+escaping, in which case the raise call propagates the value to the
+previous exception handler (still in the dynamic extent of the call to
+raise, and under the same barrier, if any). If an exception handler
+returns a result and no previous handler is available, the
+uncaught-exception handler is used.
+
+A call to an exception handler is parameterize-breaked to disable
+breaks, and it is wrapped with call-with-exception-handler to install an
+exception handler that reports both the original and newly raised
+exceptions via the error display handler and then escapes via the error
+escape handler.
+
+                                        *uncaught-exception-handler*
+(uncaught-exception-handler) -> (any/c . -> . any) ~
+(uncaught-exception-handler f) -> void?
+  f : (any/c . -> . any) ~
+
+A parameter that determines an uncaught-exception handler used by raise
+when the relevant continuation has no exception handler installed with
+call-with-exception-handler or with-handlers. Unlike exception handlers
+installed with call-with-exception-handler, the uncaught-exception
+handler must not return a value when called by raise; if it returns, an
+exception is raised (to be handled by an exception handler that reports
+both the original and newly raised exception).
+
+The default uncaught-exception handler prints an error message using the
+current error display handler (see error-display-handler), unless the
+argument to the handler is an instance of exn:break:hang-up. If the
+argument to the handler is an instance of exn:break:hang-up or
+exn:break:terminate, the default uncaught-exception handler then calls
+the exit handler with 1, which normally exits or escapes. For any
+argument, the default uncaught-exception handler then escapes by calling
+the current error escape handler (see error-escape-handler). The call to
+each handler is parameterized to set error-display-handler to the
+default error display handler, and it is parameterize-breaked to disable
+breaks. The call to the error escape handler is further parameterized to
+set error-escape-handler to the default error escape handler; if the
+error escape handler returns, then the default error escape handler is
+called.
+
+When the current error display handler is the default handler, then the
+error-display call is parameterized to install an emergency error
+display handler that logs an error (see log-error) and never fails.
+
+                                        *with-handlers*
+(with-handlers ([pred-expr handler-expr] ...) ~
+  body ...+)
+
+Evaluates each pred-expr and handler-expr in the order that they are
+specified, and then evaluates the bodys with a new exception handler
+during its dynamic extent.
+
+The new exception handler processes an exception only if one of the
+pred-expr procedures returns a true value when applied to the exception,
+otherwise the exception handler is invoked from the continuation of the
+with-handlers expression (by raising the exception again). If an
+exception is handled by one of the handler-expr procedures, the result
+of the entire with-handlers expression is the return value of the
+handler.
+
+When an exception is raised during the evaluation of bodys, each
+predicate procedure pred-expr is applied to the exception value; if a
+predicate returns a true value, the corresponding handler-expr procedure
+is invoked with the exception as an argument. The predicates are tried
+in the order that they are specified.
+
+Before any predicate or handler procedure is invoked, the continuation
+of the entire with-handlers expression is restored, but also
+parameterize-breaked to disable breaks. Thus, breaks are disabled by
+default during the predicate and handler procedures (see Breaks), and
+the exception handler is the one from the continuation of the
+with-handlers expression.
+
+The exn:fail? procedure is useful as a handler predicate to catch all
+error exceptions. Avoid using (lambda (x) #t) as a predicate, because
+the exn:break exception typically should not be caught (unless it will
+be re-raised to cooperatively break). Beware, also, of catching and
+discarding exceptions, because discarding an error message can make
+debugging unnecessarily difficult; instead of discarding an error
+message, consider logging it via log-error or a logging form created by
+define-logger.
+
+Examples:
+  > (with-handlers ([exn:fail:syntax? ~
+                     (λ (e) (displayln "got a syntax error"))])
+      (raise-syntax-error #f "a syntax error"))
+  got a syntax error
+
+  > (with-handlers ([exn:fail:syntax? ~
+                     (λ (e) (displayln "got a syntax error"))]
+                    [exn:fail? ~
+                     (λ (e) (displayln "fallback clause"))])
+      (raise-syntax-error #f "a syntax error"))
+  got a syntax error
+
+
+                                        *with-handlers**
+(with-handlers* ([pred-expr handler-expr] ...) ~
+  body ...+)
+
+Like with-handlers, but if a handler-expr procedure is called, breaks
+are not explicitly disabled, and the handler call is in tail position
+with respect to the with-handlers* form.
+
+2.4. Configuring Default Handling
+
+                                        *error-escape-handler*
+(error-escape-handler) -> (-> any) ~
+(error-escape-handler proc) -> void?
+  proc : (-> any) ~
+
+A parameter for the error escape handler, which takes no arguments and
+escapes from the dynamic context of an exception.  The default error
+escape handler escapes using (abort-current-continuation
+(default-continuation-prompt-tag) void).
+
+The error escape handler is normally called directly by an exception
+handler, in a parameterization that sets the error display handler and
+error escape handler to the default handlers, and it is normally
+parameterize-breaked to disable breaks. To escape from a run-time error
+in a different context, use raise or error.
+
+Due to a continuation barrier around exception-handling calls, an error
+escape handler cannot invoke a full continuation that was created prior
+to the exception, but it can abort to a prompt (see
+call-with-continuation-prompt) or invoke an escape continuation (see
+call-with-escape-continuation).
+
+                                        *error-display-handler*
+(error-display-handler) -> (string? any/c . -> . any) ~
+(error-display-handler proc) -> void?
+  proc : (string? any/c . -> . any) ~
+
+A parameter for the error display handler, which is called by the
+default exception handler with an error message and the exception value.
+More generally, the handler’s first argument is a string to print as an
+error message, and the second is a value representing a raised
+exception.
+
+The default error display handler displays its first argument to the
+current error port (determined by the current-error-port parameter) and
+extracts a stack trace (see continuation-mark-set->context) to display
+from the second argument if it is an exn value but not an exn:fail:user
+value.
+
+The default error display handler in DrRacket also uses the second
+argument to highlight source locations.
+
+To report a run-time error, use raise or procedures like error, instead
+of calling the error display handler directly.
+
+                                        *error-print-width*
+(error-print-width) -> (and/c exact-integer? (>=/c 3)) ~
+(error-print-width width) -> void?
+  width : (and/c exact-integer? (>=/c 3)) ~
+
+A parameter whose value is used as the maximum number of characters used
+to print a Racket value that is embedded in a primitive error message.
+
+                                        *error-print-context-length*
+(error-print-context-length) -> exact-nonnegative-integer? ~
+(error-print-context-length cnt) -> void?
+  cnt : exact-nonnegative-integer? ~
+
+A parameter whose value is used by the default error display handler as
+the maximum number of lines of context (or “stack trace”) to print; a
+single “...” line is printed if more lines are available after the first
+cnt lines. A 0 value for cnt disables context printing entirely.
+
+                                        *error-value->string-handler*
+(error-value->string-handler) ~
+ -> (any/c exact-nonnegative-integer?
+           . -> .
+           string?)
+(error-value->string-handler proc) -> void?
+  proc : (any/c exact-nonnegative-integer? ~
+                . -> .
+                string?)
+
+A parameter that determines the error value conversion handler, which is
+used to print a Racket value that is embedded in a primitive error
+message.
+
+The integer argument to the handler specifies the maximum number of
+characters that should be used to represent the value in the resulting
+string.  The default error value conversion handler prints the value
+into a string (using the current global port print handler; see
+global-port-print-handler). If the printed form is too long, the printed
+form is truncated and the last three characters of the return string are
+set to “...”.
+
+If the string returned by an error value conversion handler is longer
+than requested, the string is destructively “truncated” by setting the
+first extra position in the string to the null character. If a
+non-string is returned, then the string "..." is used. If a primitive
+error string needs to be generated before the handler has returned, the
+default error value conversion handler is used.
+
+Calls to an error value conversion handler are parameterized to
+re-install the default error value conversion handler, and to enable
+printing of unreadable values (see print-unreadable).
+
+                                        *error-print-source-location*
+(error-print-source-location) -> boolean? ~
+(error-print-source-location include?) -> void?
+  include? : any/c ~
+
+A parameter that controls whether read and syntax error messages include
+source information, such as the source line and column or the
+expression.  This parameter also controls the error message when a
+module-defined variable is accessed before its definition is executed;
+the parameter determines whether the message includes a module name.
+Only the message field of an exn:fail:read, exn:fail:syntax, or
+exn:fail:contract:variable structure is affected by the parameter. The
+default is #t.
+
+2.5. Built-in Exception Types
+
+                                        *struct*
+(struct exn (message continuation-marks) ~
+    #:extra-constructor-name make-exn ~
+    #:transparent) ~
+  message : string? ~
+  continuation-marks : continuation-mark-set? ~
+
+The base structure type for exceptions. The message field contains an
+error message, and the continuation-marks field contains the value
+produced by (current-continuation-marks) immediately before the
+exception was raised.
+
+Exceptions raised by Racket form a hierarchy under exn:
+
+  exn
+    exn:fail ~
+      exn:fail:contract ~
+        exn:fail:contract:arity ~
+        exn:fail:contract:divide-by-zero ~
+        exn:fail:contract:non-fixnum-result ~
+        exn:fail:contract:continuation ~
+        exn:fail:contract:variable ~
+      exn:fail:syntax ~
+        exn:fail:syntax:unbound ~
+        exn:fail:syntax:missing-module ~
+      exn:fail:read ~
+        exn:fail:read:eof ~
+        exn:fail:read:non-char ~
+      exn:fail:filesystem ~
+        exn:fail:filesystem:exists ~
+        exn:fail:filesystem:version ~
+        exn:fail:filesystem:errno ~
+        exn:fail:filesystem:missing-module ~
+      exn:fail:network ~
+        exn:fail:network:errno ~
+      exn:fail:out-of-memory ~
+      exn:fail:unsupported ~
+      exn:fail:user ~
+    exn:break ~
+      exn:break:hang-up ~
+      exn:break:terminate ~
+
+                                        *struct*
+(struct exn:fail exn () ~ ~
+    #:extra-constructor-name make-exn:fail ~
+    #:transparent) ~
+
+Raised for exceptions that represent errors, as opposed to exn:break.
+
+                                        *struct*
+(struct exn:fail:contract exn:fail () ~ ~
+    #:extra-constructor-name make-exn:fail:contract ~
+    #:transparent) ~
+
+Raised for errors from the inappropriate run-time use of a function or
+syntactic form.
+
+                                        *struct*
+(struct exn:fail:contract:arity exn:fail:contract () ~ ~
+    #:extra-constructor-name make-exn:fail:contract:arity ~
+    #:transparent) ~
+
+Raised when a procedure is applied to the wrong number of arguments.
+
+                                        *struct*
+(struct exn:fail:contract:divide-by-zero exn:fail:contract () ~ ~
+    #:extra-constructor-name ~
+    make-exn:fail:contract:divide-by-zero ~
+    #:transparent) ~
+
+Raised for division by exact zero.
+
+                                        *struct*
+(struct exn:fail:contract:non-fixnum-result exn:fail:contract () ~ ~
+    #:extra-constructor-name ~
+    make-exn:fail:contract:non-fixnum-result ~
+    #:transparent) ~
+
+Raised by functions like fx+ when the result would not be a fixnum.
+
+                                        *struct*
+(struct exn:fail:contract:continuation exn:fail:contract () ~ ~
+    #:extra-constructor-name make-exn:fail:contract:continuation ~
+    #:transparent) ~
+
+Raised when a continuation is applied where the jump would cross a
+continuation barrier.
+
+                                        *struct*
+(struct exn:fail:contract:variable exn:fail:contract (id) ~ ~
+    #:extra-constructor-name make-exn:fail:contract:variable ~
+    #:transparent) ~
+  id : symbol? ~
+
+Raised for a reference to a not-yet-defined top-level variable or
+module-level variable.
+
+                                        *struct*
+(struct exn:fail:syntax exn:fail (exprs) ~ ~
+    #:extra-constructor-name make-exn:fail:syntax ~
+    #:transparent) ~
+  exprs : (listof syntax?) ~
+
+Raised for a syntax error that is not a read error. The exprs indicate
+the relevant source expressions, least-specific to most-specific.
+
+This structure type implements the prop:exn:srclocs property.
+
+                                        *struct*
+(struct exn:fail:syntax:unbound exn:fail:syntax () ~ ~
+    #:extra-constructor-name make-exn:fail:syntax:unbound ~
+    #:transparent) ~
+
+Raised by #%top or set! for an unbound identifier within a module.
+
+                                        *struct*
+(struct exn:fail:syntax:missing-module exn:fail:syntax (path) ~ ~
+    #:extra-constructor-name make-exn:fail:syntax:missing-module ~
+    #:transparent) ~
+  path : module-path? ~
+
+Raised by the default module name resolver or default load handler to
+report a module path—a reported in the path field—whose implementation
+file cannot be found.
+
+The default module name resolver raises this exception only when it is
+given a syntax object as its second argument, and the default load
+handler raises this exception only when the value of
+current-module-path-for-load is a syntax object (in which case both the
+exprs field and the path field are determined by the syntax object.
+
+This structure type implements the prop:exn:missing-module property.
+
+                                        *struct*
+(struct exn:fail:read exn:fail (srclocs) ~ ~
+    #:extra-constructor-name make-exn:fail:read ~
+    #:transparent) ~
+  srclocs : (listof srcloc?) ~
+
+Raised for a read error. The srclocs indicate the relevant source
+expressions.
+
+                                        *struct*
+(struct exn:fail:read:eof exn:fail:read () ~ ~
+    #:extra-constructor-name make-exn:fail:read:eof ~
+    #:transparent) ~
+
+Raised for a read error, specifically when the error is due to an
+unexpected end-of-file.
+
+                                        *struct*
+(struct exn:fail:read:non-char exn:fail:read () ~ ~
+    #:extra-constructor-name make-exn:fail:read:non-char ~
+    #:transparent) ~
+
+Raised for a read error, specifically when the error is due to an
+unexpected non-character (i.e., “special”) element in the input stream.
+
+                                        *struct*
+(struct exn:fail:filesystem exn:fail () ~ ~
+    #:extra-constructor-name make-exn:fail:filesystem ~
+    #:transparent) ~
+
+Raised for an error related to the filesystem (such as a file not
+found).
+
+                                        *struct*
+(struct exn:fail:filesystem:exists exn:fail:filesystem () ~ ~
+    #:extra-constructor-name make-exn:fail:filesystem:exists ~
+    #:transparent) ~
+
+Raised for an error when attempting to create a file that exists
+already.
+
+                                        *struct*
+(struct exn:fail:filesystem:version exn:fail:filesystem () ~ ~
+    #:extra-constructor-name make-exn:fail:filesystem:version ~
+    #:transparent) ~
+
+Raised for a version-mismatch error when loading an extension.
+
+                                        *struct*
+(struct exn:fail:filesystem:errno exn:fail:filesystem (errno) ~ ~
+    #:extra-constructor-name make-exn:fail:filesystem:errno ~
+    #:transparent) ~
+  errno : (cons/c exact-integer? (or/c 'posix 'windows 'gai)) ~
+
+Raised for a filesystem error for which a system error code is
+available. The symbol part of an errno field indicates the category of
+the error code: 'posix indicates a C/Posix errno value, 'windows
+indicates a Windows system error code (under Windows, only), and 'gai
+indicates a getaddrinfo error code (which shows up only in
+exn:fail:network:errno exceptions for operations that resolve hostnames,
+but is allowed in exn:fail:filesystem:errno instances for consistency).
+
+                                        *struct*
+(struct exn:fail:filesystem:missing-module exn:fail:filesystem ~ ~
+        (path)
+    #:extra-constructor-name ~
+    make-exn:fail:filesystem:missing-module ~
+    #:transparent) ~
+  path : module-path? ~
+
+Raised by the default module name resolver or default load handler to
+report a module path—a reported in the path field—whose implementation
+file cannot be found.
+
+The default module name resolver raises this exception only when it is
+not given a syntax object as its second argument, and the default load
+handler raises this exception only when the value of
+current-module-path-for-load is not a syntax object.
+
+This structure type implements the prop:exn:missing-module property.
+
+                                        *struct*
+(struct exn:fail:network exn:fail () ~ ~
+    #:extra-constructor-name make-exn:fail:network ~
+    #:transparent) ~
+
+Raised for TCP and UDP errors.
+
+                                        *struct*
+(struct exn:fail:network:errno exn:fail:network (errno) ~ ~
+    #:extra-constructor-name make-exn:fail:network:errno ~
+    #:transparent) ~
+  errno : (cons/c exact-integer? (or/c 'posix 'windows 'gai)) ~
+
+Raised for a TCP or UDP error for which a system error code is
+available, where the errno field is as for exn:fail:filesystem:errno.
+
+                                        *struct*
+(struct exn:fail:out-of-memory exn:fail () ~ ~
+    #:extra-constructor-name make-exn:fail:out-of-memory ~
+    #:transparent) ~
+
+Raised for an error due to insufficient memory, in cases where
+sufficient memory is at least available for raising the exception.
+
+                                        *struct*
+(struct exn:fail:unsupported exn:fail () ~ ~
+    #:extra-constructor-name make-exn:fail:unsupported ~
+    #:transparent) ~
+
+Raised for an error due to an unsupported feature on the current
+platform or configuration.
+
+                                        *struct*
+(struct exn:fail:user exn:fail () ~ ~
+    #:extra-constructor-name make-exn:fail:user ~
+    #:transparent) ~
+
+Raised for errors that are intended to be seen by end users. In
+particular, the default error printer does not show the program context
+when printing the error message.
+
+                                        *struct*
+(struct exn:break exn (continuation) ~ ~
+    #:extra-constructor-name make-exn:break ~
+    #:transparent) ~
+  continuation : continuation? ~
+
+Raised asynchronously (when enabled) in response to a break request. The
+continuation field can be used to resume the interrupted computation in
+the uncaught-exception handler or call-with-exception-handler (but not
+with-handlers because it escapes from the exception context before
+evaluating any predicates or handlers).
+
+                                        *struct*
+(struct exn:break:hang-up exn:break () ~ ~
+    #:extra-constructor-name make-exn:break:hang-up ~
+    #:transparent) ~
+
+Raised asynchronously for hang-up breaks. The default
+uncaught-exception handler reacts to this exception type by  calling the
+exit handler.
+
+                                        *struct*
+(struct exn:break:terminate exn:break () ~ ~
+    #:extra-constructor-name make-exn:break:terminate ~
+    #:transparent) ~
+
+Raised asynchronously for termination-request breaks. The default
+uncaught-exception handler reacts to this exception type by  calling the
+exit handler.
+
+prop:exn:srclocs : struct-type-property? ~
+
+A property that identifies structure types that provide a list of srcloc
+values. The property is normally attached to structure types used to
+represent exception information.
+
+The property value must be a procedure that accepts a single value—the
+structure type instance from which to extract source locations—and
+returns a list of srclocs. Some error display handlers use only the
+first returned location.
+
+As an example,
+
+  #lang racket
+   
+  ;; We create a structure that supports the
+  ;; prop:exn:srcloc protocol.  It carries ~
+  ;; with it the location of the syntax that
+  ;; is guilty.
+  (define-struct (exn:fail:he-who-shall-not-be-named ~
+                  exn:fail) ~
+    (a-srcloc)
+    #:property prop:exn:srclocs ~
+    (lambda (a-struct)
+      (match a-struct
+        [(struct exn:fail:he-who-shall-not-be-named ~
+           (msg marks a-srcloc))
+         (list a-srcloc)])))
+   
+  ;; We can play with this by creating a form that
+  ;; looks at identifiers, and only flags specific ones.
+  (define-syntax (skeeterize stx)
+    (syntax-case stx ()
+      [(_ expr)
+       (cond
+         [(and (identifier? #'expr)
+               (eq? (syntax-e #'expr) 'voldemort))
+          (quasisyntax/loc stx
+            (raise (make-exn:fail:he-who-shall-not-be-named ~
+                    "oh dear don't say his name"
+                    (current-continuation-marks)
+                    (srcloc '#,(syntax-source #'expr)
+                            '#,(syntax-line #'expr)
+                            '#,(syntax-column #'expr)
+                            '#,(syntax-position #'expr)
+                            '#,(syntax-span #'expr)))))]
+         [else
+          ;; Otherwise, leave the expression alone.
+          #'expr])]))
+   
+  (define (f x)
+    (* (skeeterize x) x))
+   
+  (define (g voldemort)
+    (* (skeeterize voldemort) voldemort))
+   
+  ;; Examples: ~
+  (f 7)
+  (g 7)
+  ;; The error should highlight the use
+  ;; of the one-who-shall-not-be-named
+  ;; in g.
+
+                                        *exn:srclocs?*
+(exn:srclocs? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v has the prop:exn:srclocs property, #f otherwise.
+
+                                        *exn:srclocs-accessor*
+(exn:srclocs-accessor v) ~
+ -> (exn:srclocs? . -> . (listof srcloc)) ~
+  v : exn:srclocs? ~
+
+Returns the srcloc-getting procedure associated with v.
+
+                                        *struct*
+(struct srcloc (source line column position span) ~
+    #:extra-constructor-name make-srcloc ~
+    #:transparent) ~
+  source : any/c ~
+  line : (or/c exact-positive-integer? #f) ~
+  column : (or/c exact-nonnegative-integer? #f) ~
+  position : (or/c exact-positive-integer? #f) ~
+  span : (or/c exact-nonnegative-integer? #f) ~
+
+The fields of a srcloc instance are as follows:
+
+* source — An arbitrary value identifying the source, often a path (see
+  [missing]).
+
+* line — The line number (counts from 1) or #f (unknown).
+
+* column — The column number (counts from 0) or #f (unknown).
+
+* position — The starting position (counts from 1) or #f (unknown).
+
+* span — The number of covered positions (counts from 0) or #f
+  (unknown).
+
+                                        *srcloc->string*
+(srcloc->string srcloc) -> (or/c string? #f) ~
+  srcloc : srcloc? ~
+
+Formats srcloc as a string suitable for error reporting.  A path source
+in srcloc is shown relative to the value of current-directory-for-user.
+The result is #f if srcloc does not contain enough information to format
+a string.
+
+prop:exn:missing-module : struct-type-property? ~
+
+A property that identifies structure types that provide a module path
+for a load that fails because a module is not found.
+
+The property value must be a procedure that accepts a single value—the
+structure type instance from which to extract source locations—and
+returns a module path.
+
+                                        *exn:missing-module?*
+(exn:missing-module? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v has the prop:exn:missing-module property, #f otherwise.
+
+                                        *exn:missing-module-accessor*
+(exn:missing-module-accessor v) ~
+ -> (exn:missing-module? . -> . module-path?) ~
+  v : exn:srclocs? ~
+
+Returns the module path-getting procedure associated with v.
+
+2.6. Additional Exception Functions
+
+ (require racket/exn) package: base ~
+
+The bindings documented in this section are provided by the racket/exn
+library, not racket/base or racket.
+
+                                        *exn->string*
+(exn->string exn) -> string? ~
+  exn : (or/c exn? any/c) ~
+
+Formats exn as a string. If exn is an exn?, collects and returns the
+output from the current (error-display-handler); otherwise, simply
+converts exn to a string using (format "~s\n" exn).
+
+3. Delayed Evaluation
+
+ (require racket/promise) package: base ~
+
+The bindings documented in this section are provided by the
+racket/promise and racket libraries, but not racket/base.
+
+A promise encapsulates an expression to be evaluated on demand via
+force. After a promise has been forced, every later force of the promise
+produces the same result.
+
+                                        *promise?*
+(promise? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a promise, #f otherwise.
+
+                                        *delay*
+(delay body ...+) ~
+
+Creates a promise that, when forced, evaluates the bodys to produce its
+value.  The result is then cached, so further uses of force produce the
+cached value immediately. This includes multiple values and exceptions.
+
+                                        *lazy*
+(lazy body ...+) ~
+
+Like delay, if the last body produces a promise when forced, then this
+promise is forced, too, to obtain a value. In other words, this form
+creates a composable promise, where the computation of its body is
+“attached” to the computation of the following promise, and a single
+force iterates through the whole chain, tail-calling each step.
+
+Note that the last body of this form must produce a single value, but
+the value can itself be a delay promise that returns multiple values.
+
+The lazy form is useful for implementing lazy libraries and languages,
+where tail calls can be wrapped in a promise.
+
+                                        *force*
+(force v) -> any ~
+  v : any/c ~
+
+If v is a promise, then the promise is forced to obtain a value. If the
+promise has not been forced before, then the result is recorded in the
+promise so that future forces on the promise produce the same value (or
+values). If forcing the promise raises an exception, then the exception
+is similarly recorded so that forcing the promise will raise the same
+exception every time.
+
+If v is forced again before the original call to force returns, then the
+exn:fail exception is raised.
+
+If v is not a promise, then it is returned as the result.
+
+                                        *promise-forced?*
+(promise-forced? promise) -> boolean? ~
+  promise : promise? ~
+
+Returns #t if promise has been forced.
+
+                                        *promise-running?*
+(promise-running? promise) -> boolean? ~
+  promise : promise? ~
+
+Returns #t if promise is currently being forced. (Note that a promise
+can be either running or forced but not both.)
+
+3.1. Additional Promise Kinds
+
+                                        *delay/name*
+(delay/name body ...+) ~
+
+Creates a “call-by-name” promise that is similar to delay-promises,
+except that the resulting value is not cached.  This kind of promise is
+essentially a thunk that is wrapped in a way that force recognizes.
+
+If a delay/name promise forces itself, no exception is raised, the
+promise is never considered “running” or “forced” in the sense of
+promise-running? and promise-forced?.
+
+                                        *delay/strict*
+(delay/strict body ...+) ~
+
+Creates a “strict” promise: it is evaluated immediately, and the result
+is wrapped in a promise value.  Note that the body can evaluate to
+multiple values, and forcing the resulting promise will return these
+values.
+
+                                        *delay/sync*
+(delay/sync body ...+) ~
+
+Produces a promise where an attempt to force the promise by a thread
+other than one currently running the promise causes the force to block
+until a result is available. This kind of promise is also a
+synchronizable event for use with sync; syncing on the promise does not
+force it, but merely waits until a value is forced by another thread.
+
+If a promise created by delay/sync is forced on a thread that is already
+running the promise, an exception is raised in the same way as for
+promises created with delay.
+
+                                        *delay/thread*
+(delay/thread body/option ...+) ~
+ 
+body/option = body
+            | #:group thread-group-expr ~
+
+Like delay/sync, but begins the computation immediately on a newly
+created thread. The thread is created under the thread group specified
+by thread-group-expr, which defaults to (make-thread-group). A #:group
+specification can appear at most once.
+
+Exceptions raised by the bodys are caught as usual and raised only when
+the promise is forced. Unlike delay/sync, if the thread running body
+terminates without producing a result or exception, force of the promise
+raises an exception (instead of blocking).
+
+                                        *delay/idle*
+(delay/idle body/option ...+) ~
+ 
+body/option = body
+            | #:wait-for wait-evt-expr ~
+            | #:work-while while-evt-expr ~
+            | #:tick tick-secs-expr ~
+            | #:use use-ratio-expr ~
+
+Like delay/thread, but with the following differences:
+
+* the computation does not start until the event produced by
+  wait-evt-expr is ready, where the default is (system-idle-evt);
+
+* the computation thread gets to work only when the process is otherwise
+  idle as determined by while-evt-expr, which also defaults to
+  (system-idle-evt);
+
+* the thread is allowed to run only periodically: out of every
+  tick-secs-expr (defaults to 0.2) seconds, the thread is allowed to run
+  use-ratio-expr (defaults to 0.12) of the time proportionally; i.e.,
+  the thread runs for (* tick-secs-expr use-ratio-expr) seconds.
+
+If the promise is forced before the computation is done, it runs the
+rest of the computation immediately without waiting on events or
+periodically restricting evaluation.
+
+A #:wait-for, #:work-while, #:tick, or #:use specification can appear at
+most once.
+
+4. Continuations
+
++[missing] in [missing] introduces continuations.
+
+See [missing] and [missing] for general information about continuations.
+Racket’s support for prompts and composable continuations most closely
+resembles Dorai Sitaram’s % and fcontrol operator [Sitaram93].
+
+Racket installs a continuation barrier around evaluation in the
+following contexts, preventing full-continuation jumps into the
+evaluation context protected by the barrier:
+
+* applying an exception handler, an error escape handler, or an error
+  display handler (see Exceptions);
+
+* applying a macro transformer (see [missing]), evaluating a
+  compile-time expression, or applying a module name resolver (see
+  [missing]);
+
+* applying a custom-port procedure (see [missing]), an event guard
+  procedure (see [missing]), or a parameter guard procedure (see
+  [missing]);
+
+* applying a security-guard procedure (see [missing]);
+
+* applying a will procedure (see [missing]); or
+
+* evaluating or loading code from the stand-alone Racket command line
+  (see [missing]).
+
+In addition, extensions of Racket may install barriers in additional
+contexts. Finally, call-with-continuation-barrier applies a thunk
+barrier between the application and the current continuation.
+
+                                        *call-with-continuation-prompt*
+(call-with-continuation-prompt  proc            ~
+                               [prompt-tag     
+                                handler]       
+                                arg ...)   -> any
+  proc : procedure? ~
+  prompt-tag : continuation-prompt-tag? ~
+             = (default-continuation-prompt-tag)
+  handler : (or/c procedure? #f) = #f ~
+  arg : any/c ~
+
+Applies proc to the given args with the current continuation extended by
+a prompt. The prompt is tagged by prompt-tag, which must be a result
+from either default-continuation-prompt-tag (the default) or
+make-continuation-prompt-tag. The result of proc is the result of the
+call-with-continuation-prompt call.
+
+The handler argument specifies a handler procedure to be called in tail
+position with respect to the call-with-continuation-prompt call when the
+installed prompt is the target of an abort-current-continuation call
+with prompt-tag; the remaining arguments of abort-current-continuation
+are supplied to the handler procedure. If handler is #f, the default
+handler accepts a single abort-thunk argument and calls
+(call-with-continuation-prompt abort-thunk prompt-tag #f); that is, the
+default handler re-installs the prompt and continues with a given thunk.
+
+                                        *abort-current-continuation*
+(abort-current-continuation prompt-tag      ~
+                            v ...)     -> any
+  prompt-tag : any/c ~
+  v : any/c ~
+
+Resets the current continuation to that of the nearest prompt tagged by
+prompt-tag in the current continuation; if no such prompt exists, the
+exn:fail:contract:continuation exception is raised. The vs are delivered
+as arguments to the target prompt’s handler procedure.
+
+The protocol for vs supplied to an abort is specific to the prompt-tag.
+When abort-current-continuation is used with
+(default-continuation-prompt-tag), generally, a single thunk should be
+supplied that is suitable for use with the default prompt handler.
+Similarly, when call-with-continuation-prompt is used with
+(default-continuation-prompt-tag), the associated handler should
+generally accept a single thunk argument.
+
+Each thread’s continuation starts with a prompt for
+(default-continuation-prompt-tag) that uses the default handler, which
+accepts a single thunk to apply (with the prompt intact).
+
+                                        *make-continuation-prompt-tag*
+(make-continuation-prompt-tag) -> continuation-prompt-tag? ~
+(make-continuation-prompt-tag sym) -> continuation-prompt-tag?
+  sym : symbol? ~
+
+Creates a prompt tag that is not equal? to the result of any other value
+(including prior or future results from make-continuation-prompt-tag).
+The optional sym argument, if supplied, is used when printing the prompt
+tag.
+
+                                        *default-continuation-prompt-tag*
+(default-continuation-prompt-tag) -> continuation-prompt-tag? ~
+
+Returns a constant prompt tag for which a prompt is installed at the
+start of every thread’s continuation; the handler for each thread’s
+initial prompt accepts any number of values and returns. The result of
+default-continuation-prompt-tag is the default tag for any procedure
+that accepts a prompt tag.
+
+                                        *call-with-current-continuation*
+(call-with-current-continuation  proc              ~
+                                [prompt-tag]) -> any
+  proc : (continuation? . -> . any) ~
+  prompt-tag : continuation-prompt-tag? ~
+             = (default-continuation-prompt-tag)
+
+Captures the current continuation up to the nearest prompt tagged by
+prompt-tag; if no such prompt exists, the exn:fail:contract:continuation
+exception is raised. The truncated continuation includes only
+continuation marks and dynamic-wind frames installed since the prompt.
+
+The capture continuation is delivered to proc, which is called in tail
+position with respect to the call-with-current-continuation call.
+
+If the continuation argument to proc is ever applied, then it removes
+the portion of the current continuation up to the nearest prompt tagged
+by prompt-tag (not including the prompt; if no such prompt exists, the
+exn:fail:contract:continuation exception is raised), or up to the
+nearest continuation frame (if any) shared by the current and captured
+continuations—whichever is first. While removing continuation frames,
+dynamic-wind post-thunks are executed. Finally, the (unshared portion of
+the) captured continuation is appended to the remaining continuation,
+applying dynamic-wind pre-thunks.
+
+The arguments supplied to an applied procedure become the result values
+for the restored continuation. In particular, if multiple arguments are
+supplied, then the continuation receives multiple results.
+
+If, at application time, a continuation barrier would be introduced by
+replacing the current continuation with the applied one, then the
+exn:fail:contract:continuation exception is raised.
+
+A continuation can be invoked from the thread (see [missing]) other than
+the one where it was captured.
+
+                                        *call/cc*
+(call/cc proc [prompt-tag]) -> any ~
+  proc : (continuation? . -> . any) ~
+  prompt-tag : continuation-prompt-tag? ~
+             = (default-continuation-prompt-tag)
+
+The call/cc binding is an alias for call-with-current-continuation.
+
+                                        *call-with-composable-continuation*
+(call-with-composable-continuation  proc              ~
+                                   [prompt-tag]) -> any
+  proc : (continuation? . -> . any) ~
+  prompt-tag : continuation-prompt-tag? ~
+             = (default-continuation-prompt-tag)
+
+Similar to call-with-current-continuation, but applying the resulting
+continuation procedure does not remove any portion of the current
+continuation. Instead, application always extends the current
+continuation with the captured continuation (without installing any
+prompts other than those captured in the continuation).
+
+When call-with-composable-continuation is called, if a continuation
+barrier appears in the continuation before the closest prompt tagged by
+prompt-tag, the exn:fail:contract:continuation exception is raised
+(because attempting to apply the continuation would always fail).
+
+                                        *call-with-escape-continuation*
+(call-with-escape-continuation proc) -> any ~
+  proc : (continuation? . -> . any) ~
+
+Like call-with-current-continuation, but proc is not called in tail
+position, and the continuation procedure supplied to proc can only be
+called during the dynamic extent of the call-with-escape-continuation
+call.
+
+Due to the limited applicability of its continuation,
+call-with-escape-continuation can be implemented more efficiently than
+call-with-current-continuation.
+
+A continuation obtained from call-with-escape-continuation is actually a
+kind of prompt. Escape continuations are provided mainly for backwards
+compatibility, since they pre-date general prompts in Racket, and
+because call/ec is often an easy replacement for call/cc to improve
+performance.
+
+                                        *call/ec*
+(call/ec proc) -> any ~
+  proc : (continuation? . -> . any) ~
+
+The call/ec binding is an alias for call-with-escape-continuation.
+
+                                        *let/cc*
+(let/cc k body ...+) ~
+
+Equivalent to (call/cc (lambda (k) body ...)).
+
+                                        *let/ec*
+(let/ec k body ...+) ~
+
+Equivalent to (call/ec (lambda (k) body ...)).
+
+                                        *call-with-continuation-barrier*
+(call-with-continuation-barrier thunk) -> any ~
+  thunk : (-> any) ~
+
+Applies thunk with a continuation barrier between the application and
+the current continuation. The results of thunk are the results of the
+call-with-continuation-barrier call.
+
+                                        *continuation-prompt-available?*
+(continuation-prompt-available?  prompt-tag      ~
+                                [cont])     -> any
+  prompt-tag : continuation-prompt-tag? ~
+  cont : continuation? = (call/cc values) ~
+
+Returns #t if cont, which must be a continuation, includes a prompt
+tagged by prompt-tag, #f otherwise.
+
+                                        *continuation?*
+(continuation? v) -> boolean? ~
+  v : any/c ~
+
+Return #t if v is a continuation as produced by
+call-with-current-continuation, call-with-composable-continuation, or
+call-with-escape-continuation, #f otherwise.
+
+                                        *continuation-prompt-tag?*
+(continuation-prompt-tag? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a continuation prompt tag as produced by
+default-continuation-prompt-tag or make-continuation-prompt-tag.
+
+                                        *dynamic-wind*
+(dynamic-wind pre-thunk        ~
+              value-thunk     
+              post-thunk) -> any
+  pre-thunk : (-> any) ~
+  value-thunk : (-> any) ~
+  post-thunk : (-> any) ~
+
+Applies its three thunk arguments in order.  The value of a dynamic-wind
+expression is the value returned by value-thunk. The pre-thunk procedure
+is invoked before calling value-thunk and post-thunk is invoked after
+value-thunk returns. The special properties of dynamic-wind are manifest
+when control jumps into or out of the value-thunk application (either
+due to a prompt abort or a continuation invocation): every time control
+jumps into the value-thunk application, pre-thunk is invoked, and every
+time control jumps out of value-thunk, post-thunk is invoked. (No
+special handling is performed for jumps into or out of the pre-thunk and
+post-thunk applications.)
+
+When dynamic-wind calls pre-thunk for normal evaluation of value-thunk,
+the continuation of the pre-thunk application calls value-thunk (with
+dynamic-wind’s special jump handling) and then post-thunk.  Similarly,
+the continuation of the post-thunk application returns the value of the
+preceding value-thunk application to the continuation of the entire
+dynamic-wind application.
+
+When pre-thunk is called due to a continuation jump, the continuation of
+pre-thunk
+
+* jumps to a more deeply nested pre-thunk, if any, or jumps to the
+  destination continuation; then
+
+* continues with the context of the pre-thunk’s dynamic-wind call.
+
+Normally, the second part of this continuation is never reached, due to
+a jump in the first part. However, the second part is relevant because
+it enables jumps to escape continuations that are contained in the
+context of the dynamic-wind call. Furthermore, it means that the
+continuation marks (see Continuation Marks) and parameterization (see
+[missing]) for pre-thunk correspond to those of the dynamic-wind call
+that installed pre-thunk. The pre-thunk call, however, is
+parameterize-breaked to disable breaks (see also Breaks).
+
+Similarly, when post-thunk is called due to a continuation jump, the
+continuation of post-thunk jumps to a less deeply nested post-thunk, if
+any, or jumps to a pre-thunk protecting the destination, if any, or
+jumps to the destination continuation, then continues from the
+post-thunk’s dynamic-wind application. As for pre-thunk, the
+parameterization of the original dynamic-wind call is restored for the
+call, and the call is parameterize-breaked to disable breaks.
+
+In both cases, the target for a jump is recomputed after each pre-thunk
+or post-thunk completes. When a prompt-delimited continuation (see
+[missing]) is captured in a post-thunk, it might be delimited and
+instantiated in such a way that the target of a jump turns out to be
+different when the continuation is applied than when the continuation
+was captured. There may even be no appropriate target, if a relevant
+prompt or escape continuation is not in the continuation after the
+restore; in that case, the first step in a pre-thunk or post-thunk’s
+continuation can raise an exception.
+
+Examples:
+  > (let ([v (let/ec out
+               (dynamic-wind
+                (lambda () (display "in "))
+                (lambda ()
+                  (display "pre ")
+                  (display (call/cc out))
+                  #f)
+                (lambda () (display "out "))))])
+      (when v (v "post ")))
+  in pre out in post out
+
+  > (let/ec k0
+      (let/ec k1
+        (dynamic-wind
+         void
+         (lambda () (k0 'cancel))
+         (lambda () (k1 'cancel-canceled)))))
+  'cancel-canceled
+  > (let* ([x (make-parameter 0)]
+           [l null]
+           [add (lambda (a b)
+                  (set! l (append l (list (cons a b)))))])
+      (let ([k (parameterize ([x 5])
+                 (dynamic-wind
+                     (lambda () (add 1 (x)))
+                     (lambda () (parameterize ([x 6])
+                                  (let ([k+e (let/cc k (cons k void))])
+                                    (add 2 (x))
+                                    ((cdr k+e))
+                                    (car k+e))))
+                     (lambda () (add 3 (x)))))])
+        (parameterize ([x 7])
+          (let/cc esc
+            (k (cons void esc)))))
+      l)
+  '((1 . 5) (2 . 6) (3 . 5) (1 . 5) (2 . 6) (3 . 5))
+
+4.1. Additional Control Operators
+
+ (require racket/control) package: base ~
+
+The bindings documented in this section are provided by the
+racket/control library, not racket/base or racket.
+
+The racket/control library provides various control operators from the
+research literature on higher-order control operators, plus a few extra
+convenience forms. These control operators are implemented in terms of
+call-with-continuation-prompt, call-with-composable-continuation, etc.,
+and they generally work sensibly together. Many are redundant; for
+example, reset and prompt are aliases.
+
+                                        *call/prompt*
+(call/prompt proc [prompt-tag handler] arg ...) -> any ~
+  proc : procedure? ~
+  prompt-tag : continuation-prompt-tag? ~
+             = (default-continuation-prompt-tag)
+  handler : (or/c procedure? #f) = #f ~
+  arg : any/c ~
+
+The call/prompt binding is an alias for call-with-continuation-prompt.
+
+                                        *abort/cc*
+(abort/cc prompt-tag v ...) -> any ~
+  prompt-tag : any/c ~
+  v : any/c ~
+
+The abort/cc binding is an alias for abort-current-continuation.
+
+                                        *call/comp*
+(call/comp proc [prompt-tag]) -> any ~
+  proc : (continuation? . -> . any) ~
+  prompt-tag : continuation-prompt-tag? ~
+             = (default-continuation-prompt-tag)
+
+The call/comp binding is an alias for call-with-composable-continuation.
+
+                                        *abort*
+(abort v ...) -> any ~
+  v : any/c ~
+
+Returns the vs to a prompt using the default continuation prompt tag and
+the default abort handler.
+
+That is, (abort v ...) is equivalent to
+
+  (abort-current-continuation
+   (default-continuation-prompt-tag)
+   (lambda () (values v ...)))
+
+Example:
+  > (prompt
+      (printf "start here\n")
+      (printf "answer is ~a\n" (+ 2 (abort 3))))
+  start here
+  3
+
+                                        *%*
+(% expr)
+(% expr handler-expr)
+(% expr handler-expr #:tag tag-expr) ~
+(fcontrol v #:tag prompt-tag) -> any ~
+  v : any/c ~
+  prompt-tag : (default-continuation-prompt-tag) ~
+
+Sitaram’s operators [Sitaram93].
+
+The essential reduction rules are:
+
+  (% val proc) => val
+  (% E[(fcontrol val)] proc) => (proc val (lambda (x) E[x]))
+    ; where E has no %
+
+When handler-expr is omitted, % is the same as prompt. If prompt-tag is
+provided, % uses specific prompt tags like prompt-at.
+
+Examples:
+  > (% (+ 2 (fcontrol 5))
+       (lambda (v k)
+         (k v)))
+  7
+  > (% (+ 2 (fcontrol 5))
+       (lambda (v k)
+         v))
+  5
+
+                                        *prompt*
+(prompt expr ...+) ~
+(control id expr ...+)
+
+Among the earliest operators for higher-order control [Felleisen88a,
+Felleisen88, Sitaram90].
+
+The essential reduction rules are:
+
+  (prompt val) => val
+  (prompt E[(control k expr)]) => (prompt ((lambda (k) expr)
+                                           (lambda (v) E[v])))
+    ; where E has no prompt
+
+Examples:
+  > (prompt
+      (+ 2 (control k (k 5))))
+  7
+  > (prompt
+      (+ 2 (control k 5)))
+  5
+  > (prompt
+      (+ 2 (control k (+ 1 (control k1 (k1 6))))))
+  7
+  > (prompt
+      (+ 2 (control k (+ 1 (control k1 (k 6))))))
+  8
+  > (prompt
+      (+ 2 (control k (control k1 (control k2 (k2 6))))))
+  6
+
+                                        *prompt-at*
+(prompt-at prompt-tag-expr expr ...+) ~
+(control-at prompt-tag-expr id expr ...+)
+
+Like prompt and control, but using specific prompt tags:
+
+  (prompt-at tag val) => val
+  (prompt-at tag E[(control-at tag k expr)]) => (prompt-at tag
+                                                 ((lambda (k) expr)
+                                                  (lambda (v) E[v])))
+    ; where E has no prompt-at for tag
+
+                                        *reset*
+(reset expr ...+) ~
+(shift id expr ...+)
+
+Danvy and Filinski’s operators [Danvy90].
+
+The essential reduction rules are:
+
+  (reset val) => val
+  (reset E[(shift k expr)]) => (reset ((lambda (k) expr)
+                                       (lambda (v) (reset E[v]))))
+    ; where E has no reset
+
+The reset and prompt forms are interchangeable.
+
+                                        *reset-at*
+(reset-at prompt-tag-expr expr ...+) ~
+(shift-at prompt-tag-expr identifier expr ...+)
+
+Like reset and shift, but using the specified prompt tags.
+
+                                        *prompt*
+(prompt0 expr ...+) ~
+(reset0 expr ...+)
+(control0 id expr ...+)
+(shift0 id expr ...+)
+
+Generalizations of prompt, etc. [Shan04].
+
+The essential reduction rules are:
+
+  (prompt0 val) => val
+  (prompt0 E[(control0 k expr)]) => ((lambda (k) expr)
+                                     (lambda (v) E[v]))
+  (reset0 val) => val
+  (reset0 E[(shift0 k expr)]) => ((lambda (k) expr)
+                                  (lambda (v) (reset0 E[v])))
+
+The reset0 and prompt0 forms are interchangeable. Furthermore, the
+following reductions apply:
+
+  (prompt E[(control0 k expr)]) => (prompt ((lambda (k) expr)
+                                            (lambda (v) E[v])))
+  (reset E[(shift0 k expr)]) => (reset ((lambda (k) expr)
+                                        (lambda (v) (reset0 E[v]))))
+  (prompt0 E[(control k expr)]) => (prompt0 ((lambda (k) expr)
+                                             (lambda (v) E[v])))
+  (reset0 E[(shift k expr)]) => (reset0 ((lambda (k) expr)
+                                         (lambda (v) (reset E[v]))))
+
+That is, both the prompt/reset and control/shift sites must agree for
+0-like behavior, otherwise the non-0 behavior applies.
+
+                                        *prompt*
+(prompt0-at prompt-tag-expr expr ...+) ~
+(reset0-at prompt-tag-expr expr ...+)
+(control0-at prompt-tag-expr id expr ...+)
+(shift0-at prompt-tag-expr id expr ...+)
+
+Variants of prompt0, etc., that accept a prompt tag.
+
+                                        *spawn*
+(spawn proc) -> any ~
+  proc : ((any/c . -> . any) . -> . any) ~
+
+The operators of Hieb and Dybvig [Hieb90].
+
+The essential reduction rules are:
+
+  (prompt-at tag obj) => obj
+  (spawn proc) => (prompt tag (proc (lambda (x) (abort tag x))))
+  (prompt-at tag E[(abort tag proc)])
+    => (proc (lambda (x) (prompt-at tag E[x])))
+    ; where E has no prompt-at for tag
+
+                                        *splitter*
+(splitter proc) -> any ~
+  proc : (((-> any) . -> . any) ~
+          ((continuation? . -> . any) . -> . any)
+          . -> . any)
+
+The operator of Queinnec and Serpette [Queinnec91].
+
+The essential reduction rules are:
+
+  (splitter proc) => (prompt-at tag
+                      (proc (lambda (thunk)
+                                (abort tag thunk))
+                              (lambda (proc)
+                                (control0-at tag k (proc k)))))
+  (prompt-at tag E[(abort tag thunk)]) => (thunk)
+    ; where E has no prompt-at for tag
+  (prompt-at tag E[(control0-at tag k expr)]) => ((lambda (k) expr)
+                                                  (lambda (x) E[x]))
+    ; where E has no prompt-at for tag
+
+                                        *new-prompt*
+(new-prompt) -> any ~
+(set prompt-expr expr ...+)
+(cupto prompt-expr id expr ...+)
+
+The operators of Gunter et al. [Gunter95].
+
+In this library, new-prompt is an alias for
+make-continuation-prompt-tag, set is an alias for prompt0-at, and cupto
+is an alias for control0-at.
+
+5. Continuation Marks
+
+See [missing] and [missing] for general information about continuation
+marks.
+
+The list of continuation marks for a key k and a continuation C that
+extends C0 is defined as follows:
+
+* If C is an empty continuation, then the mark list is null.
+
+* If C’s first frame contains a mark m for k, then the mark list for C
+  is (cons m lst), where lst is the mark list for k in C0.
+
+* If C’s first frame does not contain a mark keyed by k, then the mark
+  list for C is the mark list for C0.
+
+The with-continuation-mark form installs a mark on the first frame of
+the current continuation (see [missing]).  Procedures such as
+current-continuation-marks allow inspection of marks.
+
+Whenever Racket creates an exception record for a primitive exception,
+it fills the continuation-marks field with the value of
+(current-continuation-marks), thus providing a snapshot of the
+continuation marks at the time of the exception.
+
+When a continuation procedure returned by call-with-current-continuation
+or call-with-composable-continuation is invoked, it restores the
+captured continuation, and also restores the marks in the continuation’s
+frames to the marks that were present when
+call-with-current-continuation or call-with-composable-continuation was
+invoked.
+
+                                        *continuation-marks*
+(continuation-marks cont [prompt-tag]) -> continuation-mark-set? ~
+  cont : (or/c continuation? thread? #f) ~
+  prompt-tag : continuation-prompt-tag? ~
+             = (default-continuation-prompt-tag)
+
+Returns an opaque value containing the set of continuation marks for all
+keys in the continuation cont (or the current continuation of cont if it
+is a thread) up to the prompt tagged by prompt-tag. If cont is #f, the
+resulting set of continuation marks is empty. If cont is an escape
+continuation (see [missing]), then the current continuation must extend
+cont, or the exn:fail:contract exception is raised. If cont was not
+captured with respect to prompt-tag and does not include a prompt for
+prompt-tag, the exn:fail:contract exception is raised. If cont is a dead
+thread, the result is an empty set of continuation marks.
+
+                                        *current-continuation-marks*
+(current-continuation-marks [prompt-tag]) ~
+ -> continuation-mark-set?
+  prompt-tag : continuation-prompt-tag? ~
+             = (default-continuation-prompt-tag)
+
+Returns an opaque value containing the set of continuation marks for all
+keys in the current continuation up to prompt-tag. In other words, it
+produces the same value as
+
+  (call-with-current-continuation
+    (lambda (k)
+      (continuation-marks k prompt-tag))
+    prompt-tag)
+
+                                        *continuation-mark-set->list*
+(continuation-mark-set->list  mark-set          ~
+                              key-v            
+                             [prompt-tag]) -> list?
+  mark-set : continuation-mark-set? ~
+  key-v : any/c ~
+  prompt-tag : continuation-prompt-tag? ~
+             = (default-continuation-prompt-tag)
+
+Returns a newly-created list containing the marks for key-v in mark-set,
+which is a set of marks returned by current-continuation-marks. The
+result list is truncated at the first point, if any, where continuation
+frames were originally separated by a prompt tagged with prompt-tag.
+
+                                        *make-continuation-mark-key*
+(make-continuation-mark-key) -> continuation-mark-key? ~
+(make-continuation-mark-key sym) -> continuation-mark-key?
+  sym : symbol? ~
+
+Creates a continuation mark key that is not equal? to the result of any
+other value (including prior and future results from
+make-continuation-mark-key). The continuation mark key can be used as
+the key argument for with-continuation-mark or accessor procedures like
+continuation-mark-set-first. The mark key can be chaperoned or
+impersonated, unlike other values that are used as the mark key.
+
+The optional sym argument, if provided, is used when printing the
+continuation mark.
+
+                                        *continuation-mark-set->list**
+(continuation-mark-set->list*  mark-set          ~
+                               key-list         
+                              [none-v           
+                               prompt-tag]) -> (listof vector?)
+  mark-set : continuation-mark-set? ~
+  key-list : (listof any/c) ~
+  none-v : any/c = #f ~
+  prompt-tag : continuation-prompt-tag? ~
+             = (default-continuation-prompt-tag)
+
+Returns a newly-created list containing vectors of marks in mark-set for
+the keys in key-list, up to prompt-tag. The length of each vector in the
+result list is the same as the length of key-list, and a value in a
+particular vector position is the value for the corresponding key in
+key-list. Values for multiple keys appear in a single vector only when
+the marks are for the same continuation frame in mark-set. The none-v
+argument is used for vector elements to indicate the lack of a value.
+
+                                        *continuation-mark-set-first*
+(continuation-mark-set-first  mark-set          ~
+                              key-v            
+                             [none-v           
+                              prompt-tag]) -> any
+  mark-set : (or/c continuation-mark-set? #f) ~
+  key-v : any/c ~
+  none-v : any/c = #f ~
+  prompt-tag : continuation-prompt-tag? ~
+             = (default-continuation-prompt-tag)
+
+Returns the first element of the list that would be returned by
+(continuation-mark-set->list (or mark-set (current-continuation-marks
+prompt-tag)) key-v prompt-tag), or none-v if the result would be the
+empty list. Typically, this result can be computed more quickly using
+continuation-mark-set-first than using continuation-mark-set->list.
+
+                                        *call-with-immediate-continuation-mark*
+(call-with-immediate-continuation-mark  key-v            ~
+                                        proc            
+                                       [default-v]) -> any
+  key-v : any/c ~
+  proc : (any/c . -> . any) ~
+  default-v : any/c = #f ~
+
+Calls proc with the value associated with key-v in the first frame of
+the current continuation (i.e., a value that would be replaced if the
+call to call-with-immediate-continuation-mark were replaced with a
+with-continuation-mark form using key-v as the key expression). If no
+such value exists in the first frame, default-v is passed to proc. The
+proc is called in tail position with respect to the
+call-with-immediate-continuation-mark call.
+
+This function could be implemented with a combination of
+with-continuation-mark, current-continuation-marks, and
+continuation-mark-set->list, but call-with-immediate-continuation-mark
+is implemented more efficiently; it inspects only the first frame of the
+current continuation.
+
+                                        *continuation-mark-key?*
+(continuation-mark-key? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a mark key created by make-continuation-mark-key, #f
+otherwise.
+
+                                        *continuation-mark-set?*
+(continuation-mark-set? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a mark set created by continuation-marks or
+current-continuation-marks, #f otherwise.
+
+                                        *continuation-mark-set->context*
+(continuation-mark-set->context mark-set) -> list? ~
+  mark-set : continuation-mark-set? ~
+
+Returns a list representing an approximate “stack trace” for mark-set’s
+continuation. The list contains pairs, where the car of each pair
+contains either #f or a symbol for a procedure name, and the cdr of each
+pair contains either #f or a srcloc value for the procedure’s source
+location (see [missing]); the car and cdr are never both #f.
+
+Conceptually, the stack-trace list is the result of
+continuation-mark-set->list with mark-set and Racket’s private key for
+procedure-call marks. The implementation may be different, however, and
+the results may merely approximate the correct answer. Thus, while the
+result may contain useful hints to humans about the context of an
+expression, it is not reliable enough for programmatic use.
+
+A stack trace is extracted from an exception and displayed by the
+default error display handler (see error-display-handler) for exceptions
+other than exn:fail:user (see raise-user-error in Raising Exceptions).
+
+Examples:
+  > (define (extract-current-continuation-marks key)
+      (continuation-mark-set->list
+       (current-continuation-marks)
+       key))
+
+  > (with-continuation-mark 'key 'mark
+      (extract-current-continuation-marks 'key))
+  '(mark)
+  > (with-continuation-mark 'key1 'mark1
+      (with-continuation-mark 'key2 'mark2
+        (list
+         (extract-current-continuation-marks 'key1)
+         (extract-current-continuation-marks 'key2))))
+  '((mark1) (mark2))
+  > (with-continuation-mark 'key 'mark1
+      (with-continuation-mark 'key 'mark2 ; replaces previous mark
+        (extract-current-continuation-marks 'key)))
+  '(mark2)
+  > (with-continuation-mark 'key 'mark1
+      (list ; continuation extended to evaluate the argument
+       (with-continuation-mark 'key 'mark2
+          (extract-current-continuation-marks 'key))))
+  '((mark2 mark1))
+  > (let loop ([n 1000])
+      (if (zero? n)
+          (extract-current-continuation-marks 'key)
+          (with-continuation-mark 'key n
+            (loop (sub1 n)))))
+  '(1)
+
+6. Breaks
+
+A break is an asynchronous exception, usually triggered through an
+external source controlled by the user, or through the break-thread
+procedure. For example, the user may type Ctl-C in a terminal to trigger
+a break. On some platforms, the Racket process may receive SIGINT,
+SIGHUP, or SIGTERM; the latter two correspond to hang-up and terminate
+breaks as reflected by exn:break:hang-up and exn:break:terminate,
+respectively. Multiple breaks may be collapsed into a single exception,
+and multiple breaks of different kinds may be collapsed to a single
+“strongest” break, where a hang-up break is stronger than an interrupt
+break, and a terminate break is stronger than a hang-up break.
+
+A break exception can only occur in a thread while breaks are enabled.
+When a break is detected and enabled, the exn:break (or
+exn:break:hang-up or exn:break:terminate) exception is raised in the
+thread sometime afterward; if breaking is disabled when break-thread is
+called, the break is suspended until breaking is again enabled for the
+thread. While a thread has a suspended break, additional breaks are
+ignored.
+
+Breaks are enabled through the break-enabled parameter-like procedure
+and through the parameterize-break form, which is analogous to
+parameterize. The break-enabled procedure does not represent a parameter
+to be used with parameterize, because changing the break-enabled state
+of a thread requires an explicit check for breaks, and this check is
+incompatible with the tail evaluation of a parameterize expression’s
+body.
+
+Certain procedures, such as semaphore-wait/enable-break, enable breaks
+temporarily while performing a blocking action. If breaks are enabled
+for a thread, and if a break is triggered for the thread but not yet
+delivered as an exn:break exception, then the break is guaranteed to be
+delivered before breaks can be disabled in the thread. The timing of
+exn:break exceptions is not guaranteed in any other way.
+
+Before calling a with-handlers predicate or handler, an exception
+handler, an error display handler, an error escape handler, an error
+value conversion handler, or a pre-thunk or post-thunk for a
+dynamic-wind, the call is parameterize-breaked to disable breaks.
+Furthermore, breaks are disabled during the transitions among handlers
+related to exceptions, during the transitions between pre-thunks and
+post-thunks for dynamic-wind, and during other transitions for a
+continuation jump. For example, if breaks are disabled when a
+continuation is invoked, and if breaks are also disabled in the target
+continuation, then breaks will remain disabled from the time of the
+invocation until the target continuation executes unless a relevant
+dynamic-wind pre-thunk or post-thunk explicitly enables breaks.
+
+If a break is triggered for a thread that is blocked on a nested thread
+(see call-in-nested-thread), and if breaks are enabled in the blocked
+thread, the break is implicitly handled by transferring it to the nested
+thread.
+
+When breaks are enabled, they can occur at any point within execution,
+which makes certain implementation tasks subtle. For example, assuming
+breaks are enabled when the following code is executed,
+
+  (with-handlers ([exn:break? (lambda (x) (void))]) ~
+    (semaphore-wait s))
+
+then it is not the case that a #<void> result means the semaphore was
+decremented or a break was received, exclusively. It is possible that
+both occur: the break may occur after the semaphore is successfully
+decremented but before a #<void> result is returned by semaphore-wait. A
+break exception will never damage a semaphore, or any other built-in
+construct, but many built-in procedures (including semaphore-wait)
+contain internal sub-expressions that can be interrupted by a break.
+
+In general, it is impossible using only semaphore-wait to implement the
+guarantee that either the semaphore is decremented or an exception is
+raised, but not both.  Racket therefore supplies
+semaphore-wait/enable-break (see [missing]), which does permit the
+implementation of such an exclusive guarantee:
+
+  (parameterize-break #f
+    (with-handlers ([exn:break? (lambda (x) (void))]) ~
+      (semaphore-wait/enable-break s)))
+
+In the above expression, a break can occur at any point until breaks are
+disabled, in which case a break exception is propagated to the enclosing
+exception handler. Otherwise, the break can only occur within
+semaphore-wait/enable-break, which guarantees that if a break exception
+is raised, the semaphore will not have been decremented.
+
+To allow similar implementation patterns over blocking port operations,
+Racket provides read-bytes-avail!/enable-break,
+write-bytes-avail/enable-break, and other procedures.
+
+                                        *break-enabled*
+(break-enabled) -> boolean? ~
+(break-enabled on?) -> void?
+  on? : any/c ~
+
+Gets or sets the break enabled state of the current thread. If on? is
+not supplied, the result is #t if breaks are currently enabled, #f
+otherwise.  If on? is supplied as #f, breaks are disabled, and if on? is
+a true value, breaks are enabled.
+
+                                        *parameterize-break*
+(parameterize-break boolean-expr body ...+) ~
+
+Evaluates boolean-expr to determine whether breaks are initially enabled
+while evaluating the bodys in sequence. The result of the
+parameterize-break expression is the result of the last expr.
+
+Like parameterize (see [missing]), a fresh thread cell (see [missing])
+is allocated to hold the break-enabled state of the continuation, and
+calls to break-enabled within the continuation access or modify the new
+cell. Unlike parameters, the break setting is not inherited by new
+threads.
+
+                                        *current-break-parameterization*
+(current-break-parameterization) -> break-parameterization? ~
+
+Analogous to (current-parameterization) (see [missing]); it returns a
+break parameterization (effectively, a thread cell) that holds the
+current continuation’s break-enable state.
+
+                                        *call-with-break-parameterization*
+(call-with-break-parameterization break-param      ~
+                                  thunk)      -> any
+  break-param : break-parameterization? ~
+  thunk : (-> any) ~
+
+Analogous to (call-with-parameterization parameterization thunk) (see
+[missing]), calls thunk in a continuation whose break-enabled state is
+in break-param. The thunk is not called in tail position with respect to
+the call-with-break-parameterization call.
+
+                                        *break-parameterization?*
+(break-parameterization? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a break parameterization as produced by
+current-break-parameterization, #f otherwise.
+
+Added in version 6.1.1.8.
+
+7. Exiting
+
+                                        *exit*
+(exit [v]) -> any ~
+  v : any/c = #t ~
+
+Passes v to the current exit handler. If the exit handler does not
+escape or terminate the thread, #<void> is returned.
+
+                                        *exit-handler*
+(exit-handler) -> (any/c . -> . any) ~
+(exit-handler proc) -> void?
+  proc : (any/c . -> . any) ~
+
+A parameter that determines the current exit handler. The exit handler
+is called by exit.
+
+The default exit handler in the Racket executable takes any argument,
+calls plumber-flush-all on the original plumber, and shuts down the
+OS-level Racket process. The argument is used as the OS-level exit code
+if it is an exact integer between 1 and 255 (which normally means
+“failure”); otherwise, the exit code is 0, (which normally means
+“success”).
+
+                                        *executable-yield-handler*
+(executable-yield-handler) -> (byte? . -> . any) ~
+(executable-yield-handler proc) -> void?
+  proc : (byte? . -> . any) ~
+
+A parameter that determines a procedure to be called as the Racket
+process is about to exit normally. The procedure associated with this
+parameter is not called when exit (or, more precisely, the default exit
+handler) is used to exit early. The argument to the handler is the
+status code that is returned to the system on exit. The default
+executable-yield handler simply returns #<void>.
+
+The scheme/gui/base library sets this parameter to wait until all frames
+are closed, timers stopped, and queued events handled in the main
+eventspace. See scheme/gui/base for more information.

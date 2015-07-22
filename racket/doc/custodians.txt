@@ -1,0 +1,136 @@
+Custodians
+
+See [missing] for basic information on the Racket custodian model.
+
+                                        *custodian?*
+(custodian? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a custodian value, #f otherwise.
+
+                                        *make-custodian*
+(make-custodian [cust]) -> custodian? ~
+  cust : custodian? = (current-custodian) ~
+
+Creates a new custodian that is subordinate to cust. When cust is
+directed (via custodian-shutdown-all) to shut down all of its managed
+values, the new subordinate custodian is automatically directed to shut
+down its managed values as well.
+
+                                        *custodian-shutdown-all*
+(custodian-shutdown-all cust) -> void? ~
+  cust : custodian? ~
+
+In racket/gui/base, eventspaces managed by cust are also shut down.
+
+Closes all file-stream ports, TCP ports, TCP listeners, and UDP sockets
+that are managed by cust (and its subordinates), and empties all
+custodian boxes associated with cust (and its subordinates). It also
+removes cust (and its subordinates) as managers of all threads; when a
+thread has no managers, it is killed (or suspended; see
+thread/suspend-to-kill) If the current thread is to be killed, all other
+shut-down actions take place before killing the thread.
+
+                                        *current-custodian*
+(current-custodian) -> custodian? ~
+(current-custodian cust) -> void?
+  cust : custodian? ~
+
+Custodians also manage eventspaces from racket/gui/base.
+
+A parameter that determines a custodian that assumes responsibility for
+newly created threads, file-stream ports, TCP ports, TCP listeners, UDP
+sockets, and byte converters.
+
+                                        *custodian-managed-list*
+(custodian-managed-list cust super) -> list? ~
+  cust : custodian? ~
+  super : custodian? ~
+
+Returns a list of immediately managed objects (not including custodian
+boxes) and subordinate custodians for cust, where cust is itself
+subordinate to super (directly or indirectly). If cust is not strictly
+subordinate to super, the exn:fail:contract exception is raised.
+
+                                        *custodian-memory-accounting-available?*
+(custodian-memory-accounting-available?) -> boolean? ~
+
+Memory accounting is normally available in Racket 3m, which is the main
+variant of Racket, and not normally available in Racket CGC.
+
+Returns #t if Racket is compiled with support for per-custodian memory
+accounting, #f otherwise.
+
+                                        *custodian-require-memory*
+(custodian-require-memory limit-cust      ~
+                          need-amt       
+                          stop-cust) -> void?
+  limit-cust : custodian? ~
+  need-amt : exact-nonnegative-integer? ~
+  stop-cust : custodian? ~
+
+Registers a required-memory check if Racket is compiled with support for
+per-custodian memory accounting, otherwise the exn:fail:unsupported
+exception is raised.
+
+If a check is registered, and if Racket later reaches a state after
+garbage collection (see [missing]) where allocating need-amt bytes
+charged to limit-cust would fail or trigger some shutdown, then
+stop-cust is shut down.
+
+                                        *custodian-limit-memory*
+(custodian-limit-memory  limit-cust       ~
+                         limit-amt       
+                        [stop-cust]) -> void?
+  limit-cust : custodian? ~
+  limit-amt : exact-nonnegative-integer? ~
+  stop-cust : custodian? = limit-cust ~
+
+Registers a limited-memory check if Racket is compiled with support for
+per-custodian memory accounting, otherwise the exn:fail:unsupported
+exception is raised.
+
+If a check is registered, and if Racket later reaches a state after
+garbage collection (see [missing]) where limit-cust owns more than
+limit-amt bytes, then stop-cust is shut down.
+
+A custodian’s limit is checked only after a garbage collection, except
+that it may also be checked during certain large allocations that are
+individually larger than the custodian’s limit. A single garbage
+collection may shut down multiple custodians, even if shutting down only
+one of the custodians would have reduced memory use for other
+custodians.
+
+For reliable shutdown, limit-amt for custodian-limit-memory must be much
+lower than the total amount of memory available (minus the size of
+memory that is potentially used and not charged to limit-cust).
+Moreover, if individual allocations that are initially charged to
+limit-cust can be arbitrarily large, then stop-cust must be the same as
+limit-cust, so that excessively large immediate allocations can be
+rejected with an exn:fail:out-of-memory exception.
+
+                                        *make-custodian-box*
+(make-custodian-box cust v) -> custodian-box? ~
+  cust : custodian? ~
+  v : any/c ~
+
+Returns a custodian box that contains v as long as cust has not been
+shut down.
+
+A custodian box is a synchronizable event (see [missing]). The custodian
+box becomes ready when its custodian is shut down; the synchronization
+result of a custodian box is the custodian box itself.
+
+                                        *custodian-box?*
+(custodian-box? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a custodian box produced by make-custodian-box, #f
+otherwise.
+
+                                        *custodian-box-value*
+(custodian-box-value cb) -> any ~
+  cb : custodian-box? ~
+
+Returns the value in the given custodian box, or #f if the value has
+been removed.

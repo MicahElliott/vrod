@@ -1,0 +1,532 @@
+Evaluation and Compilation
+
+                                        *current-eval*
+(current-eval) -> (any/c . -> . any) ~
+(current-eval proc) -> void?
+  proc : (any/c . -> . any) ~
+
+A parameter that determines the current evaluation handler. The
+evaluation handler is a procedure that takes a top-level form and
+evaluates it, returning the resulting values. The evaluation handler is
+called by eval, eval-syntax, the default load handler, and
+read-eval-print-loop to evaluate a top-level form. The handler should
+evaluate its argument in tail position.
+
+The top-level-form provided to the handler can be a syntax object, a
+compiled form, a compiled form wrapped as a syntax object, or an
+arbitrary datum.
+
+The default handler converts an arbitrary datum to a syntax object using
+datum->syntax, and then enriches its lexical information in the same way
+as eval. (If top-level-form is a syntax object, then its lexical
+information is not enriched.)  The default evaluation handler partially
+expands the form to splice the body of top-level begin forms into the
+top level (see expand-to-top-form), and then individually compiles and
+evaluates each spliced form before continuing to expand, compile, and
+evaluate later forms.
+
+                                        *eval*
+(eval top-level-form [namespace]) -> any ~
+  top-level-form : any/c ~
+  namespace : namespace? = (current-namespace) ~
+
++See also [missing] in [missing].
+
+Calls the current evaluation handler to evaluate top-level-form. The
+evaluation handler is called in tail position with respect to the eval
+call, and parameterized to set current-namespace to namespace.
+
+If top-level-form is a syntax object whose datum is not a compiled form,
+then its lexical information is enriched before it is sent to the
+evaluation handler:
+
+* If top-level-form is a pair whose car is a symbol or identifier, and
+  if applying namespace-syntax-introduce to the
+  (datum->syntax-converted) identifier produces an identifier bound to
+  module in a phase level that corresponds to namespace’s base phase,
+  then only that identifier is enriched.
+
+* For any other top-level-form, namespace-syntax-introduce is applied to
+  the entire syntax object.
+
+For interactive evaluation in the style of read-eval-print-loop and
+load, wrap each expression with #%top-interaction, which is normally
+bound to #%top-interaction, before passing it to eval.
+
+                                        *eval-syntax*
+(eval-syntax stx [namespace]) -> any ~
+  stx : syntax? ~
+  namespace : namespace? = (current-namespace) ~
+
+Like eval, except that stx must be a syntax object, and its lexical
+context is not enriched before it is passed to the evaluation handler.
+
+                                        *current-load*
+(current-load) ~
+ -> (path? (or/c #f
+                 symbol?
+                 (cons/c (or/c #f symbol?)
+                         (non-empty-listof symbol?)))
+           . -> .
+           any)
+(current-load proc) -> void?
+  proc : (path? (or/c #f ~
+                      symbol?
+                      (cons/c (or/c #f symbol?)
+                              (non-empty-listof symbol?)))
+                . -> .
+                any)
+
+A parameter that determines the current load handler to load top-level
+forms from a file. The load handler is called by load, load-relative,
+load/cd, and the default compiled-load handler.
+
+A load handler takes two arguments: a path (see [missing]) and an
+expected module name. The expected module name is a symbol or a list
+when the call is to load a module declaration in response to a require
+(in which case the file should contain a module declaration), or #f for
+any other load.
+
+When loading a module from a stream that starts with a compiled module
+that contains submodules, the load handler should load only the
+requested module, where a symbol as the load handler’s indicates the
+root module and a list indicates a submodule whose path relative to the
+root module is given by the cdr of the list. The list starts with #f
+when a submodule should be loaded only if it can be loaded independently
+(i.e., from compiled form—never from source); if the submodule cannot be
+loaded independently, the load handler should return without loading
+from a file. When the expected module name is a list that starts with a
+symbol, the root module and any other submodules can be loaded from the
+given file, which might be from source, and the load handler still
+should not complain if the expected submodule is not found.
+
+The default load handler reads forms from the file in read-syntax mode
+with line-counting enabled for the file port, unless the path has a
+".zo" suffix. It also parameterizes each read to set
+read-accept-compiled, read-accept-reader, and read-accept-lang to #t. In
+addition, if load-on-demand-enabled is #t, then read-on-demand-source is
+set to the cleansed, absolute form of path during the read-syntax call.
+After reading a single form, the form is passed to the current
+evaluation handler, wrapping the evaluation in a continuation prompt
+(see call-with-continuation-prompt) for the default continuation prompt
+tag with handler that propagates the abort to the continuation of the
+load call.
+
+If the second argument to the load handler is a symbol, then:
+
+* The read-syntax from the file is additionally parameterized as follows
+  (to provide consistent reading of module source):
+
+    (current-readtable #f)
+    (read-case-sensitive #t)
+    (read-square-bracket-as-paren #t)
+    (read-curly-brace-as-paren #t)
+    (read-accept-box #t)
+    (read-accept-compiled #t)
+    (read-accept-bar-quote #t)
+    (read-accept-graph #t)
+    (read-decimal-as-inexact #t)
+    (read-accept-dot #t)
+    (read-accept-infix-dot #t)
+    (read-accept-quasiquote #t)
+    (read-accept-reader #t)
+    (read-accept-lang #t)
+
+* If the read result is not a module form, or if a second read-syntax
+  does not produce an end-of-file, then the exn:fail exception is raised
+  without evaluating the form that was read from the file. (In previous
+  versions, the module declaration was checked to match the name given
+  as the second argument to the load handler, but this check is no
+  longer performed.)
+
+* The lexical information of the initial module identifier is enriched
+  with a binding for module, so that the form corresponds to a module
+  declaration independent of the current namespace’s bindings.
+
+If the second argument to the load handler is #f, then each expression
+read from the file is wrapped with #%top-interaction, which is normally
+bound to #%top-interaction, before passing it to the evaluation handler.
+
+The return value from the default load handler is the value of the last
+form from the loaded file, or #<void> if the file contains no forms. If
+the given path is a relative path, then it is resolved using the value
+of current-directory.
+
+                                        *load*
+(load file) -> any ~
+  file : path-string? ~
+
++See also [missing] in [missing].
+
+Calls the current load handler in tail position. The call is
+parameterized to set current-load-relative-directory to the directory of
+file, which is resolved relative to the value of current-directory.
+
+                                        *load-relative*
+(load-relative file) -> any ~
+  file : path-string? ~
+
+Like load/use-compiled, but when file is a relative path, it is resolved
+using the value of current-load-relative-directory instead of the value
+of current-directory if the former is not #f, otherwise
+current-directory is used.
+
+                                        *load/cd*
+(load/cd file) -> any ~
+  file : path-string? ~
+
+Like load, but load/cd sets both current-directory and
+current-load-relative-directory before calling the load handler.
+
+                                        *current-load-extension*
+(current-load-extension) ~
+ -> (path? (or/c symbol? #f) . -> . any)
+(current-load-extension proc) -> void?
+  proc : (path? (or/c symbol? #f) . -> . any) ~
+
+A parameter that determines a extension-load handler, which is called by
+load-extension and the default compiled-load handler.
+
+An extension-load handler takes the same arguments as a load handler,
+but the file should be a platform-specific dynamic extension, typically
+with the file suffix ".so" (Unix), ".dll" (Windows), or ".dylib" (Mac OS
+X).  The file is loaded using internal, OS-specific primitives. See
+[missing] for more information on dynamic extensions.
+
+                                        *load-extension*
+(load-extension file) -> any ~
+  file : path-string? ~
+
+Sets current-load-relative-directory like load, and calls the
+extension-load handler in tail position.
+
+                                        *load-relative-extension*
+(load-relative-extension file) -> any ~
+  file : path-string? ~
+
+Like load-extension, but resolves file using
+current-load-relative-directory like load-relative.
+
+                                        *current-load/use-compiled*
+(current-load/use-compiled) ~
+ -> (path? (or/c #f
+                 symbol?
+                 (cons/c (or/c #f symbol?)
+                         (non-empty-listof symbol?)))
+           . -> . any)
+(current-load/use-compiled proc) -> void?
+  proc : (path? (or/c #f ~
+                      symbol?
+                      (cons/c (or/c #f symbol?)
+                              (non-empty-listof symbol?)))
+                . -> . any)
+
+A parameter that determines the current compiled-load handler to load
+from a file that may have a compiled form. The compiled-load handler is
+called by load/use-compiled.
+
+The protocol for a compiled-load handler is the same as for the load
+handler (see current-load), except that a compiled-load handler is
+expected to set current-load-relative-directory itself. The default
+compiled-load handler, however, checks for a ".ss" file when the given
+path ends with ".rkt", no ".rkt" file exists, and when the handler’s
+second argument is a symbol. In addition, the default compiled-load
+handler checks for ".zo" (bytecode) files and ".so" (native Unix),
+".dll" (native Windows), or ".dylib" (native Mac OS X) files.
+
+The check for a compiled file occurs whenever the given path file ends
+with any extension (e.g., ".rkt" or ".scrbl"), and the check consults
+the subdirectories indicated by the current-compiled-file-roots and
+use-compiled-file-paths parameters relative to file, where the former
+supplies “roots” for compiled files and the latter provides
+subdirectories. See also compiler/compilation-path. A “root” can be an
+absolute path, in which case file’s directory is combined with
+reroot-path and the root as the second argument; if the “root” is a
+relative path, then the relative path is instead suffixed onto the
+directory of file. The roots are tried in order, and the subdirectories
+are checked in order within each root. A ".zo" version of the file
+(whose name is formed by passing file and #".zo" to path-add-suffix) is
+loaded if it exists directly in one of the indicated subdirectories, or
+a ".so"/".dll"/".dylib" version of the file is loaded if it exists
+within a "native" subdirectory of a use-compiled-file-paths directory,
+in an even deeper subdirectory as named by system-library-subpath. A
+compiled file is loaded only if its modification date is not older than
+the date for file. If both ".zo" and ".so"/".dll"/".dylib" files are
+available, the ".so"/".dll"/".dylib" file is used.  If file ends with
+".rkt", no such file exists, the handler’s second argument is a symbol,
+and a ".ss" file exists, then ".zo" and ".so"/".dll"/".dylib" files are
+used only with names based on file with its suffixed replaced by ".ss".
+
+While a ".zo", ".so", ".dll", or ".dylib" file is loaded, the current
+load-relative directory is set to the directory of the original file.
+If the file to be loaded has the suffix ".ss" while the requested file
+has the suffix ".rkt", then the current-module-declare-source parameter
+is set to the full path of the loaded file, otherwise the
+current-module-declare-source parameter is set to #f.
+
+If the original file is loaded or a ".zo" variant is loaded, the load
+handler is called to load the file. If any other kind of file is loaded,
+the extension-load handler is called.
+
+When the default compiled-load handler loads a module from a bytecode
+(i.e., ".zo") file, the handler records the bytecode file path in the
+current namespace’s module registry. More specifically, the handler
+records the path for the top-level module of the loaded module, which is
+an enclosing module if the loaded module is a submodule. Thereafter,
+loads via the default compiled-load handler for modules within the same
+top-level module use the recorded file, independent of the file that
+otherwise would be selected by the compiled-load handler (e.g., even if
+the use-compiled-file-paths parameter value changes). The default module
+name resolver transfers bytecode-file information when a module
+declaration is attached to a new namespace. This protocol supports
+independent but consistent loading of submodules from bytecode files.
+
+                                        *load/use-compiled*
+(load/use-compiled file) -> any ~
+  file : path-string? ~
+
+Calls the current compiled-load handler in tail position.
+
+                                        *current-load-relative-directory*
+(current-load-relative-directory) ~
+ -> (or/c (and/c path-string? complete-path?) #f)
+(current-load-relative-directory path) -> void?
+  path : (or/c (and/c path-string? complete-path?) #f) ~
+
+A parameter that is set by load, load-relative, load-extension,
+load-relative-extension, and the default compiled-load handler, and used
+by load-relative, load-relative-extension, and the default compiled-load
+handler.
+
+When a new path or string is provided as the parameter’s value, it is
+immediately expanded (see [missing]) and converted to a path. (The
+directory need not exist.)
+
+                                        *use-compiled-file-paths*
+(use-compiled-file-paths) ~
+ -> (listof (and/c path? relative-path?))
+(use-compiled-file-paths paths) -> void?
+  paths : (listof (and/c path-string? relative-path?)) ~
+
+A list of relative paths, which defaults to (list (string->path
+"compiled")). It is used by the compiled-load handler (see
+current-load/use-compiled).
+
+                                        *current-compiled-file-roots*
+(current-compiled-file-roots) -> (listof (or/c path? 'same)) ~
+(current-compiled-file-roots paths) -> void?
+  paths : (listof (or/c path-string? 'same)) ~
+
+A list of paths and 'sames that is is used by the default compiled-load
+handler (see current-load/use-compiled).
+
+The parameter is normally initialized to (list 'same), but the
+parameter’s initial value can be adjusted by the PLTCOMPILEDROOTS
+environment variable or the --compiled or -R command-line flag for
+racket.  If the environment variable is defined and not overridden by a
+command-line flag, it is parsed by first replacing any @(version) with
+the result of (version), then using path-list-string->path-list with a
+default path list (list (build-path 'same)) to arrive at the parameter’s
+initial value.
+
+                                        *read-eval-print-loop*
+(read-eval-print-loop) -> any ~
+
+Starts a new REPL using the current input, output, and error ports. The
+REPL wraps each expression to evaluate with #%top-interaction, which is
+normally bound to #%top-interaction, and it wraps each evaluation with a
+continuation prompt using the default continuation prompt tag and prompt
+handler (see call-with-continuation-prompt). The REPL also wraps the
+read and print operations with a prompt for the default tag whose
+handler ignores abort arguments and continues the loop. The
+read-eval-print-loop procedure does not return until eof is read, at
+which point it returns #<void>.
+
+The read-eval-print-loop procedure can be configured through the
+current-prompt-read, current-eval, and current-print parameters.
+
+                                        *current-prompt-read*
+(current-prompt-read) -> (-> any) ~
+(current-prompt-read proc) -> void?
+  proc : (-> any) ~
+
+A parameter that determines a prompt read handler, which is a procedure
+that takes no arguments, displays a prompt string, and returns a
+top-level form to evaluate. The prompt read handler is called by
+read-eval-print-loop, and after printing a prompt, the handler typically
+should call the read interaction handler (as determined by the
+current-read-interaction parameter) with the port produced by the
+interaction port handler (as determined by the
+current-get-interaction-input-port parameter).
+
+The default prompt read handler prints >  and returns the result of
+
+  (let ([in ((current-get-interaction-input-port))])
+    ((current-read-interaction) (object-name in) in))
+
+If the input and output ports are both terminals (in the sense of
+terminal-port?) and if the output port appears to be counting lines
+(because port-next-location returns a non-#f line and column), then the
+output port’s line is incremented and its column is reset to 0 via
+set-port-next-location! before returning the read result.
+
+                                        *current-get-interaction-input-port*
+(current-get-interaction-input-port) -> (-> input-port?) ~
+(current-get-interaction-input-port proc) -> void?
+  proc : (-> input-port?) ~
+
+A parameter that determines the interaction port handler, which returns
+a port to use for read-eval-print-loop inputs.
+
+The default interaction port handler returns the current input port. In
+addition, if that port is the initial current input port, the initial
+current output and error ports are flushed.
+
+The racket/gui/base library adjusts this parameter’s value by extending
+the current value. The extension wraps the result port so that GUI
+events can be handled when reading from the port blocks.
+
+                                        *current-read-interaction*
+(current-read-interaction) -> (any/c input-port? -> any) ~
+(current-read-interaction proc) -> void?
+  proc : (any/c input-port? -> any) ~
+
+A parameter that determines the current read interaction handler, which
+is procedure that takes an arbitrary value and an input port and returns
+an expression read from the input port.
+
+The default read interaction handler accepts src and in and returns
+
+  (parameterize ([read-accept-reader #t]
+                 [read-accept-lang #f])
+    (read-syntax src in))
+
+                                        *current-print*
+(current-print) -> (any/c -> any) ~
+(current-print proc) -> void?
+  proc : (any/c -> any) ~
+
+A parameter that determines the print handler that is called  by
+read-eval-print-loop to print the result of an evaluation  (and the
+result is ignored).
+
+The default print handler prints the value to the  current output port
+(as determined by the  current-output-port parameter) and then outputs a
+newline,  except that it prints nothing when the value is #<void>.
+
+                                        *current-compile*
+(current-compile) ~
+ -> (any/c boolean? . -> . compiled-expression?)
+(current-compile proc) -> void?
+  proc : (any/c boolean? . -> . compiled-expression?) ~
+
+A parameter that determines the current compilation handler. The
+compilation handler is a procedure that takes a top-level form and
+returns a compiled form; see [missing] for more information on
+compilation.
+
+The compilation handler is called by compile, and indirectly by the
+default evaluation handler and the default load handler.
+
+The handler’s second argument is #t if the compiled form will be used
+only for immediate evaluation, or #f if the compiled form may be saved
+for later use; the default compilation handler is optimized for the
+special case of immediate evaluation.
+
+When a compiled form is written to an output port, the written form
+starts with #~. See [missing] for more information.
+
+For internal testing purposes, when the PLT_VALIDATE_COMPILE environment
+variable is set, the default compilation handler runs a bytecode
+validator on its own compilation results.
+
+                                        *compile*
+(compile top-level-form) -> compiled-expression? ~
+  top-level-form : any/c ~
+
+Like eval, but calls the current compilation handler in tail position
+with top-level-form.
+
+                                        *compile-syntax*
+(compile-syntax stx) -> compiled-expression? ~
+  stx : syntax? ~
+
+Like eval-syntax, but calls the current compilation handler in tail
+position with stx.
+
+                                        *compiled-expression?*
+(compiled-expression? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a compiled form, #f otherwise.
+
+                                        *compile-enforce-module-constants*
+(compile-enforce-module-constants) -> boolean? ~
+(compile-enforce-module-constants on?) -> void?
+  on? : any/c ~
+
+A parameter that determines how a module declaration is compiled.
+
+When constants are enforced, and when the macro-expanded body of a
+module contains no set! assignment to a particular variable defined
+within the module, then the variable is marked as constant when the
+definition is evaluated. Afterward, the variable’s value cannot be
+assigned or undefined through module->namespace, and it cannot be
+defined by redeclaring the module.
+
+Enforcing constants allows the compiler to inline some variable values,
+and it allows the native-code just-in-time compiler to generate code
+that skips certain run-time checks.
+
+                                        *compile-allow-set!-undefined*
+(compile-allow-set!-undefined) -> boolean? ~
+(compile-allow-set!-undefined allow?) -> void?
+  allow? : any/c ~
+
+A parameter that determines how a set! expression is compiled when it
+mutates a global variable. If the value of this parameter is a true
+value, set! expressions for global variables are compiled so that the
+global variable is set even if it was not previously defined.
+Otherwise, set! expressions for global variables are compiled to raise
+the exn:fail:contract:variable exception if the global variable is not
+defined at the time the set! is performed.  Note that this parameter is
+used when an expression is compiled, not when it is evaluated.
+
+                                        *compile-context-preservation-enabled*
+(compile-context-preservation-enabled) -> boolean? ~
+(compile-context-preservation-enabled on?) -> void?
+  on? : any/c ~
+
+A parameter that determines whether compilation should avoid
+function-call inlining and other optimizations that may cause
+information to be lost from stack traces (as reported by
+continuation-mark-set->context). The default is #f, which allows such
+optimizations.
+
+                                        *eval-jit-enabled*
+(eval-jit-enabled) -> boolean? ~
+(eval-jit-enabled on?) -> void?
+  on? : any/c ~
+
++See also [missing] in [missing].
+
+A parameter that determines whether the native-code just-in-time
+compiler (JIT) is enabled for code (compiled or not) that is passed to
+the default evaluation handler. A true parameter value is effective only
+on platforms for which the JIT is supported, and changing the value from
+its initial setting affects only forms that are outside of module.
+
+The default is #t, unless the JIT is not supported by the current
+platform, unless it is disabled through the -j/--no-jit command-line
+flag to stand-alone Racket (or GRacket), and unless it is disabled
+through the PLTNOMZJIT environment variable (set to any value).
+
+                                        *load-on-demand-enabled*
+(load-on-demand-enabled) -> boolean? ~
+(load-on-demand-enabled on?) -> void?
+  on? : any/c ~
+
+A parameter that determines whether the default load handler sets
+read-on-demand-source. See current-load for more information. The
+default is #t, unless it is disabled through the -d/--no-delay
+command-line flag.

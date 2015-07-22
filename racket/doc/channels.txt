@@ -1,0 +1,70 @@
+Channels
+
+A channel both synchronizes a pair of threads and passes a value from
+one to the other. Channels are synchronous; both the sender and the
+receiver must block until the (atomic) transaction is complete. Multiple
+senders and receivers can access a channel at once, but a single sender
+and receiver is selected for each transaction.
+
+Channel synchronization is fair: if a thread is blocked on a channel and
+transaction opportunities for the channel occur infinitely often, then
+the thread eventually participates in a transaction.
+
+In addition to its use with channel-specific procedures, a channel can
+be used as a synchronizable event (see [missing]).  A channel is ready
+for synchronization when channel-get would not block; the channel’s
+synchronization result is the same as the channel-get result.
+
+For buffered asynchronous channels, see [missing].
+
+                                        *channel?*
+(channel? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a channel, #f otherwise.
+
+                                        *make-channel*
+(make-channel) -> channel? ~
+
+Creates and returns a new channel. The channel can be used with
+channel-get, with channel-try-get, or as a synchronizable event (see
+[missing]) to receive a value through the channel. The channel can be
+used with channel-put or through the result of channel-put-evt to send a
+value through the channel.
+
+                                        *channel-get*
+(channel-get ch) -> any ~
+  ch : channel? ~
+
+Blocks until a sender is ready to provide a value through ch. The result
+is the sent value.
+
+                                        *channel-try-get*
+(channel-try-get ch) -> any ~
+  ch : channel? ~
+
+Receives and returns a value from ch if a sender is immediately ready,
+otherwise returns #f.
+
+                                        *channel-put*
+(channel-put ch v) -> void? ~
+  ch : channel? ~
+  v : any/c ~
+
+Blocks until a receiver is ready to accept the value v through ch.
+
+                                        *channel-put-evt*
+(channel-put-evt ch v) -> channel-put-evt? ~
+  ch : channel? ~
+  v : any/c ~
+
+Returns a fresh synchronizable event for use with sync. The event is
+ready for synchronization when (channel-put ch v) would not block, and
+the event’s synchronization result is the event itself.
+
+                                        *channel-put-evt?*
+(channel-put-evt? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a channel-put event produced by channel-put-evt, #f
+otherwise.

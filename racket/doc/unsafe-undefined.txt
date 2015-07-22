@@ -1,0 +1,78 @@
+Unsafe Undefined
+
+ (require racket/unsafe/undefined) package: base ~
+
+The bindings documented in this section are provided by the
+racket/unsafe/undefined library, not racket/base or racket.
+
+The constant unsafe-undefined is used internally as a placeholder value.
+For example, it is used by letrec as a value for a variable that has not
+yet been assigned a value.  Unlike the undefined value exported by
+racket/undefined, however, the unsafe-undefined value should not leak as
+the result of a safe expression. Expression results that potentially
+produce unsafe-undefined can be guarded by check-not-unsafe-undefined,
+so that an exception can be raised instead of producing an undefined
+value.
+
+The unsafe-undefined value is always eq? to itself.
+
+Added in version 6.0.1.2 of package base.
+
+unsafe-undefined : any/c ~
+
+The unsafe “undefined” constant.
+
+                                        *check-not-unsafe-undefined*
+(check-not-unsafe-undefined v sym) ~
+ -> (and/c any/c (not/c (one-of/c unsafe-undefined)))
+  v : any/c ~
+  sym : symbol? ~
+
+Checks whether v is unsafe-undefined, and raises
+exn:fail:contract:variable in that case with an error message along the
+lines of “sym: undefined; use before initialization.”  If v is not
+unsafe-undefined, then v is returned.
+
+                                        *check-not-unsafe-undefined/assign*
+(check-not-unsafe-undefined/assign v sym) ~
+ -> (and/c any/c (not/c (one-of/c unsafe-undefined)))
+  v : any/c ~
+  sym : symbol? ~
+
+The same as check-not-unsafe-undefined, except that the error message
+(if any) is along the lines of “sym: undefined; assignment before
+initialization.”
+
+                                        *chaperone-struct-unsafe-undefined*
+(chaperone-struct-unsafe-undefined v) -> any/c ~
+  v : any/c ~
+
+Chaperones v if it is a structure (as viewed through some inspector).
+Every access of a field in the structure is checked to prevent returning
+unsafe-undefined. Similarly, every assignment to a field in the
+structure is checked (unless the check disabled as described below) to
+prevent assignment of a field whose current value is unsafe-undefined.
+
+When a field access would otherwise produce unsafe-undefined or when a
+field assignment would replace unsafe-undefined, the exn:fail:contract
+exception is raised.
+
+The chaperone’s field-assignment check is disabled whenever
+(continuation-mark-set-first #f prop:chaperone-unsafe-undefined) returns
+unsafe-undefined. Thus, a field-initializing assignment—one that is
+intended to replace the unsafe-undefined value of a field—should be
+wrapped with (with-continuation-mark prop:chaperone-unsafe-undefined
+unsafe-undefined ....).
+
+prop:chaperone-unsafe-undefined : struct-type-property? ~
+
+A structure type property that causes a structure type’s constructor to
+produce a chaperone of an instance in the same way as
+chaperone-struct-unsafe-undefined.
+
+The property value should be a list of symbols used as field names, but
+the list should be in reverse order of the structure’s fields. When a
+field access or assignment would produce or replace unsafe-undefined,
+the exn:fail:contract:variable exception is raised if a field name is
+provided by the structure property’s value, otherwise the
+exn:fail:contract exception is raised.

@@ -1,0 +1,236 @@
+Extflonums
+
+ (require racket/extflonum) package: base ~
+
+An extflonum is an extended-precision (80-bit) floating-point number.
+extflonum arithmetic is supported on platforms with extended-precision
+hardware and where the extflonum implementation does not conflict with
+normal double-precision arithmetic (i.e., on x86 and x86_64 platforms
+when Racket is compiled to use SSE instructions for floating-point
+operations, and on Windows when "longdouble.dll" is available).
+
+A extflonum is not a number in the sense of number?. Only
+extflonum-specific operations such as extfl+ perform extflonum
+arithmetic.
+
+A literal extflonum is written like an inexact number, but using an
+explicit t or T exponent marker (see [missing]). For example, 3.5t0 is
+an extflonum. The extflonum infinities and non-a-number values are
++inf.t, -inf.t, and +nan.t.
+
+If (extflonum-available?) produces #f, then all operations exported by
+racket/extflonum raise exn:fail:unsupported, except for extflonum?,
+extflonum-available?, and extflvector? (which always work). The reader
+(see [missing]) always accepts extflonum input; when extflonum
+operations are not supported, printing an extflonum from the reader uses
+its source notation (as opposed to normalizing the format).
+
+Two extflonums are equal? if extfl= produces #t for the extflonums. If
+extflonums are not supported in a platform, extflonums are equal? only
+if they are eq?.
+
+                                        *extflonum?*
+(extflonum? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is an extflonum, #f otherwise.
+
+                                        *extflonum-available?*
+(extflonum-available?) -> boolean? ~
+
+Returns #t if extflonum operations are supported on the current
+platform, #f otherwise.
+
+1. Extflonum Arithmetic
+
+                                        *extfl+*
+(extfl+ a b) -> extflonum? ~
+  a : extflonum? ~
+  b : extflonum? ~
+(extfl- a b) -> extflonum?
+  a : extflonum? ~
+  b : extflonum? ~
+(extfl* a b) -> extflonum?
+  a : extflonum? ~
+  b : extflonum? ~
+(extfl/ a b) -> extflonum?
+  a : extflonum? ~
+  b : extflonum? ~
+(extflabs a) -> extflonum?
+  a : extflonum? ~
+
+Like fl+, fl-, fl*, fl/, and flabs, but for extflonums.
+
+                                        *extfl*
+(extfl= a b) -> boolean? ~
+  a : extflonum? ~
+  b : extflonum? ~
+(extfl< a b) -> boolean?
+  a : extflonum? ~
+  b : extflonum? ~
+(extfl> a b) -> boolean?
+  a : extflonum? ~
+  b : extflonum? ~
+(extfl<= a b) -> boolean?
+  a : extflonum? ~
+  b : extflonum? ~
+(extfl>= a b) -> boolean?
+  a : extflonum? ~
+  b : extflonum? ~
+(extflmin a b) -> extflonum?
+  a : extflonum? ~
+  b : extflonum? ~
+(extflmax a b) -> extflonum?
+  a : extflonum? ~
+  b : extflonum? ~
+
+Like fl=, fl<, fl>, fl<=, fl>=, flmin, and flmax, but for extflonums.
+
+                                        *extflround*
+(extflround a) -> extflonum? ~
+  a : extflonum? ~
+(extflfloor a) -> extflonum?
+  a : extflonum? ~
+(extflceiling a) -> extflonum?
+  a : extflonum? ~
+(extfltruncate a) -> extflonum?
+  a : extflonum? ~
+
+Like flround, flfloor, flceiling, and fltruncate, but for extflonums.
+
+                                        *extflsin*
+(extflsin a) -> extflonum? ~
+  a : extflonum? ~
+(extflcos a) -> extflonum?
+  a : extflonum? ~
+(extfltan a) -> extflonum?
+  a : extflonum? ~
+(extflasin a) -> extflonum?
+  a : extflonum? ~
+(extflacos a) -> extflonum?
+  a : extflonum? ~
+(extflatan a) -> extflonum?
+  a : extflonum? ~
+(extfllog a) -> extflonum?
+  a : extflonum? ~
+(extflexp a) -> extflonum?
+  a : extflonum? ~
+(extflsqrt a) -> extflonum?
+  a : extflonum? ~
+(extflexpt a b) -> extflonum?
+  a : extflonum? ~
+  b : extflonum? ~
+
+Like flsin, flcos, fltan, flasin, flacos, flatan, fllog, flexp, and
+flsqrt, and flexpt, but for extflonums.
+
+                                        *->extfl*
+(->extfl a) -> extflonum?
+  a : exact-integer? ~
+(extfl->exact-integer a) -> exact-integer?
+  a : extflonum? ~
+(real->extfl a) -> extflonum?
+  a : real? ~
+(extfl->exact a) -> (and/c real? exact?)
+  a : real? ~
+(extfl->inexact a) -> flonum?
+  a : real? ~
+
+The first four are like ->fl, fl->exact, fl->real, inexact->exact, but
+for extflonums. The extfl->inexact function converts a extflonum to its
+closest "flonum" approximation.
+
+2. Extflonum Constants
+
+pi.t : extflonum? ~
+
+Like pi, but with 80 bits precision.
+
+3. Extflonum Vectors
+
+An extflvector is like an flvector, but it holds only extflonums. See
+also [missing].
+
+Two extflvectors are equal? if they have the same length, and if the
+values in corresponding slots of the extflvectors are equal?.
+
+                                        *extflvector?*
+(extflvector? v) -> boolean? ~
+  v : any/c ~
+(extflvector x ...) -> extflvector?
+  x : extflonum? ~
+(make-extflvector size [x]) -> extflvector?
+  size : exact-nonnegative-integer? ~
+  x : extflonum? = 0.0 ~
+(extflvector-length vec) -> exact-nonnegative-integer?
+  vec : extflvector? ~
+(extflvector-ref vec pos) -> extflonum?
+  vec : extflvector? ~
+  pos : exact-nonnegative-integer? ~
+(extflvector-set! vec pos x) -> extflonum?
+  vec : extflvector? ~
+  pos : exact-nonnegative-integer? ~
+  x : extflonum? ~
+(extflvector-copy vec [start end]) -> extflvector?
+  vec : extflvector? ~
+  start : exact-nonnegative-integer? = 0 ~
+  end : exact-nonnegative-integer? = (vector-length v) ~
+
+Like flvector?, flvector, make-flvector, flvector-length, flvector-ref,
+flvector-set, and flvector-copy, but for extflvectors.
+
+                                        *in-extflvector*
+(in-extflvector vec [start stop step]) -> sequence? ~
+  vec : extflvector? ~
+  start : exact-nonnegative-integer? = 0 ~
+  stop : (or/c exact-integer? #f) = #f ~
+  step : (and/c exact-integer? (not/c zero?)) = 1 ~
+(for/extflvector maybe-length (for-clause ...) body ...)
+(for*/extflvector maybe-length (for-clause ...) body ...)
+ 
+maybe-length = 
+             | #:length length-expr ~
+             | #:length length-expr #:fill fill-expr ~
+ 
+  length-expr : exact-nonnegative-integer? ~
+  fill-expr : extflonum? ~
+
+Like in-flvector, for/flvector, and for*/flvector, but for extflvectors.
+
+                                        *make-shared-extflvector*
+(make-shared-extflvector size [x]) -> extflvector? ~
+  size : exact-nonnegative-integer? ~
+  x : extflonum? = 0.0 ~
+
+Like make-shared-flvector, but for extflvectors.
+
+4. Extflonum Byte Strings
+
+                                        *floating-point-bytes->extfl*
+(floating-point-bytes->extfl  bstr             ~
+                             [big-endian?     
+                              start           
+                              end])       -> extflonum?
+  bstr : bytes? ~
+  big-endian? : any/c = (system-big-endian?) ~
+  start : exact-nonnegative-integer? = 0 ~
+  end : exact-nonnegative-integer? = (bytes-length bstr) ~
+
+Like floating-point-bytes->real, but  for extflonums: Converts the
+extended-precision floating-point number encoded in bstr from position
+start (inclusive) to end (exclusive) to an extflonum. The difference
+between start an end must be 10 bytes.
+
+                                        *extfl->floating-point-bytes*
+(extfl->floating-point-bytes  x                ~
+                             [big-endian?     
+                              dest-bstr       
+                              start])     -> bytes?
+  x : extflonum? ~
+  big-endian? : any/c = (system-big-endian?) ~
+  dest-bstr : (and/c bytes? (not/c immutable?)) ~
+            = (make-bytes 10)
+  start : exact-nonnegative-integer? = 0 ~
+
+Like real->floating-point-bytes, but  for extflonums: Converts x to its
+representation in a byte string of length 10.

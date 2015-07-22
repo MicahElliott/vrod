@@ -1,0 +1,37 @@
+Places Logging
+
+Place events are reported to a logger named 'place. In addition to its
+string message, each event logged for a place has a data value that is
+an instance of a place-event prefab structure:
+
+  (struct place-event (place-id action value time)
+    #:prefab) ~
+
+The place-id field is an exact integer that identifies a place.
+
+The time field is an inexact number that represents time in the same way
+as current-inexact-milliseconds.
+
+The action field is a symbol:
+
+* 'create: a place was created. This event is logged in the creating
+  place, and the event’s value field has the ID for the created place.
+
+* 'reap: a place that was previously created in the current place has
+  exited (and that fact has been detected, possibly via place-wait). The
+  event’s value field has the ID for the exited place.
+
+* 'enter: a place has started, logged within the started place. The
+  event’s value field has #f.
+
+* 'exit: a place is exiting, logged within the exiting place. The
+  event’s value field has #f.
+
+* 'put: a place-channel message has been sent. The event’s value field
+  is a positive exact integer that approximates the message’s size.
+
+* 'get: a place-channel message has been received. The event’s value
+  field is a positive exact integer that approximates the message’s
+  size.
+
+Changed in version 6.0.0.2: Added logging via 'place and place-event.

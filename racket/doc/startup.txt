@@ -1,0 +1,362 @@
+Running Racket or GRacket
+
+The core Racket run-time system is available in two main variants:
+
+* Racket, which provides the primitives libraries on which racket/base
+  is implemented. On Unix and Mac OS X, the executable is called racket.
+  On Windows, the executable is called Racket.exe.
+
+* GRacket, which is a GUI variant of racket to the degree that the
+  system distinguishes them. On Unix, the executable is called gracket,
+  and single-instance flags and X11-related flags are handled and
+  communicated specially to the racket/gui/base library. On Windows, the
+  executable is called GRacket.exe, and it is a GUI application (as
+  opposed to a console application) that implements single-instance
+  support. On Mac OS X, the gracket script launches GRacket.app.
+
+1. Initialization
+
+On start-up, the top-level environment contains no bindings—not even
+#%app for function application. Primitive modules with names that start
+with #% are defined, but they are not meant for direct use, and the set
+of such modules can change.  For example, the '#%kernel module is
+eventually used to bootstrap the implementation of racket/base.
+
+The first action of Racket or GRacket is to initialize
+current-library-collection-paths to the result of
+(find-library-collection-paths pre-extras extras), where pre-extras is
+normally null and extras are extra directory paths provided in order in
+the command line with -S/--search. An executable created from the Racket
+or GRacket executable can embed paths used as pre-extras.
+
+Racket and GRacket next require racket/init and racket/gui/init,
+respectively, but only if the command line does not specify a require
+flag (-t/--require, -l/--lib, or -u/--require-script) before any eval,
+load, or read-eval-print-loop flag (-e/--eval, -f/--load, -r/--script,
+-m/--main, or -i/--repl). The initialization library can be changed with
+the -I configuration option. The configure-runtime submodule of the
+initialization library or the 'configure-runtime property of the
+initialization library’s language is used before the library is
+instantiated; see Language Run-Time Configuration.
+
+After potentially loading the initialization module, expression evals,
+files loads, and module requires are executed in the order that they are
+provided on the command line. If any raises an uncaught exception, then
+the remaining evals, loads, and requires are skipped. If the first
+require precedes any eval or load so that the initialization library is
+skipped, then the configure-runtime submodule of the required module or
+the 'configure-runtime property of the required module’s library
+language is used before the module is instantiated; see Language
+Run-Time Configuration.
+
+After running all command-line expressions, files, and modules, Racket
+or GRacket then starts a read-eval-print loop for interactive evaluation
+if no command line flags are provided other than configuration options.
+If any command-line argument is provided that is not a configuration
+option, then the read-eval-print-loop is not started, unless the
+-i/--repl flag is provided on the command line to specifically re-enable
+it. In addition, just before the command line is started, Racket loads
+the file (find-system-path 'init-file) and GRacket loads the file
+(find-graphical-system-path 'init-file) is loaded, unless the
+-q/--no-init-file flag is specified on the command line.
+
+Finally, before Racket or GRacket exits, it calls the procedure that is
+the current value of executable-yield-handler in the main thread, unless
+the -V/--no-yield command-line flag is specified. Requiring
+racket/gui/base sets this parameter call (racket 'yield).
+
+2. Exit Status
+
+The default exit status for a Racket or GRacket process is non-zero if
+an error occurs during a command-line eval (via -e, etc.), load (via -f,
+-r, etc.), or require (via --l, -t, etc.), but only when no
+read-eval-print loop is started. Otherwise, the default exit status is
+0.
+
+In all cases, a call to exit (when the default exit handler is in place)
+can end the process with a specific status value.
+
+3. Init Libraries
+
+ (require racket/init) package: base ~
+
+The racket/init library is the default start-up library for Racket. It
+re-exports the racket, racket/enter and racket/help libraries, and it
+sets current-print to use pretty-print.
+
+ (require racket/gui/init) package: gui-lib ~
+
+The racket/gui/init library is the default start-up library for GRacket.
+It re-exports the racket/init and racket/gui/base libraries, and it sets
+current-load to use text-editor-load-handler.
+
+ (require racket/language-info) package: base ~
+
+The racket/language-info library provides a get-info function that takes
+any value and returns another function; the returned function takes a
+key value and a default value, and it returns '(#(racket/runtime-config
+configure #f)) if the key is 'configure-runtime or the default value
+otherwise.
+
++See also [missing] in [missing].
+
+The vector '#(racket/language-info get-info #f) is suitable for
+attaching to a module as its language info to get the same language
+information as the racket/base language.
+
+ (require racket/runtime-config) package: base ~
+
+The racket/runtime-config library provides a configure function that
+takes any value and sets print-as-expression to #t.
+
+The vector #(racket/runtime-config configure #f) is suitable as a member
+of a list of runtime-configuration specification (as returned by a
+module’s language-information function for the key 'configure-runtime)
+to obtain the same runtime configuration as for the racket/base
+language.
+
+4. Command Line
+
+The Racket and GRacket executables recognize the following command-line
+flags:
+
+* File and expression options:
+
+  * -e >expr< or --eval >expr< : evals >expr<. The results of the
+    evaluation are printed via current-print.
+
+  * -f >file< or --load >file< : loads >file<; if >file< is "-", then
+    expressions are read and evaluated from standard input.
+
+  * -t >file< or --require >file< : requires >file<, and then requires
+    (submod (file ">file<") main) if available.
+
+  * -l >path< or --lib >path< : requires (lib ">path<"), and then
+    requires (submod (lib ">path<") main) if available.
+
+  * -p >package< : requires (planet ">package<"), and then  requires
+    (submod (planet ">package<") main) if available.
+
+  * -r >file< or --script  >file< : loads >file< Despite its name,
+    --script is not usually used for Unix scripts. See [missing] for
+    more information on scripts.  as a script. This flag is like -t
+    >file< plus  -N >file< to set the program name and --  to cause all
+    further command-line elements to be treated as  non-flag arguments.
+
+  * -u >file< or --require-script >file< : requires >file< as a script;
+    This flag is like -t >file< plus -N >file< to set the program name
+    and -- to cause all further command-line elements to be treated as
+    non-flag arguments.
+
+  * -k >n< >m< >p< : Loads code embedded in the executable from file
+    position >n< to >m< and from >m< to >p<. (On Mac OS X, >n<, >m<, and
+    >p< are relative to a __PLTSCHEME segment in the executable.) The
+    first range is loaded in every new place, and any modules declared
+    in that range are considered predefined in the sense of
+    module-predefined?. This option is normally embedded in a
+    stand-alone binary that also embeds Racket code.
+
+  * -m or --main : Evaluates a call to main as bound in the top-level
+    environment. All of the command-line arguments that are not
+    processed as options (i.e., the arguments put into
+    current-command-line-arguments) are passed as arguments to main. The
+    results of the call are printed via current-print.
+
+    The call to main is constructed as an expression (main arg-str ...)
+    where the lexical context of the expression gives #%app and #%datum
+    bindings as #%plain-app and #%datum, but the lexical context of main
+    is the top-level environment.
+
+* Interaction options:
+
+  * -i or --repl : Runs an interactive read-eval-print loop, using
+    either read-eval-print-loop (Racket) or
+    graphical-read-eval-print-loop (GRacket) after showing (banner) and
+    loading (find-system-path 'init-file). In the case of Racket,
+    (read-eval-print-loop) is followed by (newline). For GRacket, supply
+    the -z/--text-repl configuration option to use read-eval-print-loop
+    (and newline) instead of graphical-read-eval-print-loop.
+
+  * -n or --no-lib : Skips requiring the initialization library (i.e.,
+    racket/init or racket/gui/init, unless it is changed with the -I
+    flag) when not otherwise disabled.
+
+  * -v or --version : Shows (banner).
+
+  * -K or --back : GRacket, Mac OS X only; leave application in the
+    background.
+
+  * -V --no-yield : Skips final executable-yield-handler action, which
+    normally waits until all frames are closed, etc. in the main
+    eventspace before exiting for programs that use racket/gui/base.
+
+* Configuration options:
+
+  * -c or --no-compiled : Disables loading of compiled byte-code ".zo"
+    files, by initializing current-compiled-file-paths to null. Use
+    judiciously: this effectively ignores the content of all "compiled"
+    subdirectories, so that any used modules are compiled on the
+    fly—even racket/base and its dependencies—which leads to
+    prohibitively expensive run times.
+
+  * -q or --no-init-file : Skips loading (find-system-path 'init-file)
+    for -i/--repl.
+
+  * -z or --text-repl : GRacket only; changes -i/--repl to use
+    textual-read-eval-print-loop instead of
+    graphical-read-eval-print-loop.
+
+  * -I >path< : Sets (lib ">path<") as the path to require to initialize
+    the namespace, unless namespace initialization is disabled. Using
+    this flag can effectively set the language for the read-eval-print
+    loop and other top-level evaluation.
+
+  * -X >dir< or --collects >dir< : Sets >dir< as the path to the main
+    collection of libraries by making (find-system-path 'collects-dir)
+    produce >dir<. If >dir< is an empty string, then (find-system-path
+    'collects-dir) returns ".", but current-library-collection-paths is
+    initialized to the empty list, and use-collection-link-paths is
+    initialized to #f.
+
+  * -S >dir< or --search >dir< : Adds >dir< to the default library
+    collection search path after the main collection directory. If the
+    -S/--dir flag is supplied multiple times, the search order is as
+    supplied.
+
+  * -R >paths< or --compiled >paths< : Sets the initial value of the
+    current-compiled-file-roots parameter, overriding any
+    PLTCOMPILEDROOTS setting. The >paths< argument is parsed in the same
+    way as PLTCOMPILEDROOTS (see current-compiled-file-roots).
+
+  * -G >dir< or --config >dir< : Sets the directory that is returned by
+    (find-system-path 'config-dir).
+
+  * -A >dir< or --addon >dir< : Sets the directory that is returned by
+    (find-system-path 'addon-dir).
+
+  * -U or --no-user-path : Omits user-specific paths in the search for
+    collections, C libraries, etc. by initializing the
+    use-user-specific-search-paths parameter to #f.
+
+  * -N >file< or --name >file< : sets the name of the executable as
+    reported by (find-system-path 'run-file) to >file<.
+
+  * -J >name< or --wm-class >name< : GRacket, Unix only; sets the
+    WM_CLASS program class to >name< (while the WM_CLASS program name is
+    derived from the executable name or a -N/--name argument).
+
+  * -j or --no-jit : Disables the native-code just-in-time compiler by
+    setting the eval-jit-enabled parameter to #f.
+
+  * -d or --no-delay : Disables on-demand parsing of compiled code and
+    syntax objects by setting the read-on-demand-source parameter to #f.
+
+  * -b or --binary : Requests binary mode, instead of text mode, for the
+    process’s input, out, and error ports. This flag currently has no
+    effect, because binary mode is always used.
+
+  * -W >levels< or --warn >levels< : Sets the logging level for writing
+    events to the original error port. The possible >level< values are
+    the same as for the PLTSTDERR environment variable. See [missing]
+    for more information.
+
+  * -L >levels< or --syslog >levels< : Sets the logging level for
+    writing events to the system log. The possible >level< values are
+    the same as for the PLTSYSLOG environment variable. See [missing]
+    for more information.
+
+* Meta options:
+
+  * -- : No argument following this flag is itself used as a flag.
+
+  * -h or --help : Shows information about the command-line flags and
+    start-up process and exits, ignoring all other flags.
+
+If at least one command-line argument is provided, and if the first one
+after any configuration option is not a flag, then a -u/--require-script
+flag is implicitly added before the first non-flag argument.
+
+If no command-line arguments are supplied other than configuration
+options, then the -i/--repl flag is effectively added.
+
+For GRacket on Unix, the follow flags are recognized when they appear at
+the beginning of the command line, and they count as configuration
+options (i.e., they do not disable the read-eval-print loop or prevent
+the insertion of -u/--require-script):
+
+* -display >display< : Sets the X11 display to use.
+
+* -geometry >arg<, -bg >arg<, -background >arg<, -fg >arg<, -foreground
+  >arg<, -fn >arg<, -font >arg<, -iconic, -name >arg<, -rv, -reverse,
+  +rv, -selectionTimeout >arg<, -synchronous, -title >arg<, -xnllanguage
+  >arg<, or -xrm >arg< : Standard X11 arguments that are mostly ignored
+  but accepted for compatibility with other X11 programs. The
+  -synchronous flag behaves in the usual way.
+
+* -singleInstance : If an existing GRacket is already running on the
+  same X11 display, if it was started on a machine with the same
+  hostname, and if it was started with the same name as reported by
+  (find-system-path 'run-file)—possibly set with the -N/--name
+  command-line argument—then all non-option command-line arguments are
+  treated as filenames and sent to the existing GRacket instance via the
+  application file handler (see application-file-handler).
+
+Similarly, on Mac OS X, a leading switch starting with -psn_ is treated
+as a special configuration option. It indicates that Finder started the
+application, so the current input, output, and error output are
+redirected to a GUI window.
+
+Multiple single-letter switches (the ones preceded by a single -) can be
+collapsed into a single switch by concatenating the letters, as long as
+the first switch is not --. The arguments for each switch are placed
+after the collapsed switches (in the order of the switches). For
+example,
+
+  -ifve >file< >expr<
+
+and
+
+  -i -f >file< -v -e >expr<
+
+are equivalent. If a collapsed -- appears before other collapsed
+switches in the same collapsed set, it is implicitly moved to the end of
+the collapsed set.
+
+Extra arguments following the last option are available from the
+current-command-line-arguments parameter.
+
+5. Language Run-Time Configuration
+
++See also [missing] in [missing].
+
+A module can have a configure-runtime submodule that is dynamic-required
+before the module itself when a module is the main module of a program.
+Normally, a configure-runtime submodule is added to a module by the
+module’s language (i.e., by the #%module-begin form among a module’s
+initial bindings).
+
+Alternatively or in addition, an older protocol is in place. When a
+module is implemented using #lang, the language after #lang can specify
+configuration actions to perform when a module using the language is the
+main module of a program. The language specifies run-time configuration
+by
+
+* attaching a 'module-language syntax property to the module as read
+  from its source (see module and module-compiled-language-info);
+
+* having the function indicated by the 'module-language syntax property
+  recognize the 'configure-runtime key, for which it returns a list of
+  vectors; each vector must have the form (vector mp name val) where mp
+  is a module path, name is a symbol, and val is an arbitrary value; and
+
+* having each function called as ((dynamic-require mp name) val)
+  configure the run-time environment, typically by setting parameters
+  such as current-print.
+
+A 'configure-runtime query returns a list of vectors, instead of
+directly configuring the environment, so that the indicated modules to
+be bundled with a program when creating a stand-alone executable; see
+[missing] in [missing].
+
+For information on defining a new #lang language, see
+syntax/module-reader.

@@ -1,0 +1,101 @@
+Plumbers
+
+A plumber supports flush callbacks, which are normally triggered just
+before a Racket process or place exits. For example, a flush callback
+might flush an output port’s buffer.
+
+Flush callbacks are roughly analogous to the standard C library’s
+atexit, but flush callback can also be used in other, similar scenarios.
+
+There is no guarantee that a flush callback will be called before a
+process terminates—either because the plumber is not the original
+plumber that is flushed by the default exit handler, or because the
+process is terminated forcibly (e.g., through a custodian shutdown).
+
+                                        *plumber?*
+(plumber? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a plumber value, #f otherwise.
+
+Added in version 6.0.1.8.
+
+                                        *make-plumber*
+(make-plumber) -> pluber? ~
+
+Creates a new plumber.
+
+Plumbers have no hierarchy (unlike custodians or inspectors), but a
+flush callback can be registered in one plumber to call
+plumber-flush-all with another plumber.
+
+Added in version 6.0.1.8.
+
+                                        *current-plumber*
+(current-plumber) -> plumber? ~
+(current-plumber plumber) -> void?
+  plumber : plumber? ~
+
+A parameter that determines a current plumber for flush callbacks. For
+example, creating an output file stream port registers a flush callback
+with the current plumber to flush the port as long as the port is
+opened.
+
+Added in version 6.0.1.8.
+
+                                        *plumber-flush-all*
+(plumber-flush-all plumber) -> void? ~
+  plumber : plumber? ~
+
+Calls all flush callbacks that are registered with plumber.
+
+The flush callbacks to call are collected from plumber before the first
+one is called. If a flush callback registers a new flush callback, the
+new one is not called. If a flush callback raises an exception or
+otherwise escapes, then the remaining flush callbacks are not called.
+
+Added in version 6.0.1.8.
+
+                                        *plumber-flush-handle?*
+(plumber-flush-handle? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a flush handle represents the registration of a flush
+callback, #f otherwise.
+
+Added in version 6.0.1.8.
+
+                                        *plumber-add-flush!*
+(plumber-add-flush! plumber proc [weak?]) -> plumber-flush-handle? ~
+  plumber : plumber? ~
+  proc : (plumber-flush-handle? . -> . any) ~
+  weak? : any/c = #f ~
+
+Registers proc as a flush callback with plumber, so that proc is called
+when plumber-flush-all is applied to plumber.
+
+The result flush handle represents the registration of the callback, and
+it can be used with plumber-flush-handle-remove! to unregister the
+callback.
+
+The given proc is reachable from the flush handle, but if weak? is true,
+then plumber retains only a weak reference to the result flush handle
+(and thus proc).
+
+When proc is called as a flush callback, it is passed the same value
+that is returned by plumber-add-flush! so that proc can conveniently
+unregister itself. The call of proc is within a continuation barrier.
+
+Added in version 6.0.1.8.
+
+                                        *plumber-flush-handle-remove!*
+(plumber-flush-handle-remove! handle) -> void? ~
+  handle : plumber-flush-handle? ~
+
+Unregisters the flush callback that was registered by the
+plumber-add-flush! call that produced handle.
+
+If the registration represented by handle has been removed already, then
+plumber-flush-handle-remove! has no effect.
+
+Added in version 6.0.1.8.

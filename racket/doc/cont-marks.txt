@@ -1,0 +1,215 @@
+Continuation Marks
+
+See [missing] and [missing] for general information about continuation
+marks.
+
+The list of continuation marks for a key k and a continuation C that
+extends C0 is defined as follows:
+
+* If C is an empty continuation, then the mark list is null.
+
+* If C’s first frame contains a mark m for k, then the mark list for C
+  is (cons m lst), where lst is the mark list for k in C0.
+
+* If C’s first frame does not contain a mark keyed by k, then the mark
+  list for C is the mark list for C0.
+
+The with-continuation-mark form installs a mark on the first frame of
+the current continuation (see [missing]).  Procedures such as
+current-continuation-marks allow inspection of marks.
+
+Whenever Racket creates an exception record for a primitive exception,
+it fills the continuation-marks field with the value of
+(current-continuation-marks), thus providing a snapshot of the
+continuation marks at the time of the exception.
+
+When a continuation procedure returned by call-with-current-continuation
+or call-with-composable-continuation is invoked, it restores the
+captured continuation, and also restores the marks in the continuation’s
+frames to the marks that were present when
+call-with-current-continuation or call-with-composable-continuation was
+invoked.
+
+                                        *continuation-marks*
+(continuation-marks cont [prompt-tag]) -> continuation-mark-set? ~
+  cont : (or/c continuation? thread? #f) ~
+  prompt-tag : continuation-prompt-tag? ~
+             = (default-continuation-prompt-tag)
+
+Returns an opaque value containing the set of continuation marks for all
+keys in the continuation cont (or the current continuation of cont if it
+is a thread) up to the prompt tagged by prompt-tag. If cont is #f, the
+resulting set of continuation marks is empty. If cont is an escape
+continuation (see [missing]), then the current continuation must extend
+cont, or the exn:fail:contract exception is raised. If cont was not
+captured with respect to prompt-tag and does not include a prompt for
+prompt-tag, the exn:fail:contract exception is raised. If cont is a dead
+thread, the result is an empty set of continuation marks.
+
+                                        *current-continuation-marks*
+(current-continuation-marks [prompt-tag]) ~
+ -> continuation-mark-set?
+  prompt-tag : continuation-prompt-tag? ~
+             = (default-continuation-prompt-tag)
+
+Returns an opaque value containing the set of continuation marks for all
+keys in the current continuation up to prompt-tag. In other words, it
+produces the same value as
+
+  (call-with-current-continuation
+    (lambda (k)
+      (continuation-marks k prompt-tag))
+    prompt-tag)
+
+                                        *continuation-mark-set->list*
+(continuation-mark-set->list  mark-set          ~
+                              key-v            
+                             [prompt-tag]) -> list?
+  mark-set : continuation-mark-set? ~
+  key-v : any/c ~
+  prompt-tag : continuation-prompt-tag? ~
+             = (default-continuation-prompt-tag)
+
+Returns a newly-created list containing the marks for key-v in mark-set,
+which is a set of marks returned by current-continuation-marks. The
+result list is truncated at the first point, if any, where continuation
+frames were originally separated by a prompt tagged with prompt-tag.
+
+                                        *make-continuation-mark-key*
+(make-continuation-mark-key) -> continuation-mark-key? ~
+(make-continuation-mark-key sym) -> continuation-mark-key?
+  sym : symbol? ~
+
+Creates a continuation mark key that is not equal? to the result of any
+other value (including prior and future results from
+make-continuation-mark-key). The continuation mark key can be used as
+the key argument for with-continuation-mark or accessor procedures like
+continuation-mark-set-first. The mark key can be chaperoned or
+impersonated, unlike other values that are used as the mark key.
+
+The optional sym argument, if provided, is used when printing the
+continuation mark.
+
+                                        *continuation-mark-set->list**
+(continuation-mark-set->list*  mark-set          ~
+                               key-list         
+                              [none-v           
+                               prompt-tag]) -> (listof vector?)
+  mark-set : continuation-mark-set? ~
+  key-list : (listof any/c) ~
+  none-v : any/c = #f ~
+  prompt-tag : continuation-prompt-tag? ~
+             = (default-continuation-prompt-tag)
+
+Returns a newly-created list containing vectors of marks in mark-set for
+the keys in key-list, up to prompt-tag. The length of each vector in the
+result list is the same as the length of key-list, and a value in a
+particular vector position is the value for the corresponding key in
+key-list. Values for multiple keys appear in a single vector only when
+the marks are for the same continuation frame in mark-set. The none-v
+argument is used for vector elements to indicate the lack of a value.
+
+                                        *continuation-mark-set-first*
+(continuation-mark-set-first  mark-set          ~
+                              key-v            
+                             [none-v           
+                              prompt-tag]) -> any
+  mark-set : (or/c continuation-mark-set? #f) ~
+  key-v : any/c ~
+  none-v : any/c = #f ~
+  prompt-tag : continuation-prompt-tag? ~
+             = (default-continuation-prompt-tag)
+
+Returns the first element of the list that would be returned by
+(continuation-mark-set->list (or mark-set (current-continuation-marks
+prompt-tag)) key-v prompt-tag), or none-v if the result would be the
+empty list. Typically, this result can be computed more quickly using
+continuation-mark-set-first than using continuation-mark-set->list.
+
+                                        *call-with-immediate-continuation-mark*
+(call-with-immediate-continuation-mark  key-v            ~
+                                        proc            
+                                       [default-v]) -> any
+  key-v : any/c ~
+  proc : (any/c . -> . any) ~
+  default-v : any/c = #f ~
+
+Calls proc with the value associated with key-v in the first frame of
+the current continuation (i.e., a value that would be replaced if the
+call to call-with-immediate-continuation-mark were replaced with a
+with-continuation-mark form using key-v as the key expression). If no
+such value exists in the first frame, default-v is passed to proc. The
+proc is called in tail position with respect to the
+call-with-immediate-continuation-mark call.
+
+This function could be implemented with a combination of
+with-continuation-mark, current-continuation-marks, and
+continuation-mark-set->list, but call-with-immediate-continuation-mark
+is implemented more efficiently; it inspects only the first frame of the
+current continuation.
+
+                                        *continuation-mark-key?*
+(continuation-mark-key? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a mark key created by make-continuation-mark-key, #f
+otherwise.
+
+                                        *continuation-mark-set?*
+(continuation-mark-set? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a mark set created by continuation-marks or
+current-continuation-marks, #f otherwise.
+
+                                        *continuation-mark-set->context*
+(continuation-mark-set->context mark-set) -> list? ~
+  mark-set : continuation-mark-set? ~
+
+Returns a list representing an approximate “stack trace” for mark-set’s
+continuation. The list contains pairs, where the car of each pair
+contains either #f or a symbol for a procedure name, and the cdr of each
+pair contains either #f or a srcloc value for the procedure’s source
+location (see [missing]); the car and cdr are never both #f.
+
+Conceptually, the stack-trace list is the result of
+continuation-mark-set->list with mark-set and Racket’s private key for
+procedure-call marks. The implementation may be different, however, and
+the results may merely approximate the correct answer. Thus, while the
+result may contain useful hints to humans about the context of an
+expression, it is not reliable enough for programmatic use.
+
+A stack trace is extracted from an exception and displayed by the
+default error display handler (see error-display-handler) for exceptions
+other than exn:fail:user (see raise-user-error in [missing]).
+
+Examples:
+  > (define (extract-current-continuation-marks key)
+      (continuation-mark-set->list
+       (current-continuation-marks)
+       key))
+
+  > (with-continuation-mark 'key 'mark
+      (extract-current-continuation-marks 'key))
+  '(mark)
+  > (with-continuation-mark 'key1 'mark1
+      (with-continuation-mark 'key2 'mark2
+        (list
+         (extract-current-continuation-marks 'key1)
+         (extract-current-continuation-marks 'key2))))
+  '((mark1) (mark2))
+  > (with-continuation-mark 'key 'mark1
+      (with-continuation-mark 'key 'mark2 ; replaces previous mark
+        (extract-current-continuation-marks 'key)))
+  '(mark2)
+  > (with-continuation-mark 'key 'mark1
+      (list ; continuation extended to evaluate the argument
+       (with-continuation-mark 'key 'mark2
+          (extract-current-continuation-marks 'key))))
+  '((mark2 mark1))
+  > (let loop ([n 1000])
+      (if (zero? n)
+          (extract-current-continuation-marks 'key)
+          (with-continuation-mark 'key n
+            (loop (sub1 n)))))
+  '(1)

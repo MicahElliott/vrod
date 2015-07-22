@@ -1,0 +1,326 @@
+Libraries and Collections
+
+A library is module declaration for use by multiple programs. Racket
+further groups libraries into collections. Typically, collections are
+added via packages (see [missing]); the package manager works outside of
+the Racket core, but it configures the core run-time system through
+collection links files.
+
+Libraries in collections are referenced through lib paths (see require)
+or symbolic shorthands. For example, the following module uses the
+"getinfo.rkt" library module from the "setup" collection, and the
+"cards.rkt" library module from the "games" collection’s "cards"
+subcollection:
+
+  #lang racket
+  (require (lib "setup/getinfo.rkt")
+           (lib "games/cards/cards.rkt"))
+  ....
+
+This example is more compactly and more commonly written using symbolic
+shorthands:
+
+  #lang racket
+  (require setup/getinfo
+           games/cards/cards)
+  ....
+
+When an identifier id is used in a require form, it is converted to (lib
+rel-string) where rel-string is the string form of id.
+
+A rel-string in (lib rel-string) consists of one or more path elements
+that name collections, and then a final path element that names a
+library file; the path elements are separated by /. If rel-string
+contains no /s, then /main.rkt is implicitly appended to the path. If
+rel-string contains / but does not end with a file suffix, then .rkt is
+implicitly appended to the path.
+
+Libraries also can be distributed via PLaneT packages. Such libraries
+are referenced through a planet module path (see require) and are
+downloaded by Racket on demand, instead of referenced through
+collections.
+
+The translation of a planet or lib path to a module declaration is
+determined by the module name resolver, as specified by the
+current-module-name-resolver parameter.
+
+1. Collection Search Configuration
+
+For the default module name resolver, the search path for collections is
+determined by the current-library-collection-links parameter and the
+current-library-collection-paths parameter:
+
+* The most primitive collection-based modules are located in "collects"
+  directory relative to the Racket executable. Libraries for a
+  collection are grouped within a directory whose name matches the
+  collection name. The path to the "collects" directory is normally
+  included in current-library-collection-paths.
+
+* Collection-based libraries also can be installed other directories,
+  perhaps user-specific, that are structured like the "collects"
+  directory. Those additional directories can be included in the
+  current-library-collection-paths parameter either dynamically, through
+  command-line arguments to racket, or by setting the PLTCOLLECTS
+  environment variable; see find-library-collection-paths.
+
+* Collection links files provide a mapping from top-level collection
+  names to directories, plus additional "collects"-like directories
+  (that have subdirectories with names that match collection names).
+  Each collection links file to be searched is referenced by the
+  current-library-collection-links parameter; the parameter references
+  the file, and not the file’s content, so that changes to the file can
+  be detected and affect later module resolution. See also
+  find-library-collection-links.
+
+* The current-library-collection-links parameter’s value can also
+  include hash tables that provide the same content as collection links
+  files: a mapping from collection names in symbol form to a list of
+  paths for the collection, or from #f to a list of "collects"-like
+  paths.
+
+* Finally, the current-library-collection-links parameter’s value
+  includes #f to indicate the point in the search process at which the
+  module-name resolver should check current-library-collection-paths
+  relative to the files and hash tables in
+  current-library-collection-links.
+
+To resolve a module reference rel-string, the default module name
+resolver searches collection links in current-library-collection-links
+from first to last to locate the first directory that contains
+rel-string, splicing a search through in
+current-library-collection-paths where in
+current-library-collection-links contains #f.  The filesystem tree for
+each element in the link table and search path is effectively spliced
+together with the filesystem trees of other path elements that
+correspond to the same collection. Some Racket tools rely on unique
+resolution of module path names, so an installation and configuration
+should not allow multiple files to match the same collection and file
+combination.
+
+The value of the current-library-collection-links parameter is
+initialized by the racket executable to the result of
+(find-library-collection-links), and the value of the
+current-library-collection-paths parameter is initialized to the result
+of (find-library-collection-paths).
+
+2. Collection Links
+
+Collection links files are used by collection-file-path,
+collection-path, and the default module name resolver to locate
+collections before trying the (current-library-collection-paths) search
+path. The collection links files to use are determined by the
+current-library-collection-links parameter, which is initialized to the
+result of find-library-collection-links.
+
+A collection links file is read with default reader parameter settings
+to obtain a list. Every element of the list must be a link specification
+with one of the forms (list string path), (list string path regexp),
+(list 'root path), (list 'root path regexp), (list 'static-root path),
+(list 'static-root path regexp). A string names a top-level collection,
+in which case path is a path that can be used as the collection’s path
+(directly, as opposed to a subdirectory of path named by string). A
+'root entry, in contrast, acts like an path in
+(current-library-collection-paths).  A 'static-root entry is like a
+'root entry, but where the immediate content of the directory is assumed
+not to change unless the collection links file changes. If path is a
+relative path, it is relative to the directory containing the collection
+links file. If regexp is specified in a link, then the link is used only
+if (regexp-match? regexp (version)) produces a true result.
+
+A single top-level collection can have multiple links in a collection
+links file, and any number of 'root entries can appear. The
+corresponding paths are effectively spliced together, since the paths
+are tried in order to locate a file or sub-collection.
+
+The raco link command-link tool can display, install, and remove links
+in a collection links file. See [missing] in [missing] for more
+information.
+
+3. Collection Paths and Parameters
+
+                                        *find-library-collection-paths*
+(find-library-collection-paths [pre-extras         ~
+                                post-extras]) -> (listof path?)
+  pre-extras : (listof path-string?) = null ~
+  post-extras : (listof path-string?) = null ~
+
+Produces a list of paths, which is normally used to initialize
+current-library-collection-paths, as follows:
+
+* The path produced by (build-path (find-system-path 'addon-dir)
+  (get-installation-name) "collects") is the first element of the
+  default collection path list, unless the value of the
+  use-user-specific-search-paths parameter is #f.
+
+* Extra directories provided in pre-extras are included next to the
+  default collection path list, converted to complete paths relative to
+  the executable.
+
+* If the directory specified by (find-system-path 'collects-dir) is
+  absolute, or if it is relative (to the executable) and it exists, then
+  it is added to the end of the default collection path list.
+
+* Extra directories provided in post-extras are included last in the
+  default collection path list, converted to complete paths relative to
+  the executable.
+
+* If the PLTCOLLECTS environment variable is defined, it is combined
+  with the default list using path-list-string->path-list, as long as
+  the value of use-user-specific-search-paths is true. If it is not
+  defined or if the value use-user-specific-search-paths is #f, the
+  default collection path list (as constructed by the first three
+  bullets above) is used directly.
+
+  Note that on Unix and Mac OS X, paths are separated by :, and on
+  Windows by ;.  Also, path-list-string->path-list splices the default
+  paths at an empty path, for example, with many Unix shells you can set
+  PLTCOLLECTS to ":‘pwd‘", "‘pwd‘:", or "‘pwd‘" to specify search the
+  current directory after, before, or instead of the default paths,
+  respectively.
+
+                                        *find-library-collection-links*
+(find-library-collection-links) ~
+ -> (listof (or/c #f (and/c path? complete-path?)))
+
+Produces a list of paths and #f, which is normally used to initialized
+current-library-collection-links, as follows:
+
+* The list starts with #f, which causes the default module name
+  resolver, collection-file-path, and collection-path to try paths in
+  current-library-collection-paths before collection links files.
+
+* As long as the values of use-user-specific-search-paths and
+  use-collection-link-paths are true, the second element in the result
+  list is the path of the user–specific collection links file, which is
+  (build-path (find-system-path 'addon-dir) (get-installation-name)
+  "links.rktd").
+
+* As long as the value of use-collection-link-paths is true, the rest of
+  the list contains the result of get-links-search-files. Typically,
+  that function produces a list with a single path, (build-path
+  (find-config-dir) "links.rktd").
+
+                                        *collection-file-path*
+(collection-file-path  file                                 ~
+                       collection ...+                     
+                      [#:check-compiled? check-compiled?])  ~
+ -> path?
+  file : path-string? ~
+  collection : path-string? ~
+  check-compiled? : any/c = (regexp-match? #rx"[.]rkt$" file) ~
+(collection-file-path  file                                    
+                       collection ...+                         
+                       #:fail fail-proc                         ~
+                      [#:check-compiled? check-compiled?]) -> any ~
+  file : path-string? ~
+  collection : path-string? ~
+  fail-proc : (string? . -> . any) ~
+  check-compiled? : any/c = (regexp-match? #rx"[.]rkt$" file) ~
+
+Returns the path to the file indicated by file in the collection
+specified by the collections, where the second collection (if any) names
+a sub-collection, and so on.  The search uses the values of
+current-library-collection-links and current-library-collection-paths.
+
+If file is not found, but file ends in ".rkt" and a file with the suffix
+".ss" exists, then the directory of the ".ss" file is used. If file is
+not found and the ".rkt"/".ss" conversion does not apply, but a
+directory corresponding to the collections is found, then a path using
+the first such directory is returned.
+
+If check-compiled? is true, then the search also depends on
+use-compiled-file-paths and current-compiled-file-roots; if file is not
+found, then a compiled form of file with the suffix ".zo" is checked in
+the same way as the default compiled-load handler.  If a compiled file
+is found, the result from collection-file-path reports the location that
+file itself would occupy (if it existed) for the found compiled file.
+
+Finally, if the collection is not found, and if fail-proc is provided,
+then fail-proc is applied to an error message (that does not start
+"collection-file-path:" or otherwise claim a source), and its result is
+the result of collection-file-path.  If fail-proc is not provided and
+the collection is not found, then the exn:fail:filesystem exception is
+raised.
+
+Changed in version 6.0.1.12: Added the check-compiled? argument.
+
+                                        *collection-path*
+(collection-path collection ...+) -> path? ~
+  collection : path-string? ~
+(collection-path collection            
+                 ...+                  
+                 #:fail fail-proc) -> any ~
+  collection : path-string? ~
+  fail-proc : (string? . -> . any) ~
+
+  NOTE: This function is deprecated; use collection-file-path, instead.
+  Collection splicing implies that a given collection can have multiple
+  paths, such as when multiple packages provide modules for a
+  collection.
+
+Like collection-file-path, but without a specified file name, so that a
+directory indicated by collections is returned.
+
+When multiple directories correspond to the collection, the first one
+found in the search sequence (see Collection Search Configuration) is
+returned.
+
+                                        *current-library-collection-paths*
+(current-library-collection-paths) ~
+ -> (listof (and/c path? complete-path?))
+(current-library-collection-paths paths) -> void?
+  paths : (listof (and/c path-string? complete-path?)) ~
+
+Parameter that determines a list of complete directory paths for finding
+libraries (as referenced in require, for example) through the default
+module name resolver and for finding paths through collection-path and
+collection-file-path. See Collection Search Configuration for more
+information.
+
+                                        *current-library-collection-links*
+(current-library-collection-links) ~
+ -> (listof (or/c #f
+                  (and/c path? complete-path?)
+                  (hash/c (or/c (and/c symbol? module-path?) #f)
+                          (listof (and/c path? complete-path?)))))
+(current-library-collection-links paths) -> void?
+  paths : (listof (or/c #f ~
+                        (and/c path-string? complete-path?)
+                        (hash/c (or/c (and/c symbol? module-path?) #f)
+                                (listof (and/c path-string? complete-path?)))))
+
+Parameter that determines collection links files, additional paths, and
+the relative search order of current-library-collection-paths for
+finding libraries (as referenced in require, for example) through the
+default module name resolver and for finding paths through
+collection-path and collection-file-path. See Collection Search
+Configuration for more information.
+
+                                        *use-user-specific-search-paths*
+(use-user-specific-search-paths) -> boolean? ~
+(use-user-specific-search-paths on?) -> void?
+  on? : any/c ~
+
+Parameter that determines whether user-specific paths, which are in the
+directory produced by (find-system-path 'addon-dir), are included in
+search paths for collections and other files. For example, the initial
+value of find-library-collection-paths omits the user-specific
+collection directory when this parameter’s value is #f.
+
+If -U or --no-user-path argument to racket, then
+use-user-specific-search-paths is initialized to #f.
+
+                                        *use-collection-link-paths*
+(use-collection-link-paths) -> boolean? ~
+(use-collection-link-paths on?) -> void?
+  on? : any/c ~
+
+Parameter that determines whether collection links files are included in
+the result of find-library-collection-links.
+
+If this parameter’s value is #f on start-up, then collection links files
+are effectively disabled permanently for the Racket process. In
+particular, if an empty string is provided as the -X or --collects
+argument to racket, then not only is current-library-collection-paths
+initialized to the empty list, but use-collection-link-paths is
+initialized to #f.

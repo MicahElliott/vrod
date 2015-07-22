@@ -1,0 +1,188 @@
+String Ports
+
+A string port reads or writes from a byte string. An input string port
+can be created from either a byte string or a string; in the latter
+case, the string is effectively converted to a byte string using
+string->bytes/utf-8. An output string port collects output into a byte
+string, but get-output-string conveniently converts the accumulated
+bytes to a string.
+
+Input and output string ports do not need to be explicitly closed. The
+file-position procedure works for string ports in position-setting mode.
+
++[missing] also provides information on bytestrings.
+
+                                        *string-port?*
+(string-port? p) -> boolean? ~
+  p : port? ~
+
+Returns #t if p is a string port, #f otherwise.
+
+Added in version 6.0.1.6.
+
+                                        *open-input-bytes*
+(open-input-bytes bstr [name]) -> (and/c input-port? string-port?) ~
+  bstr : bytes? ~
+  name : any/c = 'string ~
+
+Creates an input string port that reads characters from bstr (see
+[missing]). Modifying bstr afterward does not affect the byte stream
+produced by the port. The optional name argument is used as the name for
+the returned port.
+
+Examples:
+  > (define sp (open-input-bytes #"(apples 42 day)"))
+
+  > (define sexp1 (read sp))
+
+  > (first sexp1)
+  'apples
+  > (rest sexp1)
+  '(42 day)
+  > (read-line (open-input-bytes
+                #"the cow jumped over the moon\nthe little dog\n"))
+  "the cow jumped over the moon"
+
++[missing] also provides information on strings.
+
+                                        *open-input-string*
+(open-input-string str [name]) -> (and/c input-port? string-port?) ~
+  str : string? ~
+  name : any/c = 'string ~
+
+Creates an input string port that reads bytes from the UTF-8 encoding
+(see [missing]) of str. The optional name argument is used as the name
+for the returned port.
+
+Examples:
+  > (define sp (open-input-string "(λ (x) x)"))
+
+  > (read sp)
+  '(λ (x) x)
+  > (define names (open-input-string "Günter Harder\nFrédéric Paulin\n"))
+
+  > (read-line names)
+  "Günter Harder"
+  > (read-line names)
+  "Frédéric Paulin"
+
+                                        *open-output-bytes*
+(open-output-bytes [name]) -> (and/c output-port? string-port?) ~
+  name : any/c = 'string ~
+
+Creates an output string port that accumulates the output into a byte
+string. The optional name argument is used as the name for the returned
+port.
+
+Examples:
+  > (define op1 (open-output-bytes))
+
+  > (write '((1 2 3) ("Tom" "Dick") ('a 'b 'c)) op1)
+
+  > (get-output-bytes op1)
+  #"((1 2 3) (\"Tom\" \"Dick\") ((quote a) (quote b) (quote c)))"
+  > (define op2 (open-output-bytes))
+
+  > (write "Hi " op2)
+
+  > (write "there" op2)
+
+  > (get-output-bytes op2)
+  #"\"Hi \"\"there\""
+  > (define op3 (open-output-bytes))
+
+  > (write-bytes #"Hi " op3)
+  3
+  > (write-bytes #"there" op3)
+  5
+  > (get-output-bytes op3)
+  #"Hi there"
+
+                                        *open-output-string*
+(open-output-string [name]) -> (and/c output-port? string-port?) ~
+  name : any/c = 'string ~
+
+The same as open-output-bytes.
+
+Examples:
+  > (define op1 (open-output-string))
+
+  > (write '((1 2 3) ("Tom" "Dick") ('a 'b 'c)) op1)
+
+  > (get-output-string op1)
+  "((1 2 3) (\"Tom\" \"Dick\") ((quote a) (quote b) (quote c)))"
+  > (define op2 (open-output-string))
+
+  > (write "Hi " op2)
+
+  > (write "there" op2)
+
+  > (get-output-string op2)
+  "\"Hi \"\"there\""
+  > (define op3 (open-output-string))
+
+  > (write-string "Hi " op3)
+  3
+  > (write-string "there" op3)
+  5
+  > (get-output-string op3)
+  "Hi there"
+
+                                        *get-output-bytes*
+(get-output-bytes  out            ~
+                  [reset?        
+                   start-pos     
+                   end-pos]) -> bytes?
+  out : (and/c output-port? string-port?) ~
+  reset? : any/c = #f ~
+  start-pos : exact-nonnegative-integer? = 0 ~
+  end-pos : exact-nonnegative-integer? = #f ~
+
+Returns the bytes accumulated in the string port out so far in a freshly
+allocated byte string (including any bytes written after the port’s
+current position, if any). The out port must be an output string port
+produced by open-output-bytes (or open-output-string) or a structure
+whose prop:output-port property refers to such an output port
+(transitively).
+
+If reset? is true, then all bytes are removed from the port, and the
+port’s position is reset to 0; if reset? is #f, then all bytes remain in
+the port for further accumulation (so they are returned for later calls
+to get-output-bytes or get-output-string), and the port’s position is
+unchanged.
+
+The start-pos and end-pos arguments specify the range of bytes in the
+port to return; supplying start-pos and end-pos is the same as using
+subbytes on the result of get-output-bytes, but supplying them to
+get-output-bytes can avoid an allocation. The end-pos argument can be
+#f, which corresponds to not passing a second argument to subbytes.
+
+Examples:
+  > (define op (open-output-bytes))
+
+  > (write '((1 2 3) ("Tom" "Dick") ('a 'b 'c)) op)
+
+  > (get-output-bytes op)
+  #"((1 2 3) (\"Tom\" \"Dick\") ((quote a) (quote b) (quote c)))"
+  > (get-output-bytes op #f 3 16)
+  #" 2 3) (\"Tom\" "
+  > (get-output-bytes op #t)
+  #"((1 2 3) (\"Tom\" \"Dick\") ((quote a) (quote b) (quote c)))"
+  > (get-output-bytes op)
+  #""
+
+                                        *get-output-string*
+(get-output-string out) -> string? ~
+  out : (and/c output-port? string-port?) ~
+
+Returns (bytes->string/utf-8 (get-output-bytes out) #\?).
+
+Examples:
+  > (define i (open-input-string "hello world"))
+
+  > (define o (open-output-string))
+
+  > (write (read i) o)
+
+  > (get-output-string o)
+  "hello"

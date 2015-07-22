@@ -1,0 +1,62 @@
+File Inclusion
+
+ (require racket/include) package: base ~
+
+The bindings documented in this section are provided by the
+racket/include and racket libraries, but not racket/base.
+
+                                        *include*
+(include path-spec) ~
+ 
+path-spec = string
+          | (file string)
+          | (lib string ...+)
+
+Inlines the syntax in the file designated by path-spec in place of the
+include expression.
+
+A path-spec resembles a subset of the mod-path forms for require, but it
+specifies a file whose content need not be a module. That is, string
+refers to a file using a platform-independent relative path, (file
+string) refers to a file using platform-specific notation, and (lib
+string ...) refers to a file within a collection.
+
+If path-spec specifies a relative path, the path is resolved relative to
+the source for the include expression, if that source is a complete path
+string. If the source is not a complete path string, then path-spec is
+resolved relative to (current-load-relative-directory) if it is not #f,
+or relative to (current-directory) otherwise.
+
+The included syntax is given the lexical context of the include
+expression, while the included syntax’s source location refers to its
+actual source.
+
+                                        *include-at/relative-to*
+(include-at/relative-to context source path-spec) ~
+
+Like include, except that the lexical context of context is used for the
+included syntax, and a relative path-spec is resolved with respect to
+the source of source. The context and source elements are otherwise
+discarded by expansion.
+
+                                        *include/reader*
+(include/reader path-spec reader-expr) ~
+
+Like include, except that the procedure produced by the expression
+reader-expr is used to read the included file, instead of read-syntax.
+
+The reader-expr is evaluated at expansion time in the transformer
+environment. Since it serves as a replacement for read-syntax, the
+expression’s value should be a procedure that consumes two inputs—a
+string representing the source and an input port—and produces a syntax
+object or eof. The procedure will be called repeatedly until it produces
+eof.
+
+The syntax objects returned by the procedure should have source location
+information, but usually no lexical context; any lexical context in the
+syntax objects will be ignored.
+
+                                        *include-at/relative-to/reader*
+(include-at/relative-to/reader context source path-spec reader-expr) ~
+
+Combines include-at/relative-to and include/reader.

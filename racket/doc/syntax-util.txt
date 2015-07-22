@@ -1,0 +1,245 @@
+Syntax Utilities
+
+ (require racket/syntax) package: base ~
+
+The bindings documented in this section are provided by the
+racket/syntax library, not racket/base or racket.
+
+1. Creating formatted identifiers
+
+                                        *format-id*
+(format-id  lctx                  ~
+            fmt                  
+            v ...                
+           [#:source src          ~
+            #:props props         ~
+            #:cert ignored]) -> identifier? ~
+  lctx : (or/c syntax? #f) ~
+  fmt : string? ~
+  v : (or/c string? symbol? identifier? keyword? char? number?) ~
+  src : (or/c syntax? #f) = #f ~
+  props : (or/c syntax? #f) = #f ~
+  ignored : (or/c syntax? #f) = #f ~
+
+Like format, but produces an identifier using lctx for the lexical
+context, src for the source location, and props for the properties. An
+argument supplied with #:cert is ignored. (See datum->syntax.)
+
+The format string must use only ~a placeholders. Identifiers in the
+argument list are automatically converted to symbols.
+
+Examples:
+  > (define-syntax (make-pred stx)
+      (syntax-case stx ()
+        [(make-pred name)
+         (format-id #'name "~a?" (syntax-e #'name))]))
+
+  > (make-pred pair)
+  #<procedure:pair?>
+  > (make-pred none-such)
+  none-such?: undefined;
+   cannot reference undefined identifier
+  > (define-syntax (better-make-pred stx)
+      (syntax-case stx ()
+        [(better-make-pred name)
+         (format-id #'name #:source #'name ~
+                    "~a?" (syntax-e #'name))]))
+
+  > (better-make-pred none-such)
+  none-such?: undefined;
+   cannot reference undefined identifier
+
+                                        *Scribble*
+(Scribble doesn’t show it, but the DrRacket pinpoints the location of ~
+the second error but not of the first.)
+
+                                        *format-symbol*
+(format-symbol fmt v ...) -> symbol? ~
+  fmt : string? ~
+  v : (or/c string? symbol? identifier? keyword? char? number?) ~
+
+Like format, but produces a symbol. The format string must use only ~a
+placeholders. Identifiers in the argument list are automatically
+converted to symbols.
+
+Example:
+  > (format-symbol "make-~a" 'triple)
+  'make-triple
+
+2. Pattern variables
+
+                                        *define/with-syntax*
+(define/with-syntax pattern stx-expr) ~
+ 
+  stx-expr : syntax? ~
+
+Definition form of with-syntax. That is, it matches the syntax object
+result of expr against pattern and creates pattern variable definitions
+for the pattern variables of pattern.
+
+Examples:
+  > (define/with-syntax (px ...) #'(a b c))
+
+  > (define/with-syntax (tmp ...) (generate-temporaries #'(px ...)))
+
+  > #'([tmp px] ...)
+  #<syntax:11:0 ((a1 a) (b2 b) (c3 c))>
+  > (define/with-syntax name #'Alice)
+
+  > #'(hello name)
+  #<syntax:13:0 (hello Alice)>
+
+3. Error reporting
+
+                                        *current-syntax-context*
+(current-syntax-context) -> (or/c syntax? false/c) ~
+(current-syntax-context stx) -> void?
+  stx : (or/c syntax? false/c) ~
+
+The current contextual syntax object, defaulting to #f.  It determines
+the special form name that prefixes syntax errors created by
+wrong-syntax.
+
+                                        *wrong-syntax*
+(wrong-syntax stx format-string v ...) -> any ~
+  stx : syntax? ~
+  format-string : string? ~
+  v : any/c ~
+
+Raises a syntax error using the result of (current-syntax-context) as
+the “major” syntax object and the provided stx as the specific syntax
+object. (The latter, stx, is usually the one highlighted by DrRacket.)
+The error message is constructed using the format string and arguments,
+and it is prefixed with the special form name as described under
+current-syntax-context.
+
+Examples:
+  > (wrong-syntax #'here "expected ~s" 'there)
+  ?: expected there
+  > (parameterize ([current-syntax-context #'(look over here)])
+      (wrong-syntax #'here "expected ~s" 'there))
+  eval:15:0: look: expected there
+    at: here ~
+    in: (look over here) ~
+
+A macro using wrong-syntax might set the syntax context at the very
+beginning of its transformation as follows:
+
+  (define-syntax (my-macro stx)
+    (parameterize ([current-syntax-context stx])
+      (syntax-case stx ()
+        __)))
+
+Then any calls to wrong-syntax during the macro’s transformation will
+refer to my-macro (more precisely, the name that referred to my-macro
+where the macro was used, which may be different due to renaming,
+prefixing, etc).
+
+4. Recording disappeared uses
+
+                                        *current-recorded-disappeared-uses*
+(current-recorded-disappeared-uses) ~
+ -> (or/c (listof identifier?) false/c)
+(current-recorded-disappeared-uses ids) -> void?
+  ids : (or/c (listof identifier?) false/c) ~
+
+Parameter for tracking disappeared uses. Tracking is “enabled” when the
+parameter has a non-false value. This is done automatically by forms
+like with-disappeared-uses.
+
+                                        *with-disappeared-uses*
+(with-disappeared-uses stx-expr) ~
+ 
+  stx-expr : syntax? ~
+
+Evaluates the stx-expr, catching identifiers looked up using
+syntax-local-value/record. Adds the caught identifiers to the
+'disappeared-uses syntax property of the resulting syntax object.
+
+                                        *syntax-local-value/record*
+(syntax-local-value/record id predicate) -> any/c ~
+  id : identifier? ~
+  predicate : (-> any/c boolean?) ~
+
+Looks up id in the syntactic environment (as syntax-local-value). If the
+lookup succeeds and returns a value satisfying the predicate, the value
+is returned and id is recorded as a disappeared use by calling
+record-disappeared-uses. If the lookup fails or if the value does not
+satisfy the predicate, #f is returned and the identifier is not recorded
+as a disappeared use.
+
+                                        *record-disappeared-uses*
+(record-disappeared-uses ids) -> void? ~
+  ids : (listof identifier?) ~
+
+Add ids to (current-recorded-disappeared-uses) after calling
+syntax-local-introduce on each of the identifiers.
+
+If not used within the extent of a with-disappeared-uses form or
+similar, has no effect.
+
+5. Miscellaneous utilities
+
+                                        *generate-temporary*
+(generate-temporary [name-base]) -> identifier? ~
+  name-base : any/c = 'g ~
+
+Generates one fresh identifier. Singular form of generate-temporaries.
+If name-base is supplied, it is used as the basis for the identifier’s
+name.
+
+                                        *internal-definition-context-apply*
+(internal-definition-context-apply intdef-ctx      ~
+                                   stx)       -> syntax?
+  intdef-ctx : internal-definition-context? ~
+  stx : syntax? ~
+
+Applies the renamings of intdef-ctx to stx.
+
+                                        *syntax-local-eval*
+(syntax-local-eval stx [intdef-ctx]) -> any ~
+  stx : syntax? ~
+  intdef-ctx : (or/c internal-definition-context? #f) = #f ~
+
+Evaluates stx as an expression in the current transformer environment
+(that is, at phase level 1), optionally extended with intdef-ctx.
+
+Examples:
+  > (define-syntax (show-me stx)
+      (syntax-case stx ()
+        [(show-me expr)
+         (begin
+           (printf "at compile time produces ~s\n"
+                   (syntax-local-eval #'expr))
+           #'(printf "at run time produces ~s\n"
+                     expr))]))
+
+  > (show-me (+ 2 5))
+  at compile time produces 7
+  at run time produces 7
+
+  > (define-for-syntax fruit 'apple)
+
+  > (define fruit 'pear)
+
+  > (show-me fruit)
+  at compile time produces apple
+  at run time produces pear
+
+
+                                        *with-syntax**
+(with-syntax* ([pattern stx-expr] ...) ~
+  body ...+)
+ 
+  stx-expr : syntax? ~
+
+Similar to with-syntax, but the pattern variables of each pattern are
+bound in the stx-exprs of subsequent clauses as well as the bodys, and
+the patterns need not bind distinct pattern variables; later bindings
+shadow earlier bindings.
+
+Example:
+  > (with-syntax* ([(x y) (list #'val1 #'val2)]
+                   [nest #'((x) (y))])
+      #'nest)
+  #<syntax:21:0 ((val1) (val2))>

@@ -1,0 +1,883 @@
+Sets
+
+A set represents a collection of distinct elements.  The following
+datatypes are all sets:
+
+* hash sets;
+
+* lists using equal? to compare elements; and
+
+* structures whose types implement the gen:set generic interface.
+
+ (require racket/set) package: base ~
+
+The bindings documented in this section are provided by the racket/set
+and racket libraries, but not racket/base.
+
+1. Hash Sets
+
+A hash set is a set whose elements are compared via equal?, eqv?, or eq?
+and partitioned via equal-hash-code, eqv-hash-code, or eq-hash-code.  A
+hash set is either immutable or mutable; mutable hash sets retain their
+elements either strongly or weakly.
+
+Like operations on immutable hash tables, “constant time” hash set
+operations actually require O(log N) time for a set of size N.
+
+A hash set can be used as a stream (see [missing]) and thus as a
+single-valued sequence (see [missing]). The elements of the set serve as
+elements of the stream or sequence. If an element is added to or removed
+from the hash set during iteration, then an iteration step may fail with
+exn:fail:contract, or the iteration may skip or duplicate elements. See
+also in-set.
+
+Two hash sets are equal? when they use the same element-comparison
+procedure (equal?, eqv?, or eq?), both hold elements strongly or weakly,
+have the same mutability, and have equivalent elements. Immutable hash
+sets support effectively constant-time access and update, just like
+mutable hash sets; the constant on immutable operations is usually
+larger, but the functional nature of immutable hash sets can pay off in
+certain algorithms.
+
+All hash sets implement set->stream, set-empty?, set-member?, set-count,
+subset?, proper-subset?, set-map, set-for-each, set-copy,
+set-copy-clear, set->list, and set-first.  Immutable hash sets in
+addition implement set-add, set-remove, set-clear, set-union,
+set-intersect, set-subtract, and set-symmetric-difference.  Mutable hash
+sets in addition implement set-add!, set-remove!, set-clear!,
+set-union!, set-intersect!, set-subtract!, and
+set-symmetric-difference!.
+
+Operations on sets that contain elements that are mutated are
+unpredictable in much the same way that hash table operations are
+unpredictable when keys are mutated.
+
+                                        *set-equal?*
+(set-equal? x) -> boolean? ~
+  x : any/c ~
+(set-eqv? x) -> boolean?
+  x : any/c ~
+(set-eq? x) -> boolean?
+  x : any/c ~
+
+Returns #t if x is a hash set that compares elements with equal?, eqv?,
+or eq?, respectively; returns #f otherwise.
+
+                                        *set?*
+(set? x) -> boolean? ~
+  x : any/c ~
+(set-mutable? x) -> boolean?
+  x : any/c ~
+(set-weak? x) -> boolean?
+  x : any/c ~
+
+Returns #t if x is a hash set that is respectively immutable, mutable
+with strongly-held keys, or mutable with weakly-held keys; returns #f
+otherwise.
+
+                                        *set*
+(set v ...) -> (and/c generic-set? set-equal? set?) ~
+  v : any/c ~
+(seteqv v ...) -> (and/c generic-set? set-eqv? set?)
+  v : any/c ~
+(seteq v ...) -> (and/c generic-set? set-eq? set?)
+  v : any/c ~
+(mutable-set v ...)
+ -> (and/c generic-set? set-equal? set-mutable?)
+  v : any/c ~
+(mutable-seteqv v ...)
+ -> (and/c generic-set? set-eqv? set-mutable?)
+  v : any/c ~
+(mutable-seteq v ...)
+ -> (and/c generic-set? set-eq? set-mutable?)
+  v : any/c ~
+(weak-set v ...) -> (and/c generic-set? set-equal? set-weak?)
+  v : any/c ~
+(weak-seteqv v ...) -> (and/c generic-set? set-eqv? set-weak?)
+  v : any/c ~
+(weak-seteq v ...) -> (and/c generic-set? set-eq? set-weak?)
+  v : any/c ~
+
+Creates a hash set with the given vs as elements.  The elements are
+added in the order that they appear as arguments, so in the case of sets
+that use equal? or eqv?, an earlier element may be replaced by a later
+element that is equal? or eqv? but not eq?.
+
+                                        *list->set*
+(list->set lst) -> (and/c generic-set? set-equal? set?) ~
+  lst : list? ~
+(list->seteqv lst) -> (and/c generic-set? set-eqv? set?)
+  lst : list? ~
+(list->seteq lst) -> (and/c generic-set? set-eq? set?)
+  lst : list? ~
+(list->mutable-set lst)
+ -> (and/c generic-set? set-equal? set-mutable?)
+  lst : list? ~
+(list->mutable-seteqv lst)
+ -> (and/c generic-set? set-eqv? set-mutable?)
+  lst : list? ~
+(list->mutable-seteq lst)
+ -> (and/c generic-set? set-eq? set-mutable?)
+  lst : list? ~
+(list->weak-set lst)
+ -> (and/c generic-set? set-equal? set-weak?)
+  lst : list? ~
+(list->weak-seteqv lst)
+ -> (and/c generic-set? set-eqv? set-weak?)
+  lst : list? ~
+(list->weak-seteq lst) -> (and/c generic-set? set-eq? set-weak?)
+  lst : list? ~
+
+Creates a hash set with the elements of the given lst as the elements of
+the set.  Equivalent to (apply set lst), (apply seteqv lst), (apply
+seteq lst), and so on, respectively.
+
+                                        *for/set*
+(for/set (for-clause ...) body ...+) ~
+(for/seteq (for-clause ...) body ...+)
+(for/seteqv (for-clause ...) body ...+)
+(for*/set (for-clause ...) body ...+)
+(for*/seteq (for-clause ...) body ...+)
+(for*/seteqv (for-clause ...) body ...+)
+(for/mutable-set (for-clause ...) body ...+)
+(for/mutable-seteq (for-clause ...) body ...+)
+(for/mutable-seteqv (for-clause ...) body ...+)
+(for*/mutable-set (for-clause ...) body ...+)
+(for*/mutable-seteq (for-clause ...) body ...+)
+(for*/mutable-seteqv (for-clause ...) body ...+)
+(for/weak-set (for-clause ...) body ...+)
+(for/weak-seteq (for-clause ...) body ...+)
+(for/weak-seteqv (for-clause ...) body ...+)
+(for*/weak-set (for-clause ...) body ...+)
+(for*/weak-seteq (for-clause ...) body ...+)
+(for*/weak-seteqv (for-clause ...) body ...+)
+
+Analogous to for/list and for*/list, but to construct a hash set instead
+of a list.
+
+2. Set Predicates and Contracts
+
+                                        *generic-set?*
+(generic-set? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a set; returns #f otherwise.
+
+Examples:
+  > (generic-set? (list 1 2 3))
+  #t
+  > (generic-set? (set 1 2 3))
+  #t
+  > (generic-set? (mutable-seteq 1 2 3))
+  #t
+  > (generic-set? (vector 1 2 3))
+  #f
+
+                                        *set-implements?*
+(set-implements? st sym ...) -> boolean? ~
+  st : generic-set? ~
+  sym : symbol? ~
+
+Returns #t if st implements all of the methods from gen:set named by the
+syms; returns #f otherwise. Fallback implementations do not affect the
+result; st may support the given methods via fallback implementations
+yet produce #f.
+
+Examples:
+  > (set-implements? (list 1 2 3) 'set-add)
+  #t
+  > (set-implements? (list 1 2 3) 'set-add!)
+  #f
+  > (set-implements? (set 1 2 3) 'set-add)
+  #t
+  > (set-implements? (set 1 2 3) 'set-add!)
+  #f
+  > (set-implements? (mutable-seteq 1 2 3) 'set-add)
+  #f
+  > (set-implements? (mutable-seteq 1 2 3) 'set-add!)
+  #t
+  > (set-implements? (weak-seteqv 1 2 3) 'set-remove 'set-remove!)
+  #f
+
+                                        *set-implements/c*
+(set-implements/c sym ...) -> flat-contract? ~
+  sym : symbol? ~
+
+Recognizes sets that support all of the methods from gen:set named by
+the syms.
+
+                                        *set/c*
+(set/c elem/c [#:cmp cmp #:kind kind]) -> contract? ~ ~
+  elem/c : chaperone-contract? ~
+  cmp : (or/c 'dont-care 'equal 'eqv 'eq) = 'dont-care ~
+  kind : (or/c 'dont-care 'immutable 'mutable 'weak 'mutable-or-weak) ~
+       = 'immutable
+
+Constructs a contract that recognizes sets whose elements match
+contract.
+
+If kind is 'immutable, 'mutable, or 'weak, the resulting contract
+accepts only hash sets that are respectively immutable, mutable with
+strongly-held keys, or mutable with weakly-held keys.  If kind is
+'mutable-or-weak, the resulting contract accepts any mutable "hash
+sets", regardless of key-holding strength.
+
+If cmp is 'equal, 'eqv, or 'eq, the resulting contract accepts only hash
+sets that compare elements using equal?, eqv?, or eq?, respectively.
+
+If cmp is 'eqv or 'eq, then elem/c must be a flat contract.
+
+If cmp and kind are both 'dont-care, then the resulting contract will
+accept any kind of set, not just hash sets.
+
+3. Generic Set Interface
+
+gen:set
+
+A generic interface (see [missing]) that supplies set method
+implementations for a structure type via the #:methods option of struct
+definitions.  This interface can be used to implement any of the methods
+documented as Set Methods.
+
+Examples:
+  > (struct binary-set [integer]
+      #:transparent ~
+      #:methods gen:set ~
+      [(define (set-member? st i)
+         (bitwise-bit-set? (binary-set-integer st) i))
+       (define (set-add st i)
+         (binary-set (bitwise-ior (binary-set-integer st)
+                                  (arithmetic-shift 1 i))))
+       (define (set-remove st i)
+         (binary-set (bitwise-and (binary-set-integer st)
+                                  (bitwise-not (arithmetic-shift 1 i)))))])
+
+  > (define bset (binary-set 5))
+
+  > bset
+  (binary-set 5)
+  > (generic-set? bset)
+  #t
+  > (set-member? bset 0)
+  #t
+  > (set-member? bset 1)
+  #f
+  > (set-member? bset 2)
+  #t
+  > (set-add bset 4)
+  (binary-set 21)
+  > (set-remove bset 2)
+  (binary-set 1)
+
+3.1. Set Methods
+
+The methods of gen:set can be classified into three categories, as
+determined by their fallback implementations:
+
+* methods with no fallbacks,
+
+* methods whose fallbacks depend on other, non-fallback methods,
+
+* and methods whose fallbacks can depend on either fallback or
+  non-fallback methods.
+
+As an example, implementing the following methods would guarantee that
+all the methods in gen:set would at least have a fallback method:
+
+* set-member?
+
+* set-add
+
+* set-add!
+
+* set-remove
+
+* set-remove!
+
+* set-first
+
+* set-empty?
+
+* set-copy-clear
+
+There may be other such subsets of methods that would guarantee at least
+a fallback for every method.
+
+                                        *set-member?*
+(set-member? st v) -> boolean? ~
+  st : generic-set? ~
+  v : any/c ~
+
+Returns #t if v is in st, #f otherwise. Has no fallback.
+
+                                        *set-add*
+(set-add st v) -> generic-set? ~
+  st : generic-set? ~
+  v : any/c ~
+
+Produces a set that includes v plus all elements of st. This operation
+runs in constant time for hash sets. Has no fallback.
+
+                                        *set-add!*
+(set-add! st v) -> void? ~
+  st : generic-set? ~
+  v : any/c ~
+
+Adds the element v to st.  This operation runs in constant time for hash
+sets. Has no fallback.
+
+                                        *set-remove*
+(set-remove st v) -> generic-set? ~
+  st : generic-set? ~
+  v : any/c ~
+
+Produces a set that includes all elements of st except v. This operation
+runs in constant time for hash sets. Has no fallback.
+
+                                        *set-remove!*
+(set-remove! st v) -> void? ~
+  st : generic-set? ~
+  v : any/c ~
+
+Removes the element v from st.  This operation runs in constant time for
+hash sets. Has no fallback.
+
+                                        *set-empty?*
+(set-empty? st) -> boolean? ~
+  st : generic-set? ~
+
+Returns #t if st has no members; returns #f otherwise.
+
+Supported for any st that implements set->stream or set-count.
+
+                                        *set-count*
+(set-count st) -> exact-nonnegative-integer? ~
+  st : generic-set? ~
+
+Returns the number of elements in st.
+
+Supported for any st that supports set->stream.
+
+                                        *set-first*
+(set-first st) -> any/c ~
+  st : (and/c generic-set? (not/c set-empty?)) ~
+
+Produces an unspecified element of st. Multiple uses of set-first on st
+produce the same result.
+
+Supported for any st that implements set->stream.
+
+                                        *set-rest*
+(set-rest st) -> generic-set? ~
+  st : (and/c generic-set? (not/c set-empty?)) ~
+
+Produces a set that includes all elements of st except (set-first st).
+
+Supported for any st that implements set-remove and either set-first or
+set->stream.
+
+                                        *set->stream*
+(set->stream st) -> stream? ~
+  st : generic-set? ~
+
+Produces a stream containing the elements of st.
+
+Supported for any st that implements:
+
+* set->list
+
+* in-set
+
+* set-empty?, set-first, set-rest
+
+* set-empty?, set-first, set-remove
+
+* set-count, set-first, set-rest
+
+* set-count, set-first, set-remove
+
+                                        *set-copy*
+(set-copy st) -> generic-set? ~
+  st : generic-set? ~
+
+Produces a new, mutable set of the same type and with the same elements
+as st.
+
+Supported for any st that supports set->stream and implements
+set-copy-clear and set-add!.
+
+                                        *set-copy-clear*
+(set-copy-clear st) -> (and/c generic-set? set-empty?) ~
+  st : generic-set? ~
+
+Produces a new, empty set of the same type, mutability, and key strength
+as st.
+
+A difference between set-copy-clear and set-clear is that the latter
+conceptually iterates set-remove on the given set, and so it preserves
+any contract on the given set. The set-copy-clear function produces a
+new set without any contracts.
+
+The set-copy-clear function must call concrete set constructors and thus
+has no generic fallback.
+
+                                        *set-clear*
+(set-clear st) -> (and/c generic-set? set-empty?) ~
+  st : generic-set? ~
+
+Produces a set like st but with all elements removed.
+
+Supported for any st that implements set-remove and supports
+set->stream.
+
+                                        *set-clear!*
+(set-clear! st) -> void? ~
+  st : generic-set? ~
+
+Removes all elements from st.
+
+Supported for any st that implements set-remove! and either supports
+set->stream or implements set-first and either set-count or set-empty?.
+
+                                        *set-union*
+(set-union st0 st ...) -> generic-set? ~
+  st0 : generic-set? ~
+  st : generic-set? ~
+
+Produces a set of the same type as st0 that includes the elements from
+st0 and all of the sts.
+
+If st0 is a list, each st must also be a list.  This operation runs on
+lists in time proportional to the total size of the sts times the size
+of the result.
+
+If st0 is a hash set, each st must also be a hash set that uses the same
+comparison function (equal?, eqv?, or eq?).  The mutability and key
+strength of the hash sets may differ.  This operation runs on hash sets
+in time proportional to the total size of all of the sets except the
+largest immutable set.
+
+At least one set must be provided to set-union to determine the type of
+the resulting set (list, hash set, etc.).  If there is a case where
+set-union may be applied to zero arguments, instead pass an empty set of
+the intended type as the first argument.
+
+Supported for any st that implements  set-add and supports set->stream.
+
+Examples:
+  > (set-union (set))
+  (set)
+  > (set-union (seteq))
+  (seteq)
+  > (set-union (set 1 2) (set 2 3))
+  (set 1 2 3)
+  > (set-union (list 1 2) (list 2 3))
+  '(3 1 2)
+  > (set-union (set 1 2) (seteq 2 3))
+  set-union: set arguments have incompatible equivalence
+  predicates
+    first set: (set 1 2) ~
+    incompatible set: (seteq 2 3) ~
+  ; Sets of different types cannot be unioned.
+
+                                        *set-union!*
+(set-union! st0 st ...) -> generic-set? ~
+  st0 : generic-set? ~
+  st : generic-set? ~
+
+Adds the elements from all of the sts to st0.
+
+If st0 is a hash set, each st must also be a hash set that uses the same
+comparison function (equal?, eqv?, or eq?).  The mutability and key
+strength of the hash sets may differ.  This operation runs on hash sets
+in time proportional to the total size of the sts.
+
+Supported for any st that implements set-add! and supports set->stream.
+
+                                        *set-intersect*
+(set-intersect st0 st ...) -> generic-set? ~
+  st0 : generic-set? ~
+  st : generic-set? ~
+
+Produces a set of the same type as st0 that includes the elements from
+st0 that are also contained by all of the sts.
+
+If st0 is a list, each st must also be a list.  This operation runs on
+lists in time proportional to the total size of the sts times the size
+of st0.
+
+If st0 is a hash set, each st must also be a hash set that uses the same
+comparison function (equal?, eqv?, or eq?).  The mutability and key
+strength of the hash sets may differ.  This operation runs on hash sets
+in time proportional to the size of the smallest immutable set.
+
+Supported for any st that implements either set-remove or both set-clear
+and set-add, and supports set->stream.
+
+                                        *set-intersect!*
+(set-intersect! st0 st ...) -> generic-set? ~
+  st0 : generic-set? ~
+  st : generic-set? ~
+
+Removes every element from st0 that is not contained by all of the sts.
+
+If st0 is a hash set, each st must also be a hash set that uses the same
+comparison function (equal?, eqv?, or eq?).  The mutability and key
+strength of the hash sets may differ.  This operation runs on hash sets
+in time proportional to the size of st0.
+
+Supported for any st that implements set-remove! and supports
+set->stream.
+
+                                        *set-subtract*
+(set-subtract st0 st ...) -> generic-set? ~
+  st0 : generic-set? ~
+  st : generic-set? ~
+
+Produces a set of the same type as st0 that includes the elements from
+st0 that not contained by any of the sts.
+
+If st0 is a list, each st must also be a list.  This operation runs on
+lists in time proportional to the total size of the sts times the size
+of st0.
+
+If st0 is a hash set, each st must also be a hash set that uses the same
+comparison function (equal?, eqv?, or eq?).  The mutability and key
+strength of the hash sets may differ.  This operation runs on hash sets
+in time proportional to the size of st0.
+
+Supported for any st that implements either set-remove or both set-clear
+and set-add, and supports set->stream.
+
+                                        *set-subtract!*
+(set-subtract! st0 st ...) -> generic-set? ~
+  st0 : generic-set? ~
+  st : generic-set? ~
+
+Removes every element from st0 that is contained by any of the sts.
+
+If st0 is a hash set, each st must also be a hash set that uses the same
+comparison function (equal?, eqv?, or eq?).  The mutability and key
+strength of the hash sets may differ.  This operation runs on hash sets
+in time proportional to the size of st0.
+
+Supported for any st that implements set-remove! and supports
+set->stream.
+
+                                        *set-symmetric-difference*
+(set-symmetric-difference st0 st ...) -> generic-set? ~
+  st0 : generic-set? ~
+  st : generic-set? ~
+
+Produces a set of the same type as st0 that includes all of the elements
+contained an odd number of times in st0 and the sts.
+
+If st0 is a list, each st must also be a list.  This operation runs on
+lists in time proportional to the total size of the sts times the size
+of st0.
+
+If st0 is a hash set, each st must also be a hash set that uses the same
+comparison function (equal?, eqv?, or eq?).  The mutability and key
+strength of the hash sets may differ.  This operation runs on hash sets
+in time proportional to the total size of all of the sets except the
+largest immutable set.
+
+Supported for any st that implements set-remove or both set-clear and
+set-add, and supports set->stream.
+
+Example:
+  > (set-symmetric-difference (set 1) (set 1 2) (set 1 2 3))
+  (set 1 3)
+
+                                        *set-symmetric-difference!*
+(set-symmetric-difference! st0 st ...) -> generic-set? ~
+  st0 : generic-set? ~
+  st : generic-set? ~
+
+Adds and removes elements of st0 so that it includes all of the elements
+contained an odd number of times in the sts and the original contents of
+st0.
+
+If st0 is a hash set, each st must also be a hash set that uses the same
+comparison function (equal?, eqv?, or eq?).  The mutability and key
+strength of the hash sets may differ.  This operation runs on hash sets
+in time proportional to the total size of the sts.
+
+Supported for any st that implements set-remove! and supports
+set->stream.
+
+                                        *set*
+(set=? st st2) -> boolean? ~
+  st : generic-set? ~
+  st2 : generic-set? ~
+
+Returns #t if st and st2 contain the same members; returns #f otherwise.
+
+If st0 is a list, each st must also be a list.  This operation runs on
+lists in time proportional to the size of st times the size of st2.
+
+If st0 is a hash set, each st must also be a hash set that uses the same
+comparison function (equal?, eqv?, or eq?).  The mutability and key
+strength of the hash sets may differ.  This operation runs on hash sets
+in time proportional to the size of st plus the size of st2.
+
+Supported for any st and st2 that both support subset?; also supported
+for any if st2 that implements set=? regardless of st.
+
+Examples:
+  > (set=? (list 1 2) (list 2 1))
+  #t
+  > (set=? (set 1) (set 1 2 3))
+  #f
+  > (set=? (set 1 2 3) (set 1))
+  #f
+  > (set=? (set 1 2 3) (set 1 2 3))
+  #t
+  > (set=? (seteq 1 2) (mutable-seteq 2 1))
+  #t
+  > (set=? (seteq 1 2) (seteqv 1 2))
+  set=?: set arguments have incompatible equivalence
+  predicates
+    first set: (seteq 1 2) ~
+    incompatible set: (seteqv 1 2) ~
+  ; Sets of different types cannot be compared.
+
+                                        *subset?*
+(subset? st st2) -> boolean? ~
+  st : generic-set? ~
+  st2 : generic-set? ~
+
+Returns #t if st2 contains every member of st; returns #f otherwise.
+
+If st0 is a list, each st must also be a list.  This operation runs on
+lists in time proportional to the size of st times the size of st2.
+
+If st0 is a hash set, each st must also be a hash set that uses the same
+comparison function (equal?, eqv?, or eq?).  The mutability and key
+strength of the hash sets may differ.  This operation runs on hash sets
+in time proportional to the size of st.
+
+Supported for any st that supports set->stream.
+
+Examples:
+  > (subset? (set 1) (set 1 2 3))
+  #t
+  > (subset? (set 1 2 3) (set 1))
+  #f
+  > (subset? (set 1 2 3) (set 1 2 3))
+  #t
+
+                                        *proper-subset?*
+(proper-subset? st st2) -> boolean? ~
+  st : generic-set? ~
+  st2 : generic-set? ~
+
+Returns #t if st2 contains every member of st and at least one
+additional element; returns #f otherwise.
+
+If st0 is a list, each st must also be a list.  This operation runs on
+lists in time proportional to the size of st times the size of st2.
+
+If st0 is a hash set, each st must also be a hash set that uses the same
+comparison function (equal?, eqv?, or eq?).  The mutability and key
+strength of the hash sets may differ.  This operation runs on hash sets
+in time proportional to the size of st plus the size of st2.
+
+Supported for any st and st2 that both support subset?.
+
+Examples:
+  > (proper-subset? (set 1) (set 1 2 3))
+  #t
+  > (proper-subset? (set 1 2 3) (set 1))
+  #f
+  > (proper-subset? (set 1 2 3) (set 1 2 3))
+  #f
+
+                                        *set->list*
+(set->list st) -> list? ~
+  st : generic-set? ~
+
+Produces a list containing the elements of st.
+
+Supported for any st that supports set->stream.
+
+                                        *set-map*
+(set-map st proc) -> (listof any/c) ~
+  st : generic-set? ~
+  proc : (any/c . -> . any/c) ~
+
+Applies the procedure proc to each element in st in an unspecified
+order, accumulating the results into a list.
+
+Supported for any st that supports set->stream.
+
+                                        *set-for-each*
+(set-for-each st proc) -> void? ~
+  st : generic-set? ~
+  proc : (any/c . -> . any) ~
+
+Applies proc to each element in st (for the side-effects of proc) in an
+unspecified order.
+
+Supported for any st that supports set->stream.
+
+                                        *in-set*
+(in-set st) -> sequence? ~
+  st : generic-set? ~
+
+Explicitly converts a set to a sequence for use with for and other
+forms.
+
+Supported for any st that supports set->stream.
+
+4. Custom Hash Sets
+
+                                        *define-custom-set-types*
+(define-custom-set-types name ~
+                         optional-predicate
+                         comparison-expr
+                         optional-hash-functions)
+ 
+     optional-predicate = 
+                        | #:elem? predicate-expr ~
+                           
+optional-hash-functions = 
+                        | hash1-expr
+                        | hash1-expr hash2-expr
+
+Creates a new set type based on the given comparison comparison-expr,
+hash functions hash1-expr and hash2-expr, and element predicate
+predicate-expr; the interfaces for these functions are the same as in
+make-custom-set-types.  The new set type has three variants: immutable,
+mutable with strongly-held elements, and mutable with weakly-held
+elements.
+
+Defines seven names:
+
+* name? recognizes instances of the new type,
+
+* immutable-name? recognizes immutable instances of the new type,
+
+* mutable-name? recognizes mutable instances of the new type with
+  strongly-held elements,
+
+* weak-name? recognizes mutable instances of the new type with
+  weakly-held elements,
+
+* make-immutable-name constructs immutable instances of the new type,
+
+* make-mutable-name constructs mutable instances of the new type with
+  strongly-held elements, and
+
+* make-weak-name constructs mutable instances of the new type with
+  weakly-held elements.
+
+The constructors all accept a stream as an optional argument, providing
+initial elements.
+
+Examples:
+  > (define-custom-set-types string-set
+                             #:elem? string? ~
+                             string=?
+                             string-length)
+
+  > (define imm
+      (make-immutable-string-set '("apple" "banana")))
+
+  > (define mut
+      (make-mutable-string-set '("apple" "banana")))
+
+  > (generic-set? imm)
+  #t
+  > (generic-set? mut)
+  #t
+  > (string-set? imm)
+  #t
+  > (string-set? mut)
+  #t
+  > (immutable-string-set? imm)
+  #t
+  > (immutable-string-set? mut)
+  #f
+  > (set-member? imm "apple")
+  #t
+  > (set-member? mut "banana")
+  #t
+  > (equal? imm mut)
+  #f
+  > (set=? imm mut)
+  #t
+  > (set-remove! mut "banana")
+
+  > (set-member? mut "banana")
+  #f
+  > (equal? (set-remove (set-remove imm "apple") "banana")
+            (make-immutable-string-set))
+  #t
+
+                                        *make-custom-set-types*
+(make-custom-set-types  eql?           ~
+                       [hash1         
+                        hash2         
+                        #:elem? elem?  ~
+                        #:name name    ~
+                        #:for who])    ~
+ -> (any/c . -> . boolean?)
+    (any/c . -> . boolean?)
+    (any/c . -> . boolean?)
+    (any/c . -> . boolean?)
+    (->* [] [stream?] generic-set?)
+    (->* [] [stream?] generic-set?)
+    (->* [] [stream?] generic-set?)
+  eql? : (or/c (any/c any/c . -> . any/c) ~
+               (any/c any/c (any/c any/c . -> . any/c) . -> . any/c))
+  hash1 : (or/c (any/c . -> . exact-integer?) ~
+                (any/c (any/c . -> . exact-integer?) . -> . exact-integer?))
+        = (const 1)
+  hash2 : (or/c (any/c . -> . exact-integer?) ~
+                (any/c (any/c . -> . exact-integer?) . -> . exact-integer?))
+        = (const 1)
+  elem? : (any/c . -> . boolean?) = (const #true) ~
+  name : symbol? = 'custom-set ~
+  who : symbol? = 'make-custom-set-types ~
+
+Creates a new set type based on the given comparison function eql?, hash
+functions hash1 and hash2, and predicate elem?. The new set type has
+variants that are immutable, mutable with strongly-held elements, and
+mutable with weakly-held elements.  The given name is used when printing
+instances of the new set type, and the symbol who is used for reporting
+errors.
+
+The comparison function eql? may accept 2 or 3 arguments.  If it accepts
+2 arguments, it given two elements to compare them.  If it accepts 3
+arguments and does not accept 2 arguments, it is also given a recursive
+comparison function that handles data cycles when comparing sub-parts of
+the elements.
+
+The hash functions hash1 and hash2 may accept 1 or 2 arguments.  If
+either hash function accepts 1 argument, it is applied to a element to
+compute the corresponding hash value.  If either hash function accepts 2
+arguments and does not accept 1 argument, it is also given a recursive
+hash function that handles data cycles when computing hash values of
+sub-parts of the elements.
+
+The predicate elem? must accept 1 argument and is used to recognize
+valid elements for the new set type.
+
+Produces seven values:
+
+* a predicate recognizing all instances of the new set type,
+
+* a predicate recognizing immutable instances,
+
+* a predicate recognizing mutable instances,
+
+* a predicate recognizing weak instances,
+
+* a constructor for immutable instances,
+
+* a constructor for mutable instances, and
+
+* a constructor for weak instances.
+
+See define-custom-hash-types for an example.

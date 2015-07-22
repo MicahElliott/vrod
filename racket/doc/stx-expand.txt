@@ -1,0 +1,122 @@
+Expanding Top-Level Forms
+
+                                        *expand*
+(expand top-level-form) -> syntax? ~
+  top-level-form : any/c ~
+
+Expands all non-primitive syntax in top-level-form, and returns a syntax
+object for the expanded form that contains only core forms, matching the
+grammar specified by [missing].
+
+Before top-level-form is expanded, its lexical context is enriched with
+namespace-syntax-introduce, just as for eval. Use syntax->datum to
+convert the returned syntax object into a printable datum.
+
+Here’s an example of using expand on a module:
+
+  (parameterize ([current-namespace (make-base-namespace)])
+   (expand
+    (datum->syntax
+     #f
+     '(module foo scheme
+        (define a 3)
+        (+ a 4)))))
+
+Here’s an example of using expand on a non-top-level form:
+
+  (define-namespace-anchor anchor)
+  (parameterize ([current-namespace
+                  (namespace-anchor->namespace anchor)])
+   (expand
+    (datum->syntax
+     #f
+     '(delay (+ 1 2)))))
+
+                                        *expand-syntax*
+(expand-syntax stx) -> syntax? ~
+  stx : syntax? ~
+
+Like (expand stx), except that the argument must be a syntax object, and
+its lexical context is not enriched before expansion.
+
+                                        *expand-once*
+(expand-once top-level-form) -> syntax? ~
+  top-level-form : any/c ~
+
+Partially expands top-level-form and returns a syntax object for the
+partially-expanded expression. Due to limitations in the expansion
+mechanism, some context information may be lost. In particular, calling
+expand-once on the result may produce a result that is different from
+expansion via expand.
+
+Before top-level-form is expanded, its lexical context is enriched with
+namespace-syntax-introduce, as for eval.
+
+                                        *expand-syntax-once*
+(expand-syntax-once stx) -> syntax? ~
+  stx : syntax? ~
+
+Like (expand-once stx), except that the argument must be a syntax
+object, and its lexical context is not enriched before expansion.
+
+                                        *expand-to-top-form*
+(expand-to-top-form top-level-form) -> syntax? ~
+  top-level-form : any/c ~
+
+Partially expands top-level-form to reveal the outermost syntactic form.
+This partial expansion is mainly useful for detecting top-level uses of
+begin. Unlike the result of expand-once, expanding the result of
+expand-to-top-form with expand produces the same result as using expand
+on the original syntax.
+
+Before stx-or-sexpr is expanded, its lexical context is enriched with
+namespace-syntax-introduce, as for eval.
+
+                                        *expand-syntax-to-top-form*
+(expand-syntax-to-top-form stx) -> syntax? ~
+  stx : syntax? ~
+
+Like (expand-to-top-form stx), except that the argument must be a syntax
+object, and its lexical context is not enriched before expansion.
+
+1. Information on Expanded Modules
+
+Information for an expanded module declaration is stored in a set of
+syntax properties (see [missing]) attached to the syntax object:
+
+* 'module-direct-requires — a list of module path indexes (or symbols)
+  representing the modules explicitly imported into the module.
+
+* 'module-direct-for-syntax-requires — a list of module path indexes (or
+  symbols) representing the modules explicitly for-syntax imported into
+  the module.
+
+* 'module-direct-for-template-requires — a list of module path indexes
+  (or symbols) representing the modules explicitly for-template imported
+  into the module.
+
+* 'module-variable-provides — a list of provided items, where each item
+  is one of the following:
+
+  * symbol — represents a locally defined variable that is provided with
+    its defined name.
+
+  * (cons provided-sym defined-sym) — represents a locally defined
+    variable that is provided with renaming; the first symbol is the
+    exported name, and the second symbol is the defined name.
+
+  * (list* module-path-index provided-sym defined-sym) — represents a
+    re-exported and possibly re-named variable from the specified
+    module; module-path-index is either a module path index or symbol
+    (see [missing]), indicating the source module for the binding. The
+    provided-sym is the external name for the re-export, and defined-sym
+    is the originally defined name in the module specified by
+    module-path-index.
+
+* 'module-syntax-provides — like 'module-variable-provides, but for
+  syntax exports instead of variable exports.
+
+* 'module-indirect-provides — a list of symbols for variables that are
+  defined in the module but not exported; they may be exported
+  indirectly through macro expansions.  Definitions of macro-generated
+  identifiers create uninterned symbols in this list.

@@ -1,0 +1,91 @@
+Interactive Module Loading
+
+The racket/rerequire and racket/enter libraries provide support for
+loading, reloading, and using modules.
+
+1. Entering Modules
+
+ (require racket/enter) package: base ~
+
+The bindings documented in this section are provided by the racket/enter
+and racket/init libraries, which means that they are available when  the
+Racket executable is started with no command-line arguments. They are
+not provided by racket/base or racket.
+
+                                        *enter!*
+(enter! module-path) ~
+(enter! #f)
+(enter! module-path flag ...+)
+ 
+flag = #:quiet ~
+     | #:verbose-reload ~
+     | #:verbose ~
+     | #:dont-re-require-enter ~
+
+Intended for use in a REPL, such as when racket is started in
+interactive mode. When a module-path is provided (in the same sense as
+for require), the corresponding module is loaded or invoked via
+dynamic-rerequire, and the current namespace is changed to the body of
+the module via module->namespace. When #f is provided, then the current
+namespace is restored to the original one.
+
+Additional flags can customize aspects of enter!:
+
+* The #:verbose, #:verbose-reload, and #:quiet flags correspond to 'all,
+  'reload, and 'none verbosity for dynamic-rerequire. The default
+  corresponds to #:verbose-reload.
+
+* After switching namespaces to the designated module, enter!
+  automatically requires racket/enter into the namespace, so that enter!
+  can be used to switch namespaces again.  In some cases, requiring
+  racket/enter might not be desirable (e.g., in a tool that uses
+  racket/enter); use the #:dont-re-require-enter flag to disable the
+  require.
+
+                                        *dynamic-enter!*
+(dynamic-enter!  mod                                          ~
+                [#:verbosity verbosity                        ~
+                 #:re-require-enter? re-require-enter?]) -> void? ~
+  mod : (or/c module-path? #f) ~
+  verbosity : (or/c 'all 'reload 'none) = 'reload ~
+  re-require-enter? : any/c = #t ~
+
+Procedure variant of enter!, where verbosity is passed along to
+dynamic-rerequire and re-require-enter?  determines whether
+dynamic-enter! requires racket/enter in a newly entered namespace.
+
+Added in version 6.0.0.1 of package base.
+
+2. Loading and Reloading Modules
+
+ (require racket/rerequire) package: base ~
+
+The bindings documented in this section are provided by the
+racket/rerequire library, not racket/base or racket.
+
+                                        *dynamic-rerequire*
+(dynamic-rerequire  module-path                  ~
+                   [#:verbosity verbosity]) -> (listof path?) ~
+  module-path : module-path? ~
+  verbosity : (or/c 'all 'reload 'none) = 'reload ~
+
+Like (dynamic-require module-path 0), but with reloading support. The
+dynamic-rerequire function is intended for use in an interactive
+environment, especially via enter!.
+
+If invoking module-path requires loading any files, then modification
+dates of the files are recorded. If the file is modified, then a later
+dynamic-rerequire re-loads the module from source; see also [missing].
+Similarly if a later dynamic-rerequire transitively requires a modified
+module, then the required module is re-loaded. Re-loading support works
+only for modules that are first loaded (either directly or indirectly
+through transitive requires) via dynamic-rerequire.
+
+The returned list contains the absolute paths to the modules that were
+reloaded on this call to dynamic-rerequire. If the returned list is
+empty, no modules were changed or loaded.
+
+When enter! loads or re-loads a module from a file, it can print a
+message to (current-error-port), depending on verbosity: 'all prints a
+message for all loads and re-loads, 'reload prints a message only for
+re-loaded modules, and 'none disables printouts.

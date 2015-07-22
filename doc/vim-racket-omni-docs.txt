@@ -1,0 +1,43 @@
+*vim-racket-omni-docs.txt* Racket Reference documentation as Vim help
+
+Author:  Micah Elliott
+Repo:    https://github.com/MicahElliott/vim-racket-omni-docs
+License: Same terms as Vim itself (see |license|)
+
+==============================================================================
+INTRODUCTION                                      *vrod*
+
+This plugin turns Racket reference docs into Vim help. That’s kinda’ weird,
+but works out well. Racket doesn’t have help built into its repl or source
+code, so the niceties of Clojure inline docs are not very possible without
+things like this plugin.
+
+Use |K| while on any Racket function to access its reference help
+documentation through Vim’s help system.
+
+Use CTRL-X CTRL-O to omni-complete any standard Racket function.
+
+==============================================================================
+FEATURES                                          *vrod-features*
+
+* built-in vim-help for most of Racket Reference docs
+* omni-completion for most Racket functions
+
+==============================================================================
+BUGS                                              *vrod-bugs*
+
+Vim-help does not work with tags containing two `*`s. But some Racket
+functions have a `*` suffix. These did not get included in the tags.
+
+It is simpler to just use dictionary-style completion for Racket functions
+instead of true omni-completion, so that’s what’s presently done. It might be
+worth switching if there is an expectation that 2,000 functions should be more
+smartly completed using the explicit omni menu. This should be an easy change
+to make if warranted.
+
+==============================================================================
+CONTRIBUTING                                      *vrod-contributing*
+
+See |MAINTENANCE.md| for development details.
+
+Copyright © Micah Elliott. vim:ft=help:

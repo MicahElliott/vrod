@@ -1,0 +1,192 @@
+Buffered Asynchronous Channels
+
+ (require racket/async-channel) package: base ~
+
+The bindings documented in this section are provided by the
+racket/async-channel library, not racket/base or racket.
+
+1. Creating and Using Asynchronous Channels
+
++See also [missing].
+
+An asynchronous channel is like a channel, but it buffers values so that
+a send operation does not wait on a receive operation.
+
+In addition to its use with procedures that are specific to asynchronous
+channels, an asynchronous channel can be used as a synchronizable event
+(see [missing]).  An asynchronous channel is ready for synchronization
+when async-channel-get would not block; the asynchronous channel’s
+synchronization result is the same as the async-channel-get result.
+
+                                        *async-channel?*
+(async-channel? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is an asynchronous channel, #f otherwise.
+
+                                        *make-async-channel*
+(make-async-channel [limit]) -> async-channel? ~
+  limit : (or/c exact-positive-integer? #f) = #f ~
+
+Returns an asynchronous channel with a buffer limit of limit items. A
+get operation blocks when the channel is empty, and a put operation
+blocks when the channel has limit items already. If limit is #f, the
+channel buffer has no limit (so a put never blocks).
+
+                                        *async-channel-get*
+(async-channel-get ach) -> any/c ~
+  ach : async-channel? ~
+
+Blocks until at least one value is available in ach, and then returns
+the first of the values that were put into async-channel.
+
+                                        *async-channel-try-get*
+(async-channel-try-get ach) -> any/c ~
+  ach : async-channel? ~
+
+If at least one value is immediately available in ach, returns the first
+of the values that were put into ach. If async-channel is empty, the
+result is #f.
+
+                                        *async-channel-put*
+(async-channel-put ach v) -> void? ~
+  ach : async-channel? ~
+  v : any/c ~
+
+Puts v into ach, blocking if ach’s buffer is full until space is
+available.
+
+                                        *async-channel-put-evt*
+(async-channel-put-evt ach v) -> evt? ~
+  ach : async-channel? ~
+  v : any/c ~
+
+Returns a synchronizable event that is ready for synchronization when
+(async-channel-put ach v) would return a value (i.e., when the channel
+holds fewer values already than its limit); the synchronization result
+of a asychronous channel-put event is the asychronous channel-put event
+itself.
+
+Examples:
+  (define (server input-channel output-channel)
+    (thread (lambda ()
+              (define (get)
+                (async-channel-get input-channel))
+              (define (put x)
+                (async-channel-put output-channel x))
+              (define (do-large-computation)
+                (sqrt 9))
+              (let loop ([data (get)])
+                (case data
+                  [(quit) (void)]
+                  [(add) (begin
+                           (put (+ 1 (get)))
+                           (loop (get)))]
+                  [(long) (begin
+                            (put (do-large-computation))
+                            (loop (get)))])))))
+
+
+  (define to-server (make-async-channel))
+
+
+  (define from-server (make-async-channel))
+
+
+  > (server to-server from-server)
+  #<thread>
+  > (async-channel? to-server)
+  #t
+  > (printf "Adding 1 to 4\n")
+  Adding 1 to 4
+
+  > (async-channel-put to-server 'add)
+
+  > (async-channel-put to-server 4)
+
+  > (printf "Result is ~a\n" (async-channel-get from-server))
+  Result is 5
+
+  > (printf "Ask server to do a long computation\n")
+  Ask server to do a long computation
+
+  > (async-channel-put to-server 'long)
+
+  > (printf "I can do other stuff\n")
+  I can do other stuff
+
+  > (printf "Ok, computation from server is ~a\n"
+            (async-channel-get from-server))
+  Ok, computation from server is 3
+
+  > (async-channel-put to-server 'quit)
+
+
+2. Contracts and Impersonators on Asynchronous Channels
+
+                                        *async-channel/c*
+(async-channel/c c) -> contract? ~
+  c : contract? ~
+
+Returns a contract that recognizes asynchronous channels. Values put
+into or retrieved from the channel must match c.
+
+If the c argument is a flat contract or a chaperone contract, then the
+result will be a chaperone contract. Otherwise, the result will be an
+impersonator contract.
+
+When an async-channel/c contract is applied to an asynchronous channel,
+the result is not eq? to the input. The result will be either a
+chaperone or impersonator of the input depending on the type of
+contract.
+
+                                        *impersonate-async-channel*
+(impersonate-async-channel channel       ~
+                           get-proc     
+                           put-proc     
+                           prop         
+                           prop-val ... 
+                           ...)         
+ -> (and/c async-channel? impersonator?)
+  channel : async-channel? ~
+  get-proc : (any/c . -> . any/c) ~
+  put-proc : (any/c . -> . any/c) ~
+  prop : impersonator-property? ~
+  prop-val : any ~
+
+Returns an impersonator of channel, which redirects the
+async-channel-get and async-channel-put operations.
+
+The get-proc must accept the value that async-channel-get produces on
+channel; it must produce a replacement value, which is the result of the
+get operation on the impersonator.
+
+The put-proc must accept the value passed to async-channel-put called on
+channel; it must produce a replacement value, which is the value passed
+to the put procedure called on the original channel.
+
+The get-proc and put-proc procedures are called for all operations that
+get or put values from the channel, not just async-channel-get and
+async-channel-put.
+
+Pairs of prop and prop-val (the number of arguments to
+impersonate-async-channel must be odd) add impersonator properties or
+override impersonator property values of channel.
+
+                                        *chaperone-async-channel*
+(chaperone-async-channel channel       ~
+                         get-proc     
+                         put-proc     
+                         prop         
+                         prop-val ... 
+                         ...)         
+ -> (and/c async-channel? chaperone?)
+  channel : async-channel? ~
+  get-proc : (any/c . -> . any/c) ~
+  put-proc : (any/c . -> . any/c) ~
+  prop : impersonator-property? ~
+  prop-val : any ~
+
+Like impersonate-async-channel, but the get-proc procedure must produce
+the same value or a chaperone of the original value, and put-proc must
+produce the same value or a chaperone of the original value.

@@ -1,0 +1,128 @@
+Constructing Graphs: shared
+
+ (require racket/shared) package: base ~
+
+The bindings documented in this section are provided by the
+racket/shared and racket libraries, but not racket/base.
+
+                                        *shared*
+(shared ([id expr] ...) body ...+) ~
+
+Binds ids with shared structure according to exprs and then evaluates
+the body-exprs, returning the result of the last expression.
+
+The shared form is similar to letrec, except that special forms of expr
+are recognized (after partial macro expansion) to construct
+graph-structured data, where the corresponding letrec would instead
+produce a use-before-initialization error.
+
+Each expr (after partial expansion) is matched against the following
+shared-expr grammar, where earlier variants in a production take
+precedence over later variants:
+
+        shared-expr = shell-expr
+                    | plain-expr
+                       
+         shell-expr = (cons in-immutable-expr in-immutable-expr)
+                    | (list in-immutable-expr ...)
+                    | (list* in-immutable-expr ...)
+                    | (append early-expr ... in-immutable-expr)
+                    | (vector-immutable in-immutable-expr ...)
+                    | (box-immutable in-immutable-expr)
+                    | (mcons patchable-expr patchable-expr)
+                    | (vector patchable-expr ...)
+                    | (box patchable-expr)
+                    | (prefix:make-id patchable-expr ...) ~
+                       
+  in-immutable-expr = shell-id
+                    | shell-expr
+                    | early-expr
+                       
+           shell-id = id
+                       
+     patchable-expr = expr
+                       
+         early-expr = expr
+                       
+         plain-expr = expr
+
+The prefix:make-id identifier above matches three kinds of references.
+The first kind is any binding whose name has make- in the middle, and
+where prefix:id has a transformer binding to structure information with
+a full set of mutator bindings; see [missing]. The second kind is an
+identifier that itself has a transformer binding to structure
+information. The third kind is an identifier that has a 'constructor-for
+syntax property whose value is an identifier with a transformer binding
+to structure information. A shell-id, meanwhile, must be one of the ids
+bound by the shared form to a shell-expr.
+
+When the exprs of the shared form are parsed as shared-expr (taking into
+account the order of the variants for parsing precedence), the
+sub-expressions that were parsed via early-expr will be evaluated first
+when the shared form is evaluated. Among such expressions, they are
+evaluated in the order as they appear within the shared form. However,
+any reference to an id bound by shared produces a
+use-before-initialization errror, even if the binding for the id appears
+before the corresponding early-expr within the shared form.
+
+The shell-ids and shell-exprs (not counting patchable-expr and
+early-expr sub-expressions) are effectively evaluated next:
+
+* A shell-id reference produces the same value as the corresponding id
+  will produce within the bodys, assuming that id is never mutated with
+  set!.  This special handling of a shell-id reference is one way in
+  which shared supports the creation of cyclic data, including immutable
+  cyclic data.
+
+* A shell-expr of the form (mcons patchable-expr patchable-expr),
+  (vector patchable-expr ...), (box patchable-expr), or (prefix:make-id
+  patchable-expr ...) produces a mutable value whose content positions
+  are initialized to undefined. Each content position is patched (i.e.,
+  updated) after the corresponding patchable-expr expression is later
+  evaluated.
+
+Next, the plain-exprs are evaluated as for letrec, where a reference to
+an id raises exn:fail:contract:variable if it is evaluated before the
+right-hand side of the id binding.
+
+Finally, the patchable-exprs are evaluated and their values replace
+undefineds in the results of shell-exprs. At this point, all ids are
+bound, so patchable-exprs can create data cycles (but only with cycles
+that can be created via mutation).
+
+Examples:
+  > (shared ([a (cons 1 a)])
+      a)
+  #0='(1 . #0#)
+  > (shared ([a (cons 1 b)]
+             [b (cons 2 a)])
+      a)
+  #0='(1 2 . #0#)
+  > (shared ([a (cons 1 b)]
+             [b 7])
+      a)
+  '(1 . 7)
+  > (shared ([a a]) ; no indirection...
+      a)
+  a: undefined;
+   cannot use before initialization
+  > (shared ([a (cons 1 b)] ; b is early...
+             [b a])
+      a)
+  a: undefined;
+   cannot use before initialization
+  > (shared ([a (mcons 1 b)] ; b is patchable...
+             [b a])
+      a)
+  #0=(mcons 1 #0#)
+  > (shared ([a (vector b b b)]
+             [b (box 1)])
+      (set-box! b 5)
+      a)
+  '#(#&5 #&5 #&5)
+  > (shared ([a (box b)]
+             [b (vector (unbox a)   ; unbox after a is patched
+                        (unbox c))] ; unbox before c is patched
+             [c (box b)])
+      b)
+  #0='#(#0# #<undefined>)

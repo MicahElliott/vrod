@@ -1,0 +1,450 @@
+The Printer
+
+The Racket printer supports three modes:
+
+* write mode prints core datatypes in such a way that using read on the
+  output produces a value that is equal? to the printed value;
+
+* display mode prints core datatypes in a more “end-user” style rather
+  than “programmer” style; for example, a string displays as its content
+  characters without surrounding "s or escapes;
+
+* print mode by default—when print-as-expression is #t—prints most
+  datatypes in such a way that evaluating the output as an expression
+  produces a value that is equal? to the printed value; when
+  print-as-expression is set to #f, then print mode is like write mode.
+
+In print mode when print-as-expression is #t (as is the default), a
+value prints at a quoting depth of either 0 (unquoted) or 1 (quoted).
+The initial quoting depth is accepted as an optional argument by print,
+and printing of some compound datatypes adjusts the print depth for
+component values. For example, when a list is printed at quoting depth 0
+and all of its elements are quotable, the list is printed with a '
+prefix, and the list’s elements are printed at quoting depth 1.
+
+When the print-graph parameter is set to #t, then the printer first
+scans an object to detect cycles. The scan traverses the components of
+pairs, mutable pairs, vectors, boxes (when print-box is #t), hash tables
+(when print-hash-table is #t), fields of structures exposed by
+struct->vector (when print-struct is #t), and fields of structures
+exposed by printing when the structure’s type has the prop:custom-write
+property. If print-graph is #t, then this information is used to print
+sharing through graph definitions and references (see [missing]). If a
+cycle is detected in the initial scan, then print-graph is effectively
+set to #t automatically.
+
+With the exception of displaying byte strings, printing is defined in
+terms of Unicode characters; see [missing] for information on how a
+character stream is written to a port’s underlying byte stream.
+
+1. Printing Symbols
+
+Symbols containing spaces or special characters write using escaping \
+and quoting |s. When the read-case-sensitive parameter is set to #f,
+then symbols containing uppercase characters also use escaping \ and
+quoting |s. In addition, symbols are quoted with |s or leading \ when
+they would otherwise print the same as a numerical constant or as a
+delimited . (when read-accept-dot is #t).
+
+When read-accept-bar-quote is #t, |s are used in printing when one | at
+the beginning and one | at the end suffice to correctly print the
+symbol. Otherwise, \s are always used to escape special characters,
+instead of quoting them with |s.
+
+When read-accept-bar-quote is #f, then | is not treated as a special
+character. The following are always special characters:
+
+   ( ) [ ] } } " , ' ` ; \
+
+In addition, # is a special character when it appears at the beginning
+of the symbol, and when it is not followed by %.
+
+Symbols display without escaping or quoting special characters. That is,
+the display form of a symbol is the same as the display form of
+symbol->string applied to the symbol.
+
+Symbols print the same as they write, unless print-as-expression is set
+to #t (as is the default) and the current quoting depth is 0. In that
+case, the symbol’s printed form is prefixed with '. For the purposes of
+printing enclosing datatypes, a symbol is quotable.
+
+2. Printing Numbers
+
+A number prints the same way in write, display, and print modes. For the
+purposes of printing enclosing datatypes, a number is quotable.
+
+A complex number that is not a real number always prints as >m<+>n<i,
+where >m< and >n< are the printed forms of its real and imaginary parts,
+respectively.
+
+An inexact real number prints with either a . decimal point, an e
+exponent marker, or both.  The form is selected so that the output is as
+short as possible, with the constraint that reading the printed form
+back in produces an equal? number.
+
+An exact 0 prints as 0.
+
+A positive, exact integer prints as a sequence of decimal digits that
+does not start with 0.
+
+A positive, exact, real, non-integer number prints as >m</>n<, where >m<
+and >n< are the printed forms of the number’s numerator and denominator
+(as determined by numerator and denominator).
+
+A negative exact number prints with a - prefix on the printed form of
+the number’s exact negation.
+
+3. Printing Extflonums
+
+An extflonum prints the same way in write, display, and print modes. For
+the purposes of printing enclosing datatypes, an extflonum is quotable.
+
+An extflonum prints in the same way an inexact number, but always with a
+t or T exponent marker. When extflonum operations are supported,
+printing always uses t; when extflonum operations are not supported, an
+extflonum prints the same as its reader (see [missing]) source, since
+reading is the only way to produce an extflonum.
+
+4. Printing Booleans
+
+The boolean constant #t prints as #true or #t in all modes (display,
+write, and print), depending on the value of print-boolean-long-form,
+and the constant #f prints as #false or #f. For the purposes of printing
+enclosing datatypes, a symbol is quotable.
+
+5. Printing Pairs and Lists
+
+In write and display modes, an empty list prints as (). A pair normally
+prints starting with ( followed by the printed form of its car. The rest
+of the printed form depends on the cdr:
+
+* If the cdr is a pair or the empty list, then the printed form of the
+  pair completes with the printed form of the cdr, except that the
+  leading ( in the cdr’s printed form is omitted.
+
+* Otherwise, the printed for of the pair continues with a space, .,
+  another space, the printed form of the cdr, and a ).
+
+If print-reader-abbreviations is set to #t, then pair printing in write
+mode is adjusted in the case of a pair that starts a two-element list
+whose first element is 'quote, 'quasiquote, 'unquote, 'unquote-splicing,
+'syntax, 'quasisyntax, 'unsyntax, or 'unsyntax-splicing. In that case,
+the pair is printed with the corresponding reader syntax: ', `, ,, ,@,
+#', #`, #,, or #,@, respectively. After the reader syntax, the second
+element of the list is printed. When the list is a tail of an enclosing
+list, the tail is printed after a . in the enclosing list (after which
+the reader abbreviations work), instead of including the tail as two
+elements of the enclosing list.
+
+The printed form of a pair is the same in both write and display modes,
+except as the printed form of the pair’s car and cdr vary with the mode.
+The print form is also the same if print-as-expression is #f or the
+quoting depth is 1.
+
+For print mode when print-as-expression is #t and the quoting depth is
+0, then the empty list prints as '(). For a pair whose car and cdr are
+quotable, the pair prints in write mode but with a ' prefix; the pair’s
+content is printed with quoting depth 1. Otherwise, when the car or cdr
+is not quotable, then pair prints with either cons (when the cdr is not
+a pair), list (when the pair is a list), or list* (otherwise) after the
+opening (, any . that would otherwise be printed is suppressed, and the
+pair content is printed at quoting depth 0. In all cases, when
+print-as-expression is #t for print mode, then the value of
+print-reader-abbreviations is ignored and reader abbreviations are
+always used for lists printed at quoting depth 1.
+
+By default, mutable pairs (as created with mcons) print the same as
+pairs for write and display, except that { and } are used instead of (
+and ). Note that the reader treats {...} and (...) equivalently on
+input, creating immutable pairs in both cases. Mutable pairs in print
+mode with print-as-expression as #f or a quoting depth of 1 also use {
+and }. In print mode with print-as-expression as #t and a quoting depth
+of 0, a mutable pair prints as (mcons , the mcar and mcdr printed at
+quoting depth 0 and separated by a space, and a closing ).
+
+If the print-pair-curly-braces parameter is set to #t, then pairs print
+using { and } when not using print mode with print-as-expression as #t
+and a quoting depth of 0.  If the print-mpair-curly-braces parameter is
+set to #f, then mutable pairs print using ( and ) in that mode.
+
+For the purposes of printing enclosing datatypes, an empty list is
+always quotable, a pair is quotable when its car and cdr are quotable,
+and a mutable list is never quotable.
+
+6. Printing Strings
+
+All strings display as their literal character sequences.
+
+The write or print form of a string starts with " and ends with another
+". Between the "s, each character is represented. Each graphic or blank
+character is represented as itself, with two exceptions: " is printed as
+\", and \ is printed as \\. Each non-graphic, non-blank character
+(according to char-graphic? and char-blank?) is printed using the escape
+sequences described in [missing], using \a, \b, \t, \n, \v, \f, \r, or
+\e if possible, otherwise using \u with four hexadecimal digits or \U
+with eight hexadecimal digits (using the latter only if the character
+value does not fit into four digits).
+
+All byte strings display as their literal byte sequence; this byte
+sequence may not be a valid UTF-8 encoding, so it may not correspond to
+a sequence of characters.
+
+The write or print form of a byte string starts with #" and ends with a
+". Between the "s, each byte is written using the corresponding ASCII
+decoding if the byte is between 0 and 127 and the character is graphic
+or blank (according to char-graphic? and char-blank?). Otherwise, the
+byte is written using \a, \b, \t, \n, \v, \f, \r, or \e if possible,
+otherwise using \ followed by one to three octal digits (only as many as
+necessary).
+
+For the purposes of printing enclosing datatypes, a string or a byte
+string is quotable.
+
+7. Printing Vectors
+
+In display mode, the printed form of a vector is # followed by the
+printed form of vector->list applied to the vector. In write mode, the
+printed form is the same, except that when the print-vector-length
+parameter is #t, a decimal integer is printed after the #, and a
+repeated last element is printed only once.
+
+Vectors print the same as they write, unless print-as-expression is set
+to #t and the current quoting depth is 0. In that case, if all of the
+vector’s elements are quotable, then the vector’s printed form is
+prefixed with ' and its elements printed with quoting depth 1. If its
+elements are not all quotable, then the vector prints as (vector , the
+elements at quoting depth 0, and a closing ). A vector is quotable when
+all of its elements are quotable.
+
+In write or display mode, an flvector prints like a vector, but with a
+#fl prefix instead of #. A fxvector similarly prints with a #fx prefix
+instead of #. The print-vector-length parameter affects flvector and
+fxvector printing the same as vector printing. In print mode, flvectors
+and fxvectors are not quotable, and they print like a vector at quoting
+depth 0 using a (flvector  or (fxvector  prefix, respectively.
+
+8. Printing Structures
+
+When the print-struct parameter is set to #t, then the way that
+structures print depends on details of the structure type for which the
+structure is an instance:
+
+* If the structure type is a prefab structure type, then it prints in
+  write or display mode using #s( followed by the prefab structure type
+  key, then the printed form of each field in the structure, and then ).
+
+  In print mode when print-as-expression is set to #t and the current
+  quoting depth is 0, if the structure’s content is all quotable, then
+  the structure’s printed form is prefixed with ' and its content is
+  printed with quoting depth 1. If any of its content is not quotable,
+  then the structure type prints the same as a non-prefab structure
+  type.
+
+  An instance of a prefab structure type is quotable when all of its
+  content is quotable.
+
+* If the structure has a prop:custom-write property value, then the
+  associated procedure is used to print the structure, unless the
+  print-unreadable parameter is set to #f.
+
+  For print mode, an instance of a structure type with a
+  prop:custom-write property is treated as quotable if it has the
+  prop:custom-print-quotable property with a value of 'always. If it has
+  'maybe as the property value, then the structure is treated as
+  quotable if its content is quotable, where the content is determined
+  by the values recursively printed by the structure’s prop:custom-write
+  procedure. Finally, if the structure has 'self as the property value,
+  then it is treated as quotable.
+
+  In print mode when print-as-expression is #t, the structure’s
+  prop:custom-write procedure is called with either 0 or 1 as the
+  quoting depth, normally depending on the structure’s
+  prop:custom-print-quotable property value. If the property value is
+  'always, the quoting depth is normally 1. If the property value is
+  'maybe, then the quoting depth is 1 if the structure is quotable, or
+  normally 0 otherwise. If the property value is 'self, then the quoting
+  depth may be 0 or 1; it is normally 0 if the structure is not printed
+  as a part of an enclosing quotable value, even though the structure is
+  treated as quotable. Finally, if the property value is 'never, then
+  the quoting depth is normally 0. The quoting depth can vary from its
+  normal value if the structure is printed with an explicit quoting
+  depth of 1.
+
+* If the structure’s type is transparent or if any ancestor is
+  transparent (i.e., struct? on the instance produces #t), then the
+  structure prints as the vector produced by struct->vector in display
+  mode, in write mode, or in print mode when print-as-expression is set
+  to #f or when the quoting depth is 0.
+
+  In print mode with print-as-expression as #t and a quoting depth of 0,
+  the structure content is printed with a ( followed by the structure’s
+  type name (as determined by object-name) in write mode; the remaining
+  elements are printed at quoting depth 0 and separated by a space, and
+  finally a closing ).
+
+  A transparent structure type that is not a prefab structure type is
+  never quotable.
+
+* For any other structure type, the structure prints as an unreadable
+  value; see Printing Unreadable Values for more information.
+
+If the print-struct parameter is set to #f, then all structures without
+a prop:custom-write property print as unreadable values (see Printing
+Unreadable Values) and count as quotable.
+
+9. Printing Hash Tables
+
+When the print-hash-table parameter is set to #t, in write and display
+modes, a hash table prints starting with #hash(, #hasheqv(, or #hasheq(
+for a table using equal?, eqv?, or eq? key comparisons, respectively.
+After the prefix, each key–value mapping is shown as (, the printed form
+of a key, a space, ., a space, the printed form the corresponding value,
+and ), with an additional space if the key–value pair is not the last to
+be printed.  After all key–value pairs, the printed form completes with
+).
+
+In print mode when print-as-expression is #f or the quoting depth is 1,
+the printed form is the same as for write. Otherwise, if the hash
+table’s keys and values are all quotable, the table prints with a '
+prefix, and the table’s key and values are printed at quoting depth 1.
+If some key or value is not quotable, the hash table prints as (hash ,
+(hasheqv , or (hasheq  followed by alternating keys and values printed
+at quoting depth 1 and separated by spaces, and finally a closing ). A
+hash table is quotable when all of its keys and values are quotable.
+
+When the print-hash-table parameter is set to #f, a hash table prints as
+#<hash> and counts as quotable.
+
+10. Printing Boxes
+
+When the print-box parameter is set to #t, a box prints as #& followed
+by the printed form of its content in write, display, or print mode when
+print-as-expression is #f or the quoting depth is 1.
+
+In print mode when print-as-expression is #t and the quoting depth is 0,
+a box prints with a ' prefix and its value is printed at quoting depth 1
+when its content is quotable, otherwise the box prints a (box  followed
+by the content at quoting depth 0 and a closing ). A box is quotable
+when its content is quotable.
+
+When the print-box parameter is set to #f, a box prints as #<box> and
+counts as quotable.
+
+11. Printing Characters
+
+Characters with the special names described in [missing] write and print
+using the same name.  (Some characters have multiple names; the
+#\newline and #\nul names are used instead of #\linefeed and #\null.)
+Other graphic characters (according to char-graphic?) write as #\
+followed by the single character, and all others characters are written
+in #\u notation with four digits or #\U notation with eight digits
+(using the latter only if the character value does not fit in four
+digits).
+
+All characters display directly as themselves (i.e., a single
+character).
+
+For the purposes of printing enclosing datatypes, a character is
+quotable.
+
+12. Printing Keywords
+
+Keywords write, print, and display the same as symbols (see Printing
+Symbols) except with a leading #: (after any ' prefix added in print
+mode), and without special handling for an initial # or when the printed
+form would match a number or a delimited . (since #: distinguishes the
+keyword).
+
+For the purposes of printing enclosing datatypes, a keyword is quotable.
+
+13. Printing Regular Expressions
+
+Regexp values write, display, and print starting with #px (for
+pregexp-based regexps) or #rx (for regexp-based regexps) followed by the
+write form of the regexp’s source string or byte string.
+
+For the purposes of printing enclosing datatypes, a regexp value is
+quotable.
+
+14. Printing Paths
+
+Paths write and print as #<path:....>. A path displays the same as the
+string produced by path->string. For the purposes of printing enclosing
+datatypes, a path counts as quotable.
+
+Although a path can be converted to a string with path->string or to a
+byte string with path->bytes, neither is clearly the right choice for
+printing a path and reading it back. If the path value is meant to be
+moved among platforms, then a string is probably the right choice,
+despite the potential for losing information when converting a path to a
+string. For a path that is intended to be re-read on the same platform,
+a byte string is probably the right choice, since it preserves
+information in an unportable way. Paths do not print in a readable way
+so that programmers are not misled into thinking that either choice is
+always appropriate.
+
+15. Printing Unreadable Values
+
+For any value with no other printing specification, assuming that the
+print-unreadable parameter is set to #t, the output form is
+#<>something<>, where >something< is specific to the type of the value
+and sometimes to the value itself. If print-unreadable is set to #f,
+then attempting to print an unreadable value raises exn:fail.
+
+For the purposes of printing enclosing datatypes, a value that prints
+unreadably nevertheless counts as quotable.
+
+16. Printing Compiled Code
+
+Compiled code as produced by compile prints using #~. Compiled code
+printed with #~ is essentially assembly code for Racket, and reading
+such a form produces a compiled form when the read-accept-compiled
+parameter is set to #t.
+
+When a compiled form contains syntax object constants, they must not be
+tainted or armed; the #~-marshaled form drops source-location
+information and properties (see [missing]) for the syntax objects.
+
+Compiled code parsed from #~ may contain references to unexported or
+protected bindings from a module. At read time, such references are
+associated with the current code inspector (see current-code-inspector),
+and the code will only execute if that inspector controls the relevant
+module invocation (see [missing]).
+
+A compiled-form object may contain uninterned symbols (see [missing])
+that were created by gensym or string->uninterned-symbol. When the
+compiled object is read via #~, each uninterned symbol in the original
+form is mapped to a new uninterned symbol, where multiple instances of a
+single symbol are consistently mapped to the same new symbol. The
+original and new symbols have the same printed representation.
+Unreadable symbols, which are typically generated indirectly during
+expansion and compilation, are saved and restored consistently through
+#~.
+
+The dynamic nature of uninterned symbols and their localization within
+#~ can cause problems when gensym or string->uninterned-symbol is used
+to construct an identifier for a top-level or module binding (depending
+on how the identifier and its references are compiled). To avoid
+problems, generate distinct identifiers either with generate-temporaries
+or by applying the result of make-syntax-introducer to an existing
+identifier; those functions lead to top-level and module variables with
+unreadable symbolic names, and the names are deterministic as long as
+expansion is otherwise deterministic.
+
+Despite the problems inherent with uninterned symbols as variable names,
+they are partially supported even across multiple #~s: When compiled
+code contains a reference to a module-defined variable whose name is an
+uninterned symbol, the relative position of the variable among the
+module’s definitions is recorded, and the reference can be linked back
+to the definition based on its position and the characters in its name.
+This accommodation works only for variable references in compiled code;
+it does not work for syntax-quoted identifiers, for example.
+
+Finally, a compiled form may contain path literals. Although paths are
+not normally printed in a way that can be read back in, path literals
+can be written and read as part of compiled code. The
+current-write-relative-directory parameter is used to convert the path
+to a relative path as is it written, and then
+current-load-relative-directory parameter is used to convert any
+relative path back as it is read. The relative-path conversion applies
+on reading whether the path was originally relative or not.

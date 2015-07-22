@@ -1,0 +1,881 @@
+Evaluation Model
+
+Racket evaluation can be viewed as the simplification of expressions to
+obtain values. For example, just as an elementary-school student
+simplifies
+
+  1 + 1 = 2
+
+Racket evaluation simplifies
+
+  (+ 1 1) -> 2
+
+The arrow -> above replaces the more traditional = to emphasize that
+evaluation proceeds in a particular direction towards simpler
+expressions. In particular, a value is an expression that evaluation
+simplifies no further, such as the number 2.
+
+1. Sub-expression Evaluation and Continuations
+
+Some simplifications require more than one step. For example:
+
+  (- 4 (+ 1 1)) -> (- 4 2) -> 2
+
+An expression that is not a value can always be partitioned into two
+parts: a redex, which is the part that changed in a single-step
+simplification (highlighted), and the continuation, which is the
+evaluation context surrounding an expression. In (- 4 (+ 1 1)), the
+redex is (+ 1 1), and the continuation is (- 4 []), where [] takes the
+place of the redex. That is, the continuation says how to “continue”
+after the redex is reduced to a value.
+
+Before some things can be evaluated, some sub-expressions must be
+evaluated; for example, in the application (- 4 (+ 1 1)), the
+application of - cannot be reduced until the sub-expression (+ 1 1) is
+reduced.
+
+Thus, the specification of each syntactic form specifies how (some of)
+its sub-expressions are evaluated, and then how the results are combined
+to reduce the form away.
+
+The dynamic extent of an expression is the sequence of evaluation steps
+during which the expression contains the redex.
+
+2. Tail Position
+
+An expression expr1 is in tail position with respect to an enclosing
+expression expr2 if, whenever expr1 becomes a redex, its continuation is
+the same as was the enclosing expr2’s continuation.
+
+For example, the (+ 1 1) expression is not in tail position with respect
+to (- 4 (+ 1 1)). To illustrate, we use the notation C[expr] to mean the
+expression that is produced by substituting expr in place of [] in the
+continuation C:
+
+  C[(- 4 (+ 1 1))] -> C[(- 4 2)]
+
+In this case, the continuation for reducing (+ 1 1) is C[(- 4 [])], not
+just C.
+
+In contrast, (+ 1 1) is in tail position with respect to (if (zero? 0)
+(+ 1 1) 3), because, for any continuation C,
+
+  C[(if (zero? 0) (+ 1 1) 3)] -> C[(if #t (+ 1 1) 3)] -> C[(+ 1 1)]
+
+The steps in this reduction sequence are driven by the definition of if,
+and they do not depend on the continuation C. The “then” branch of an if
+form is always in tail position with respect to the if form. Due to a
+similar reduction rule for if and #f, the “else” branch of an if form is
+also in tail position.
+
+Tail-position specifications provide a guarantee about the asymptotic
+space consumption of a computation. In general, the specification of
+tail positions goes with each syntactic form, like if.
+
+3. Multiple Return Values
+
+A Racket expression can evaluate to multiple values, in the same way
+that a procedure can accept multiple arguments.
+
+Most continuations expect a particular number of result values.  Indeed,
+most continuations, such as (+ [] 1) expect a single value. The
+continuation (let-values ([(x y) []]) expr) expects two result values;
+the first result replaces x in the body expr, and the second replaces y
+in expr. The continuation (begin [] (+ 1 2)) accepts any number of
+result values, because it ignores the result(s).
+
+In general, the specification of a syntactic form indicates the number
+of values that it produces and the number that it expects from each of
+its sub-expression. In addition, some procedures (notably values)
+produce multiple values, and some procedures (notably call-with-values)
+create continuations internally that accept a certain number of values.
+
+4. Top-Level Variables
+
+Given
+
+  x = 10
+
+then an algebra student simplifies x + 1 as follows:
+
+  x + 1 = 10 + 1 = 11
+
+Racket works much the same way, in that a set of top-level variables are
+available for substitutions on demand during evaluation. For example,
+given
+
+  (define x 10)
+
+then
+
+  (+ x 1) -> (+ 10 1) -> 11
+
+In Racket, the way definitions appear is just as important as the way
+that they are used. Racket evaluation thus keeps track of both
+definitions and the current expression, and it extends the set of
+definitions in response to evaluating forms such as define.
+
+Each evaluation step, then, takes the current set of definitions and
+program to a new set of definitions and program. Before a define can be
+moved into the set of definitions, its right-hand expression must be
+reduced to a value.
+
+  defined:
+  evaluate:(begin (define x (+ 9 1)) (+ x 1))
+->defined:
+  evaluate:(begin (define x 10) (+ x 1))
+->defined: (define x 10)
+  evaluate:(begin (void) (+ x 1))
+->defined: (define x 10)
+  evaluate:(+ x 1)
+->defined: (define x 10)
+  evaluate:(+ 10 1)
+->defined: (define x 10)
+  evaluate:11
+
+Using set!, a program can change the value associated with an existing
+top-level variable:
+
+  defined: (define x 10)
+  evaluate:(begin (set! x 8) x)
+->defined: (define x 8)
+  evaluate:(begin (void) x)
+->defined: (define x 8)
+  evaluate:x
+->defined: (define x 8)
+  evaluate:8
+
+5. Objects and Imperative Update
+
+In addition to set! for imperative update of top-level variables,
+various procedures enable the modification of elements within a compound
+data structure. For example, vector-set! modifies the content of a
+vector.
+
+To allow such modifications to data, we must distinguish between values,
+which are the results of expressions, and objects, which hold the data
+referenced by a value.
+
+A few kinds of objects can serve directly as values, including booleans,
+(void), and small exact integers. More generally, however, a value is a
+reference to an object. For example, a value can be a reference to a
+particular vector that currently holds the value 10 in its first slot.
+If an object is modified, then the modification is visible through all
+copies of the value that reference the same object.
+
+In the evaluation model, a set of objects must be carried along with
+each step in evaluation, just like the definition set. Operations that
+create objects, such as vector, add to the set of objects:
+
+  objects:
+  defined:
+  evaluate:(begin (define x (vector 10 20))
+                  (define y x)
+                  (vector-set! x 0 11)
+                  (vector-ref y 0))
+->objects: (define <o1> (vector 10 20))
+  defined:
+  evaluate:(begin (define x <o1>)
+                  (define y x)
+                  (vector-set! x 0 11)
+                  (vector-ref y 0))
+->objects: (define <o1> (vector 10 20))
+  defined: (define x <o1>)
+  evaluate:(begin (void)
+                  (define y x)
+                  (vector-set! x 0 11)
+                  (vector-ref y 0))
+->objects: (define <o1> (vector 10 20))
+  defined: (define x <o1>)
+  evaluate:(begin (define y x)
+                  (vector-set! x 0 11)
+                  (vector-ref y 0))
+->objects: (define <o1> (vector 10 20))
+  defined: (define x <o1>)
+  evaluate:(begin (define y <o1>)
+                  (vector-set! x 0 11)
+                  (vector-ref y 0))
+->objects: (define <o1> (vector 10 20))
+  defined: (define x <o1>)
+           (define y <o1>)
+  evaluate:(begin (void)
+                  (vector-set! x 0 11)
+                  (vector-ref y 0))
+->objects: (define <o1> (vector 10 20))
+  defined: (define x <o1>)
+           (define y <o1>)
+  evaluate:(begin (vector-set! x 0 11)
+                  (vector-ref y 0))
+->objects: (define <o1> (vector 10 20))
+  defined: (define x <o1>)
+           (define y <o1>)
+  evaluate:(begin (vector-set! <o1> 0 11)
+                  (vector-ref y 0))
+->objects: (define <o1> (vector 11 20))
+  defined: (define x <o1>)
+           (define y <o1>)
+  evaluate:(begin (void)
+                  (vector-ref y 0))
+->objects: (define <o1> (vector 11 20))
+  defined: (define x <o1>)
+           (define y <o1>)
+  evaluate:(vector-ref y 0)
+->objects: (define <o1> (vector 11 20))
+  defined: (define x <o1>)
+           (define y <o1>)
+  evaluate:(vector-ref <o1> 0)
+->objects: (define <o1> (vector 11 20))
+  defined: (define x <o1>)
+           (define y <o1>)
+  evaluate:11
+
+The distinction between a top-level variable and an object reference is
+crucial. A top-level variable is not a value; each time a variable
+expression is evaluated, the value is extracted from the current set of
+definitions. An object reference, in contrast is a value, and therefore
+needs no further evaluation. The model evaluation steps above use
+angle-bracketed <o1> for an object reference to distinguish it from a
+variable name.
+
+A direct object reference can never appear in a text-based source
+program. A program representation created with datum->syntax, however,
+can embed direct references to existing objects.
+
+6. Object Identity and Comparisons
+
+The eq? operator compares two values, returning #t when the values refer
+to the same object. This form of equality is suitable for comparing
+objects that support imperative update (e.g., to determine that the
+effect of modifying an object through one reference is visible through
+another reference). Also, an eq?  test evaluates quickly, and eq?-based
+hashing is more lightweight than equal?-based hashing in hash tables.
+
+In some cases, however, eq? is unsuitable as a comparison operator,
+because the generation of objects is not clearly defined. In particular,
+two applications of + to the same two exact integers may or may not
+produce results that are eq?, although the results are always equal?.
+Similarly, evaluation of a lambda form typically generates a new
+procedure object, but it may re-use a procedure object previously
+generated by the same source lambda form.
+
+The behavior of a datatype with respect to eq? is generally specified
+with the datatype and its associated procedures.
+
+7. Garbage Collection
+
++See [missing] for functions related to garbage collection.
+
+In the program state
+
+objects: (define <o1> (vector 10 20))
+         (define <o2> (vector 0))
+defined: (define x <o1>)
+evaluate:(+ 1 x)
+
+evaluation cannot depend on <o2>, because it is not part of the program
+to evaluate, and it is not referenced by any definition that is
+accessible in the program. The object <o2> may therefore be removed from
+the evaluation by garbage collection.
+
+A few special compound datatypes hold weak references to objects. Such
+weak references are treated specially by the garbage collector in
+determining which objects are reachable for the remainder of the
+computation. If an object is reachable only via a weak reference, then
+the object can be reclaimed, and the weak reference is replaced by a
+different value (typically #f).
+
+As a special case, a fixnum is always considered reachable by the
+garbage collector. Many other values are always reachable due to the way
+they are implemented and used: A character in the Latin-1 range is
+always reachable, because equal? Latin-1 characters are always eq?, and
+all of the Latin-1 characters are referenced by an internal module.
+Similarly, null, #t, #f, eof, and #<void> and are always reachable.
+Values produced by quote remain reachable when the quote expression
+itself is reachable.
+
+8. Procedure Applications and Local Variables
+
+Given
+
+  f(x) = x + 10
+
+then an algebra student simplifies f(7) as follows:
+
+  f(7) = 7 + 10 = 17
+
+The key step in this simplification is take the body of the defined
+function f, and then replace each x with the actual value 7.
+
+Racket procedure application works much the same way. A procedure is an
+object, so evaluating (f 7) starts with a variable lookup:
+
+  objects: (define <p1> (lambda (x) (+ x 10)))
+  defined: (define f <p1>)
+  evaluate:(f 7)
+->objects: (define <p1> (lambda (x) (+ x 10)))
+  defined: (define f <p1>)
+  evaluate:(<p1> 7)
+
+Unlike in algebra, however, the value associated with an argument can be
+changed in the body of a procedure by using set!, as in the example
+(lambda (x) (begin (set! x 3) x)). Since the value associated with x can
+be changed, an actual value cannot be substituted for x when the
+procedure is applied.
+
+Instead, a new location is created for each variable on each
+application. The argument value is placed in the location, and each
+instance of the variable in the procedure body is replaced with the new
+location:
+
+  objects: (define <p1> (lambda (x) (+ x 10)))
+  defined: (define f <p1>)
+  evaluate:(<p1> 7)
+->objects: (define <p1> (lambda (x) (+ x 10)))
+  defined: (define f <p1>)
+           (define xloc 7)
+  evaluate:(+ xloc 10)
+->objects: (define <p1> (lambda (x) (+ x 10)))
+  defined: (define f <p1>)
+           (define xloc 7)
+  evaluate:(+ 7 10)
+->objects: (define <p1> (lambda (x) (+ x 10)))
+  defined: (define f <p1>)
+           (define xloc 7)
+  evaluate:17
+
+A location is the same as a top-level variable, but when a location is
+generated, it (conceptually) uses a name that has not been used before
+and that cannot be generated again or accessed directly.
+
+Generating a location in this way means that set! evaluates for local
+variables in the same way as for top-level variables, because the local
+variable is always replaced with a location by the time the set! form is
+evaluated:
+
+  objects: (define <p1> (lambda (x) (begin (set! x 3) x)))
+  defined: (define f <p1>)
+  evaluate:(f 7)
+->objects: (define <p1> (lambda (x) (begin (set! x 3) x)))
+  defined: (define f <p1>)
+  evaluate:(<p1> 7)
+->objects: (define <p1> (lambda (x) (begin (set! x 3) x)))
+  defined: (define f <p1>)
+           (define xloc 7)
+  evaluate:(begin (set! xloc 3) xloc)
+->objects: (define <p1> (lambda (x) (begin (set! x 3) x)))
+  defined: (define f <p1>)
+           (define xloc 3)
+  evaluate:(begin (void) xloc)
+->objects: (define <p1> (lambda (x) (begin (set! x 3) x)))
+  defined: (define f <p1>)
+           (define xloc 3)
+  evaluate:xloc
+->objects: (define <p1> (lambda (x) (begin (set! x 3) x)))
+  defined: (define f <p1>)
+           (define xloc 3)
+  evaluate:3
+
+The substitution and location-generation step of procedure application
+requires that the argument is a value. Therefore, in ((lambda (x) (+ x
+10)) (+ 1 2)), the (+ 1 2) sub-expression must be simplified to the
+value 3, and then 3 can be placed into a location for x. In other words,
+Racket is a call-by-value language.
+
+Evaluation of a local-variable form, such as (let ([x (+ 1 2)]) expr),
+is the same as for a procedure call. After (+ 1 2) produces a value, it
+is stored in a fresh location that replaces every instance of x in expr.
+
+9. Variables and Locations
+
+A variable is a placeholder for a value, and expressions in an initial
+program refer to variables. A top-level variable is both a variable and
+a location. Any other variable is always replaced by a location at
+run-time, so that evaluation of expressions involves only locations. A
+single local variable (i.e., a non-top-level, non-module-level
+variable), such as a procedure argument, can correspond to different
+locations through different instantiations.
+
+For example, in the program
+
+  (define y (+ (let ([x 5]) x) 6))
+
+both y and x are variables. The y variable is a top-level variable, and
+the x is a local variable. When this code is evaluated, a location is
+created for x to hold the value 5, and a location is also created for y
+to hold the value 11.
+
+The replacement of a variable with a location during evaluation
+implements Racket’s lexical scoping. For example, when a
+procedure-argument variable x is replaced by the location xloc, then it
+is replaced throughout the body of the procedure, including any nested
+lambda forms. As a result, future references of the variable always
+access the same location.
+
+10. Modules and Module-Level Variables
+
++See [missing] for the syntax of modules.
+
+Most definitions in Racket are in modules. In terms of evaluation, a
+module is essentially a prefix on a defined name, so that different
+modules can define the name. That is, a module-level variable is like a
+top-level variable from the perspective of evaluation.
+
+One difference between a module and a top-level definition is that a
+module can be declared without instantiating its module-level
+definitions. Evaluation of a require instantiates (i.e., triggers the
+instantiation of) a declared module, which creates variables that
+correspond to its module-level definitions.
+
+For example, given the module declaration
+
+  (module m racket
+    (define x 10))
+
+the evaluation of (require 'm) creates the variable x and installs 10 as
+its value. This x is unrelated to any top-level definition of x.
+
+10.1. Phases
+
+A module can be instantiated in multiple phases. A phase is an integer
+that, again, is effectively a prefix on the names of module-level
+definitions. A top-level require instantiates a module at phase 0, if
+the module is not already instantiated at phase 0.  A top-level (require
+(for-syntax ....)) instantiates a module at phase 1 (if it is not
+already instantiated at that level); for-syntax also has a different
+binding effect on further program parsing, as described in [missing].
+
+Within a module, some definitions are shifted by a phase already; the
+begin-for-syntax form is similar to begin, but it shifts expressions and
+definitions by a relative phase 1. Thus, if the module is instantiated
+at phase 1, the variables defined with begin-for-syntax are created at
+phase 2, and so on. Moreover, this relative phase acts as another layer
+of prefixing, so that a define of x and a begin-for-syntax-wrapped
+define of x can co-exist in a module without colliding. A
+begin-for-syntax form can be nested within a begin-for-syntax form, in
+which case definitions and expressions are in relative phase 2, and so
+on. Higher phases are mainly related to program parsing, instead of
+normal evaluation.
+
+If a module instantiated at phase n requires another module, then the
+required module is first instantiated at phase n, and so on
+transitively. (Module requires cannot form cycles.) If a module
+instantiated at phase n requires for-syntax another module, the other
+module becomes available at phase n+1, and it may later be instantiated
+at phase n+1.  If a module that is available at phase n for n>0 requires
+for-template another module, the other module becomes available at phase
+n-1, and so on. Instantiations of available modules above phase 0 are
+triggered on demand as described in [missing].
+
+A final distinction among module instantiations is that multiple
+instantiations may exist at phase 1 and higher. These instantiations are
+created by the parsing of module forms (see [missing]), and are, again,
+conceptually distinguished by prefixes.
+
+Top-level variables can exist in multiple phases in the same way as
+within modules. For example, define within begin-for-syntax creates a
+phase 1 variable. Furthermore, reflective operations like
+make-base-namespace and eval provide access to top-level variables in
+higher phases, while module instantiations (triggered by require)
+relative to such top-levels are in corresponding higher phases.
+
+10.2. The Separate Compilation Guarantee
+
+When a module is compiled, its phase 1 is instantiated. This can, in
+turn, trigger the transitive instantiation of many other modules at
+other phases, including phase 1. Racket provides a very strong guarantee
+about this instantiation called "The Separate Compilation Guarantee":
+
+"Any effects of the instantiation of the module’s phase 1 due to
+compilation on the Racket runtime system are discarded."
+
+The guarantee concerns effects. There are two different kinds of
+effects: internal and external.
+
+Internal effects are exemplified by mutation.  Mutation is the action of
+a function such as set-box!, which changes the value contained in the
+box. The modified box is not observable outside of Racket, so the effect
+is said to be "internal". By definition, internal effects is not
+detectable outside of the Racket program.
+
+External effects are exemplified by input/output (or I/O). I/O is the
+action of a function such as tcp-connect, which communicates with the
+operating system to send network packets outside of the machine running
+Racket. The transmission of these packets is observable outside of
+Racket, in particular by the receiver computer or any routers in
+between. External effects exist to be detectable outside of the Racket
+program and are often detectable using physical processes.
+
+An effect is discarded when it is no longer detectable. For instance, a
+mutation of a box from 3 to 4 would be discarded if it ceases to be
+detectable that it was ever changed, and thus would still contain 3.
+Because external effects are intrinsically observable outside of Racket,
+they are irreversible and cannot be discarded.
+
+Thus, The Separate Compilation Guarantee only concerns effects like
+mutation, because they are exclusively effects "on the Racket runtime
+system" and not "on the physical universe".
+
+There are many things a Racket program can do that appear to be internal
+effects, but are actually external effects. For instance, bytes-set! is
+typically an internal effect, except when the bytes were created by
+make-shared-bytes which is allocated in space observable by other
+processes. Thus, effects which modify them are not discardable, so
+bytes-set!, in this case, is an external effect.
+
+The opposite is also true: some things which appear to be external are
+actually internal. For instance, if a Racket program starts multiple
+threads and uses mutation to communicate between them, that mutation is
+purely internal, because Racket’s threads are defined entirely
+internally.
+
+Furthermore, whenever a Racket program calls an unsafe function, the
+Racket runtime system makes no promises about its effects. For instance,
+all foreign calls use ffi/unsafe, so all foreign calls are unsafe and
+their effects cannot be discarded by Racket.
+
+Finally, The Separate Compilation Guarantee only concerns instantiations
+at phase 1 during compilation and not all phase 1 instantiations
+generally, such as when its phase 1 is required and used for effects via
+reflective mechanisms.
+
+The practical consequence of this guarantee is that because effects are
+never visible, no module can detect whether a module it requires is
+already compiled. Thus, it can never change the compilation of one
+module to have already compiled a different module. In particular, if
+module A is shared by the phase 1 portion of modules X and Y, then any
+internal effects while X is compiled are not visible during the
+compilation of Y, regardless of whether X and Y are compiled during the
+same execution of Racket’s runtime system.
+
+The following set of modules demonstrate this guarantee. First, we
+define a module with the ability to observe effects via a box:
+
+  (module box racket/base
+    (provide (all-defined-out))
+    (define b (box 0)))
+
+Next, we define two syntax transformers that use and mutate this box:
+
+  (module transformers racket/base
+    (provide (all-defined-out))
+    (require (for-syntax racket/base
+                         'box))
+    (define-syntax (sett stx)
+      (set-box! b 2)
+      #'(void))
+    (define-syntax (gett stx)
+      #`#,(unbox b)))
+
+Next, we define a module that uses these transformers:
+
+  (module user racket/base
+    (provide (all-defined-out))
+    (require 'transformers)
+    (sett)
+    (define gott (gett)))
+
+Finally, we define a second module that uses these transformers:
+
+  (module test racket/base
+    (require 'box 'transformers 'user)
+    (displayln gott)
+    (displayln (gett))
+   
+    (sett)
+    (displayln (gett))
+   
+    (displayln (unbox b)))
+
+This module displays:
+
+* 2, because the module 'user expanded to 2.
+
+* 0, because the effects of compiling 'user were discarded.
+
+* 2, because the effect of (sett) inside 'test is not discarded.
+
+* 0, because the effects at phase 1 are irrelevant to the phase 0 use of
+  b.
+
+Furthermore, this display will never change, regardless of which order
+these modules are compiled in or whether they are compiled at the same
+time or separately.
+
+In contrast, if these modules were changed to store the value of b in a
+file on the filesystem, then the program would only display 2.
+
+The Separate Compilation Guarantee is described in more detail in
+"Composable and Compilable Macros" [Flatt02], including informative
+examples. The paper "Advanced Macrology and the implementation of Typed
+Scheme" [Culpepper07] also contains an extended example of why it is
+important and how to design effectful syntactic extensions in its
+presence.
+
+10.3. Cross-Phase Persistent Modules
+
+Module declarations that fit a highly constrained form—including a
+(#%declare #:cross-phase-persistent) form in the module body—create
+cross-phase persistent modules. A cross-phase persistent module’s
+instantiations across all phases and module registries share the
+variables produced by the first instantiation of the module.
+
+The intent of a cross-phase persistent module is to support values that
+are recognizable after phase crossings. For example, when a macro
+transformer running in phase 1 raises a syntax error as represented by a
+exn:fail:syntax instance, the instance is recognizable by a phase-0
+exception handler wrapping a call to eval or expand that triggered the
+syntax error, because the exn:fail:syntax structure type is defined by a
+cross-phase persistent module.
+
+A cross-phase persistent module imports only other cross-phase
+persistent modules, and it contains only definitions that bind variables
+to functions, structure types and related functions, or structure-type
+properties and related functions. A cross-phase persistent module never
+includes syntax literals (via quote-syntax) or variable references (via
+#%variable-reference). See [missing] for the syntactic specification of
+a cross-phase persistent module declaration.
+
+A documented module should be assumed non-cross-phase persistent unless
+it is specified as cross-phase persistent (such as racket/kernel).
+
+10.4. Module Redeclarations
+
+When a module is declared using a name for which a module is already
+declared, the new declaration’s definitions replace and extend the old
+declarations. If a variable in the old declaration has no counterpart in
+the new declaration, the old variable continues to exist, but its
+binding is not included in the lexical information for the module body.
+If a new variable definition has a counterpart in the old declaration,
+it effectively assigns to the old variable.
+
+If a module is instantiated in any phases before it is redeclared, each
+redeclaration of the module is immediately instantiated in the same
+phases.
+
+If the current inspector does not manage a module’s declaration
+inspector (see [missing]), then the module cannot be redeclared.
+Similarly, a cross-phase persistent module cannot be redeclared. Even if
+redeclrection succeeds, instantiation of a module that is previously
+instantiated may fail if instantiation for the redeclaration attempts to
+modify variables that are constant (see
+compile-enforce-module-constants).
+
+10.5. Submodules
+
+A module or module* form within a top-level module form declares a
+submodule. A submodule is accessed relative to its enclosing module,
+usually with a submod path. Submodules can be nested to any depth.
+
+Although a submodule is lexically nested within a module, it cannot
+necessarily access the bindings of its enclosing module directly. More
+specifically, a submodule declared with module cannot require from its
+enclosing module, but the enclosing module can require the submodule. In
+contrast, a submodule declared with module* conceptually follows its
+enclosing module, so can require from its enclosing module, but the
+enclosing module cannot require the submodule. Unless a submodule
+imports from its enclosing module or vice-versa, then visits or
+instantiations of the two modules are independent, and thier
+implementations may even be loaded from bytecode at different times.
+
+A submodule declared with module can import any preceding submodule
+declared with module. A submodule declared with module* can import any
+preceding module declared with module* and any submodule declared with
+module.
+
+When a submodule declaration has the form (module* name #f ....), then
+all of the bindings of the enclosing module’s bodies are visible in the
+submodule’s body, and the submodule implicitly imports the enclosing
+module. The submodule can provide any bindings that it inherits from its
+enclosing module.
+
+11. Continuation Frames and Marks
+
++See [missing] for continuation-mark forms and functions.
+
+Every continuation C can be partitioned into continuation frames C1, C2,
+..., Cn such that C = C1[C2[...[Cn]]], and no frame Ci can be itself
+partitioned into smaller continuations. Evaluation steps add and remove
+frames to the current continuation, typically one at a time.
+
+Each frame is conceptually annotated with a set of continuation marks. A
+mark consists of a key and its value; the key is an arbitrary value, and
+each frame includes at most one mark for any key. Various operations set
+and extract marks from continuations, so that marks can be used to
+attach information to a dynamic extent. For example, marks can be used
+to record information for a “stack trace” to be used when an exception
+is raised, or to implement dynamic scope.
+
+12. Prompts, Delimited Continuations, and Barriers
+
++See [missing] for continuation and prompt functions.
+
+A prompt is a special kind of continuation frame that is annotated with
+a specific prompt tag (essentially a continuation mark). Various
+operations allow the capture of frames in the continuation from the
+redex position out to the nearest enclosing prompt with a particular
+prompt tag; such a continuation is sometimes called a delimited
+continuation. Other operations allow the current continuation to be
+extended with a captured continuation (specifically, a composable
+continuation). Yet other operations abort the computation to the nearest
+enclosing prompt with a particular tag, or replace the continuation to
+the nearest enclosing prompt with another one. When a delimited
+continuation is captured, the marks associated with the relevant frames
+are also captured.
+
+A continuation barrier is another kind of continuation frame that
+prohibits certain replacements of the current continuation with another.
+Specifically, a continuation can be replaced by another only when the
+replacement does not introduce any continuation barriers. It may remove
+continuation barriers only through jumps to continuations that are a
+tail of the current continuation.  A continuation barrier thus prevents
+“downward jumps” into a continuation that is protected by a barrier.
+Certain operations install barriers automatically; in particular, when
+an exception handler is called, a continuation barrier prohibits the
+continuation of the handler from capturing the continuation past the
+exception point.
+
+A escape continuation is essentially a derived concept. It combines a
+prompt for escape purposes with a continuation for mark-gathering
+purposes. As the name implies, escape continuations are used only to
+abort to the point of capture.
+
+13. Threads
+
++See [missing] for thread and synchronization functions.
+
+Racket supports multiple threads of evaluation.  Threads run
+concurrently, in the sense that one thread can preempt another without
+its cooperation, but threads currently all run on the same processor
+(i.e., the same underlying OS process and thread). See also [missing].
+
+Threads are created explicitly by functions such as thread. In terms of
+the evaluation model, each step in evaluation actually consists of
+multiple concurrent expressions, up to one per thread, rather than a
+single expression. The expressions all share the same objects and
+top-level variables, so that they can communicate through shared state,
+and sequential consistency is guaranteed (i.e., the result is consistent
+with some global sequence imposed on all evaluation steps across
+threads). Most evaluation steps involve a single step in a single
+expression, but certain synchronization primitives require multiple
+threads to progress together in one step.
+
+In addition to the state that is shared among all threads, each thread
+has its own private state that is accessed through thread cells. A
+thread cell is similar to a normal mutable object, but a change to the
+value inside a thread cell is seen only when extracting a value from the
+cell from the same thread. A thread cell can be preserved; when a new
+thread is created, the creating thread’s value for a preserved thread
+cell serves as the initial value for the cell in the created thread. For
+a non-preserved thread cell, a new thread sees the same initial value
+(specified when the thread cell is created) as all other threads.
+
+14. Parameters
+
++See [missing] for parameter forms and functions.
+
+Parameters are essentially a derived concept in Racket; they are defined
+in terms of continuation marks and thread cells. However, parameters are
+also built in, in the sense that some primitive procedures consult
+parameter values. For example, the default output stream for primitive
+output operations is determined by a parameter.
+
+A parameter is a setting that is both thread-specific and
+continuation-specific. In the empty continuation, each parameter
+corresponds to a preserved thread cell; a corresponding parameter
+procedure accesses and sets the thread cell’s value for the current
+thread.
+
+In a non-empty continuation, a parameter’s value is determined through a
+parameterization that is associated with the nearest enclosing
+continuation frame though a continuation mark (whose key is not directly
+accessible). A parameterization maps each parameter to a preserved
+thread cell, and the combination of thread cell and current thread
+yields the parameter’s value. A parameter procedure sets or accesses the
+relevant thread cell for its parameter.
+
+Various operations, such as parameterize or call-with-parameterization,
+install a parameterization into the current continuation’s frame.
+
+15. Exceptions
+
++See [missing] for exception forms, functions, and types.
+
+Exceptions are essentially a derived concept in Racket; they are defined
+in terms of continuations, prompts, and continuation marks.  However,
+exceptions are also built in, in the sense that primitive forms and
+procedures may raise exceptions.
+
+An exception handler to catch exceptions can be associated with a
+continuation frame though a continuation mark (whose key is not directly
+accessible). When an exception is raised, the current continuation’s
+marks determine a chain of exception handler procedures that are
+consulted to handle the exception. A handler for uncaught exceptions is
+designated through a built-in parameter.
+
+One potential action of an exception handler is to abort the current
+continuation up to an enclosing prompt with a particular prompt tag.
+The default handler for uncaught exceptions, in particular, aborts to a
+particular tag for which a prompt is always present, because the prompt
+is installed in the outermost frame of the continuation for any new
+thread.
+
+16. Custodians
+
++See [missing] for custodian functions.
+
+A custodian manages a collection of threads, file-stream ports, TCP
+ports, TCP listeners, UDP sockets, and byte converters.  Whenever a
+thread, etc., is created, it is placed under the management of the
+current custodian as determined by the current-custodian parameter.
+
+Custodians also manage eventspaces from racket/gui/base.
+
+Except for the root custodian, every custodian itself is managed by a
+custodian, so that custodians form a hierarchy. Every object managed by
+a subordinate custodian is also managed by the custodian’s owner.
+
+When a custodian is shut down via custodian-shutdown-all, it forcibly
+and immediately closes the ports, TCP connections, etc., that it
+manages, as well as terminating (or suspending) its threads. A custodian
+that has been shut down cannot manage new objects.  After the current
+custodian is shut down, if a procedure is called that attempts to create
+a managed resource (e.g., open-input-file, thread), then the
+exn:fail:contract exception is raised.
+
+A thread can have multiple managing custodians, and a suspended thread
+created with thread/suspend-to-kill can have zero custodians. Extra
+custodians become associated with a thread through thread-resume (see
+[missing]). When a thread has multiple custodians, it is not necessarily
+killed by a custodian-shutdown-all, but shut-down custodians are removed
+from the thread’s managing set, and the thread is killed when its
+managing set becomes empty.
+
+The values managed by a custodian are only weakly held by the custodian.
+As a result, a will can be executed for a value that is managed by a
+custodian. In addition, a custodian only weakly references its
+subordinate custodians; if a subordinate custodian is unreferenced but
+has its own subordinates, then the custodian may be collected, at which
+point its subordinates become immediately subordinate to the collected
+custodian’s superordinate custodian.
+
+In addition to the other entities managed by a custodian, a custodian
+box created with make-custodian-box strongly holds onto a value placed
+in the box until the box’s custodian is shut down. The custodian only
+weakly retains the box itself, however (so the box and its content can
+be collected if there are no other references to them).
+
+When Racket is compiled with support for per-custodian memory accounting
+(see custodian-memory-accounting-available?), the current-memory-use
+procedure can report a custodian-specific result.  This result
+determines how much memory is occupied by objects that are reachable
+from the custodian’s managed values, especially its threads, and
+including its sub-custodians’ managed values. If an object is reachable
+from two custodians where neither is an ancestor of the other, an object
+is arbitrarily charged to one or the other, and the choice can change
+after each collection; objects reachable from both a custodian and its
+descendant, however, are reliably charged to the custodian and not to
+the descendants, unless the custodian can reach the objects only through
+a descendant custodian or a descendant’s thread.  Reachability for
+per-custodian accounting does not include weak references, references to
+threads managed by other custodians, references to other custodians, or
+references to custodian boxes for other custodians.

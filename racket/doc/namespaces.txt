@@ -1,0 +1,442 @@
+Namespaces
+
+See [missing] for basic information on the namespace model.
+
+A new namespace is created with procedures like make-empty-namespace,
+and make-base-namespace, which return a first-class namespace value. A
+namespace is used by setting the current-namespace parameter value, or
+by providing the namespace to procedures such as eval and eval-syntax.
+
+                                        *namespace?*
+(namespace? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a namespace value, #f otherwise.
+
+                                        *make-empty-namespace*
+(make-empty-namespace) -> namespace? ~
+
+Creates a new namespace that is empty, and whose module registry
+contains no mappings. The namespace’s base phase is the same as the base
+phase of the current namespace. Attach modules from an existing
+namespace to the new one with namespace-attach-module.
+
+                                        *make-base-empty-namespace*
+(make-base-empty-namespace) -> namespace? ~
+
+Creates a new empty namespace, but with racket/base attached. The
+namespace’s base phase is the same as the phase in which the
+make-base-empty-namespace function was created.
+
+                                        *make-base-namespace*
+(make-base-namespace) -> namespace? ~
+
+Creates a new namespace with racket/base attached and required into the
+top-level environment. The namespace’s base phase is the same as the
+phase in which the make-base-namespace function was created.
+
+                                        *define-namespace-anchor*
+(define-namespace-anchor id) ~
+
+Binds id to a namespace anchor that can be used with
+namespace-anchor->empty-namespace and namespace-anchor->namespace.
+
+This form can be used only in a top-level context or in a
+module-context.
+
+                                        *namespace-anchor?*
+(namespace-anchor? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a namespace-anchor value, #f otherwise.
+
+                                        *namespace-anchor->empty-namespace*
+(namespace-anchor->empty-namespace a) -> namespace? ~
+  a : namespace-anchor? ~
+
+Returns an empty namespace that shares a module registry with the source
+of the anchor, and whose base phase is the phase in which the anchor was
+created.
+
+If the anchor is from a define-namespace-anchor form in a module
+context, then the source is the namespace in which the containing module
+is instantiated. If the anchor is from a define-namespace-anchor form in
+a top-level content, then the source is the namespace in which the
+anchor definition was evaluated.
+
+                                        *namespace-anchor->namespace*
+(namespace-anchor->namespace a) -> namespace? ~
+  a : namespace-anchor? ~
+
+Returns a namespace corresponding to the source of the anchor.
+
+If the anchor is from a define-namespace-anchor form in a module
+context, then the result is a namespace for the module’s body in the
+anchor’s phase. The result is the same as a namespace obtained via
+module->namespace.
+
+If the anchor is from a define-namespace-anchor form in a top-level
+content, then the result is the namespace in which the anchor definition
+was evaluated.
+
+                                        *current-namespace*
+(current-namespace) -> namespace? ~
+(current-namespace n) -> void?
+  n : namespace? ~
+
+A parameter that determines the current namespace.
+
+                                        *namespace-symbol->identifier*
+(namespace-symbol->identifier sym) -> identifier? ~
+  sym : symbol? ~
+
+Similar to datum->syntax restricted to symbols. The lexical information
+of the resulting identifier corresponds to the top-level environment of
+the current namespace; the identifier has no source location or
+properties.
+
+                                        *namespace-base-phase*
+(namespace-base-phase [namespace]) -> exact-integer? ~
+  namespace : namespace? = (current-namespace) ~
+
+Returns the base phase of namespace.
+
+                                        *namespace-module-identifier*
+(namespace-module-identifier [where]) -> identifier? ~
+  where : (or/c namespace? exact-integer? #f) ~
+        = (current-namespace)
+
+Returns an identifier whose binding is module in the base phase of where
+if it is a namespace, or in the where phase level otherwise.
+
+The lexical information of the identifier includes bindings (in the same
+phase level) for all syntactic forms that appear in fully expanded code
+(see [missing]), but using the name reported by the second element of
+identifier-binding for the binding; the lexical information may also
+include other bindings.
+
+                                        *namespace-variable-value*
+(namespace-variable-value  sym                ~
+                          [use-mapping?      
+                           failure-thunk     
+                           namespace])   -> any
+  sym : symbol? ~
+  use-mapping? : any/c = #t ~
+  failure-thunk : (or/c (-> any) #f) = #f ~
+  namespace : namespace? = (current-namespace) ~
+
+Returns a value for sym in namespace, using namespace’s base phase. The
+returned value depends on use-mapping?:
+
+* If use-mapping? is true (the default), and if sym maps to a top-level
+  variable or an imported variable (see [missing]), then the result is
+  the same as evaluating sym as an expression. If sym maps to syntax or
+  imported syntax, then failure-thunk is called or the exn:fail:syntax
+  exception is raised. If sym is mapped to an undefined variable or an
+  uninitialized module variable, then failure-thunk is called or the
+  exn:fail:contract:variable exception is raised.
+
+* If use-mapping? is #f, the namespace’s syntax and import mappings are
+  ignored. Instead, the value of the top-level variable named sym in
+  namespace is returned. If the variable is undefined, then
+  failure-thunk is called or the exn:fail:contract:variable exception is
+  raised.
+
+If failure-thunk is not #f, namespace-variable-value calls failure-thunk
+to produce the return value in place of raising an
+exn:fail:contract:variable or exn:fail:syntax exception.
+
+                                        *namespace-set-variable-value!*
+(namespace-set-variable-value!  sym              ~
+                                v               
+                               [map?            
+                                namespace]) -> void?
+  sym : symbol? ~
+  v : any/c ~
+  map? : any/c = #f ~
+  namespace : namespace? = (current-namespace) ~
+
+Sets the value of sym in the top-level environment of namespace in the
+base phase, defining sym if it is not already defined.
+
+If map? is supplied as true, then the namespace’s identifier mapping is
+also adjusted (see [missing]) in the phase level corresponding to the
+base phase, so that sym maps to the variable.
+
+                                        *namespace-undefine-variable!*
+(namespace-undefine-variable!  sym              ~
+                              [namespace]) -> void?
+  sym : symbol? ~
+  namespace : namespace? = (current-namespace) ~
+
+Removes the sym variable, if any, in the top-level environment of
+namespace in its base phase. The namespace’s identifier mapping (see
+[missing]) is unaffected.
+
+                                        *namespace-mapped-symbols*
+(namespace-mapped-symbols [namespace]) -> (listof symbol?) ~
+  namespace : namespace? = (current-namespace) ~
+
+Returns a list of all symbols that are mapped to variables, syntax, and
+imports in namespace for the phase level corresponding to the
+namespace’s base phase.
+
+                                        *namespace-require*
+(namespace-require quoted-raw-require-spec) -> void? ~
+  quoted-raw-require-spec : any/c ~
+
+Performs the import corresponding to quoted-raw-require-spec in the
+top-level environment of the current namespace, like a top-level
+#%require. The quoted-raw-require-spec argument must be a datum that
+corresponds to a quoted raw-require-spec for #%require, which includes
+module paths.
+
+Module paths in quoted-raw-require-spec are resolved with respect to
+current-load-relative-directory or current-directory (if the former is
+#f), even if the current namespace corresponds to a module body.
+
+                                        *namespace-require/copy*
+(namespace-require/copy quoted-raw-require-spec) -> void? ~
+  quoted-raw-require-spec : any/c ~
+
+Like namespace-require for syntax exported from the module, but exported
+variables at the namespace’s base phase are treated differently: the
+export’s current value is copied to a top-level variable in the current
+namespace.
+
+                                        *namespace-require/constant*
+(namespace-require/constant quoted-raw-require-spec) -> void? ~
+  quoted-raw-require-spec : any/c ~
+
+Like namespace-require, but for each exported variable at the
+namespace’s base phase, the export’s value is copied to a corresponding
+top-level variable that is made immutable. Despite setting the top-level
+variable, the corresponding identifier is bound as imported.
+
+                                        *namespace-require/expansion-time*
+(namespace-require/expansion-time quoted-raw-require-spec) ~
+ -> void?
+  quoted-raw-require-spec : any/c ~
+
+Like namespace-require, but only the transformer part of the module is
+executed relative to the namespace’s base phase; that is, the module is
+merely visited, and not instantiated (see [missing]). If the required
+module has not been instantiated before, the module’s variables remain
+undefined.
+
+                                        *namespace-attach-module*
+(namespace-attach-module  src-namespace         ~
+                          modname              
+                         [dest-namespace]) -> void?
+  src-namespace : namespace? ~
+  modname : module-path? ~
+  dest-namespace : namespace? = (current-namespace) ~
+
+Attaches the instantiated module named by modname in src-namespace (at
+its base phase) to the module registry of dest-namespace.
+
+In addition to modname, every module that it imports (directly or
+indirectly) is also recorded in the current namespace’s module registry,
+and instances at the same phase are also attached to dest-namespace
+(while visits at the module’s phase and instances at higher or lower
+phases are not attached, nor even made available for on-demand visits).
+The inspector of the module invocation in dest-namespace is the same as
+inspector of the invocation in src-namespace.
+
+If modname is not a symbol, the current module name resolver is called
+to resolve the path, but no module is loaded; the resolved form of
+modname is used as the module name in dest-namespace.
+
+If modname refers to a submodule or a module with submodules, unless the
+module was loaded from bytecode (i.e., a ".zo" file) independently from
+submodules within the same top-level module, then declarations for all
+submodules within the module’s top-level module are also attached to
+dest-namespace.
+
+If modname does not refer to an instantiated module in src-namespace, or
+if the name of any module to be attached already has a different
+declaration or same-phase instance in dest-namespace, then the
+exn:fail:contract exception is raised.
+
+If src-namespace and dest-namespace do not have the same base phase,
+then the exn:fail:contract exception is raised.
+
+                                        *namespace-attach-module-declaration*
+(namespace-attach-module-declaration  src-namespace         ~
+                                      modname              
+                                     [dest-namespace]) -> void?
+  src-namespace : namespace? ~
+  modname : module-path? ~
+  dest-namespace : namespace? = (current-namespace) ~
+
+Like namespace-attach-module, but the module specified by modname need
+only be declared (and not necessarily instantiated) in src-namespace,
+and the module is merely declared in dest-namespace.
+
+                                        *namespace-unprotect-module*
+(namespace-unprotect-module  inspector        ~
+                             modname         
+                            [namespace]) -> void?
+  inspector : inspector? ~
+  modname : module-path? ~
+  namespace : namespace? = (current-namespace) ~
+
+Changes the inspector for the instance of the module referenced by
+modname in namespace’s module registry so that it is controlled by the
+current code inspector. The given inspector must currently control the
+invocation of the module in namespace’s module registry, otherwise the
+exn:fail:contract exception is raised. See also [missing].
+
+                                        *namespace-module-registry*
+(namespace-module-registry namespace) -> any ~
+  namespace : namespace? ~
+
+Returns the module registry of the given namespace. This value is useful
+only for identification via eq?.
+
+                                        *module->namespace*
+(module->namespace mod) -> namespace? ~
+  mod : (or/c module-path? ~
+              resolved-module-path?
+              module-path-index?)
+
+Returns a namespace that corresponds to the body of an instantiated
+module in the current namespace’s module registry and in the current
+namespace’s base phase, making the module available for on-demand visits
+at the namespace’s base phase. The returned namespace has the same
+module registry as the current namespace. Modifying a binding in the
+namespace changes the binding seen in modules that require the
+namespace’s module.
+
+Module paths in a top-level require expression are resolved with respect
+to the namespace’s module. New provide declarations are not allowed.
+
+If the current code inspector does not control the invocation of the
+module in the current namespace’s module registry, the exn:fail:contract
+exception is raised; see also [missing].
+
+Bindings in the namespace cannot be modified if the
+compile-enforce-module-constants parameter was true when the module was
+declared, unless the module declaration itself included assignments to
+the binding via set!.
+
+                                        *namespace-syntax-introduce*
+(namespace-syntax-introduce stx) -> syntax? ~
+  stx : syntax? ~
+
+Returns a syntax object like stx, except that the current namespace’s
+bindings are included in the syntax object’s lexical information (see
+[missing]). The additional context is overridden by any existing
+top-level bindings in the syntax object’s lexical information, or by any
+existing or future module bindings in the lexical information.
+
+                                        *module-provide-protected?*
+(module-provide-protected? module-path-index      ~
+                           sym)              -> boolean?
+  module-path-index : (or/c symbol? module-path-index?) ~
+  sym : symbol? ~
+
+Returns #f if the module declaration for module-path-index defines sym
+and exports it unprotected, #t otherwise (which may mean that the symbol
+corresponds to an unexported definition, a protected export, or an
+identifier that is not defined at all within the module).
+
+The module-path-index argument can be a symbol; see [missing] for more
+information on module path indices.
+
+Typically, the arguments to module-provide-protected? correspond to the
+first two elements of a list produced by identifier-binding.
+
+                                        *variable-reference?*
+(variable-reference? v) -> boolean? ~
+  v : any/c ~
+
+Return #t if v is a variable reference produced by #%variable-reference,
+#f otherwise.
+
+                                        *variable-reference-constant?*
+(variable-reference-constant? varref) -> boolean? ~
+  varref : variable-reference? ~
+
+Returns #t if the variable represented by varref will retain its current
+value (i.e., varref refers to a variable that cannot be further modified
+by set! or define), #f otherwise.
+
+                                        *variable-reference->empty-namespace*
+(variable-reference->empty-namespace varref) -> namespace? ~
+  varref : variable-reference? ~
+
+Returns an empty namespace that shares module declarations and instances
+with the namespace in which varref is instantiated, and with the same
+phase as varref.
+
+                                        *variable-reference->namespace*
+(variable-reference->namespace varref) -> namespace? ~
+  varref : variable-reference? ~
+
+If varref refers to a module-level variable, then the result is a
+namespace for the module’s body in the referenced variable’s phase; the
+result is the same as a namespace obtained via module->namespace.
+
+If varref refers to a top-level variable, then the result is the
+namespace in which the referenced variable is defined.
+
+                                        *variable-reference->resolved-module-path*
+(variable-reference->resolved-module-path varref) ~
+ -> (or/c resolved-module-path? #f)
+  varref : variable-reference? ~
+
+If varref refers to a module-level variable, the result is a resolved
+module path naming the module.
+
+If varref refers to a top-level variable, then the result is #f.
+
+                                        *variable-reference->module-path-index*
+(variable-reference->module-path-index varref) ~
+ -> (or/c module-path-index? #f)
+  varref : variable-reference? ~
+
+If varref refers to a module-level variable, the result is a module path
+index naming the module.
+
+If varref refers to a top-level variable, then the result is #f.
+
+                                        *variable-reference->module-source*
+(variable-reference->module-source varref) ~
+ -> (or/c symbol? (and/c path? complete-path?) #f)
+  varref : variable-reference? ~
+
+If varref refers to a module-level variable, the result is a path or
+symbol naming the module’s source (which is typically, but not always,
+the same as in the resolved module path).  If the relevant module is a
+submodule, the result corresponds to the enclosing top-level module’s
+source.
+
+If varref refers to a top-level variable, then the result is #f.
+
+                                        *variable-reference->phase*
+(variable-reference->phase varref) -> exact-nonnegative-integer? ~
+  varref : variable-reference? ~
+
+Returns the phase of the variable referenced by varref.
+
+                                        *variable-reference->module-base-phase*
+(variable-reference->module-base-phase varref) -> exact-integer? ~
+  varref : variable-reference? ~
+
+Returns the phase in which the module is instantiated for the variable
+referenced by varref, or 0 if the variable for varref is not within a
+module.
+
+For a variable with a module, the result is less than the result of
+(variable-reference->phase varref) by n when the variable is bound at
+phase level n within the module.
+
+                                        *variable-reference->module-declaration-inspector*
+(variable-reference->module-declaration-inspector varref) ~
+ -> inspector?
+  varref : variable-reference? ~
+
+Returns the declaration inspector (see [missing]) for the module of
+varref, where varref must refer to an anonymous module variable as
+produced by (#%variable-reference).

@@ -1,0 +1,71 @@
+Interactive Help
+
+ (require racket/help) package: base ~
+
+The bindings documented in this section are provided by the racket/help
+and racket/init libraries, which means that they are available when  the
+Racket executable is started with no command-line arguments. They are
+not provided by racket/base or racket.
+
+help
+(help string ...)
+(help id)
+(help id #:from module-path) ~
+(help #:search datum ...) ~
+
+For general help, see the main documentation page.
+
+The help form searches the documentation and opens a web browser (using
+the user’s selected browser) to display the results.
+
+See net/sendurl for information on how the user’s browser is launched to
+display help information.
+
+A simple help or (help) form opens the main documentation page.
+
+The (help string ...) form—using literal strings, as opposed to
+expressions that produce strings—performs a string-matching search. For
+example,
+
+  (help "web browser" "firefox")
+
+searches the documentation index for references that include the phrase
+“web browser” or “firefox.”
+
+A (help id) form looks for documentation specific to the current binding
+of id. For example,
+
+  (require net/url)
+  (help url->string)
+
+opens a web browser to show the documentation for url->string from the
+net/url library.
+
+For the purposes of help, a for-label require introduces a binding
+without actually executing the net/url library—for cases when you want
+to check documentation, but cannot or do not want to run the providing
+module.
+
+  (require racket/gui) ; does not work in racket
+  (require (for-label racket/gui)) ; ok in racket
+  (help frame%)
+
+If id has no for-label and normal binding, then help lists all libraries
+that are known to export a binding for id.
+
+The (help id #:from module-path) variant is similar to (help id), but
+using only the exports of module-path. (The module-path module is
+required for-label in a temporary namespace.)
+
+  (help frame% #:from racket/gui) ; equivalent to the above ~
+
+The (help #:search datum ...) form is similar to (help string ...),
+where any non-string form of datum is converted to a string using
+display. No datum is evaluated as an expression.
+
+For example,
+
+  (help #:search "web browser" firefox) ~
+
+also searches the documentation index for references that include the
+phrase “web browser” or “firefox.”

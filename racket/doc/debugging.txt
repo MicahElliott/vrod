@@ -1,0 +1,282 @@
+Debugging
+
+Racket’s built-in debugging support is limited to context (i.e., “stack
+trace”) information that is printed with an exception. In some cases,
+disabling the JIT compiler can affect context information. The
+errortrace library supports more consistent (independent of the JIT
+compiler) and precise context information.  The racket/trace library
+provides simple tracing support. Finally, the DrRacket programming
+environment provides much more debugging support.
+
+1. Tracing
+
+ (require racket/trace) package: base ~
+
+The bindings documented in this section are provided by the racket/trace
+library, not racket/base or racket.
+
+The racket/trace library mimics the tracing facility available in Chez
+Scheme.
+
+                                        *trace*
+(trace id ...) ~
+
+Each id must be bound to a procedure in the environment of the trace
+expression.  Each id is set!ed to a new procedure that traces procedure
+calls and returns by printing the arguments and results of the call via
+current-trace-notify.  If multiple values are returned, each value is
+displayed starting on a separate line.
+
+When traced procedures invoke each other, nested invocations are shown
+by printing a nesting prefix. If the nesting depth grows to ten and
+beyond, a number is printed to show the actual nesting depth.
+
+The trace form can be used on an identifier that is already traced.  In
+this case, assuming that the variable’s value has not been changed,
+trace has no effect.  If the variable has been changed to a different
+procedure, then a new trace is installed.
+
+Tracing respects tail calls to preserve loops, but its effect may be
+visible through continuation marks. When a call to a traced procedure
+occurs in tail position with respect to a previous traced call, then the
+tailness of the call is preserved (and the result of the call is not
+printed for the tail call, because the same result will be printed for
+an enclosing call). Otherwise, however, the body of a traced procedure
+is not evaluated in tail position with respect to a call to the
+procedure.
+
+The result of a trace expression is #<void>.
+
+Examples:
+  > (define (f x) (if (zero? x) 0 (add1 (f (sub1 x)))))
+
+  > (trace f)
+
+  > (f 10)
+  >(f 10)
+  > (f 9)
+  > >(f 8)
+  > > (f 7)
+  > > >(f 6)
+  > > > (f 5)
+  > > > >(f 4)
+  > > > > (f 3)
+  > > > > >(f 2)
+  > > > > > (f 1)
+  > > > >[10] (f 0)
+  < < < <[10] 0
+  < < < < < 1
+  < < < < <2
+  < < < < 3
+  < < < <4
+  < < < 5
+  < < <6
+  < < 7
+  < <8
+  < 9
+  <10
+  10
+
+                                        *trace-define*
+(trace-define id expr) ~
+(trace-define (head args) body ...+)
+
+The trace-define form is short-hand for first defining a function then
+tracing it. This form supports all define forms.
+
+Examples:
+  > (trace-define (f x) (if (zero? x) 0 (add1 (f (sub1 x)))))
+
+  > (f 5)
+  >(f 5)
+  > (f 4)
+  > >(f 3)
+  > > (f 2)
+  > > >(f 1)
+  > > > (f 0)
+  < < < 0
+  < < <1
+  < < 2
+  < <3
+  < 4
+  <5
+  5
+
+Examples:
+  > (trace-define ((+n n) x) (+ n x))
+
+  > (map (+n 5) (list 1 3 4))
+  >(+n 5)
+  <#<procedure>
+  '(6 8 9)
+
+                                        *trace-define-syntax*
+(trace-define-syntax id expr) ~
+(trace-define-syntax (head args) body ...+)
+
+The trace-define-syntax form is short-hand for first defining a macro
+then tracing it. This form supports all define-syntax forms.
+
+For example:
+
+Examples:
+  > (trace-define-syntax fact
+      (syntax-rules ()
+        [(_ x) 120]))
+
+  > (fact 5)
+  >(fact #<syntax:11:0 (fact 5)>)
+  <#<syntax:11:0 120>
+  120
+
+By default, trace prints out syntax objects when tracing a macro. This
+can result in too much output if you do not need to see, e.g., source
+information. To get more readable output, try this:
+
+Examples:
+  > (require (for-syntax racket/trace))
+
+  > (begin-for-syntax
+      (current-trace-print-args
+        (let ([ctpa (current-trace-print-args)])
+          (lambda (s l kw l2 n)
+            (ctpa s (map syntax->datum l) kw l2 n))))
+      (current-trace-print-results
+        (let ([ctpr (current-trace-print-results)])
+          (lambda (s l n)
+           (ctpr s (map syntax->datum l) n)))))
+
+  > (trace-define-syntax fact
+    (syntax-rules ()
+      [(_ x) #'120]))
+
+  > (fact 5)
+  >(fact '(fact 5))
+  <'#'120
+  #<syntax:14:0 120>
+
+                                        *trace-lambda*
+(trace-lambda [#:name id] args expr) ~ ~
+
+The trace-lambda form enables tracing an anonymous function. This form
+will attempt to infer a name using syntax-local-infer-name, or a name
+can be specified using the optional #:name argument.  A syntax error is
+raised if a name is not given and a name cannot be inferred.
+
+Example:
+  > ((trace-lambda (x) 120) 5)
+  >(eval:16:0 5)
+  <120
+  120
+
+                                        *trace-let*
+(trace-let id ([arg expr] ...+) body ...+) ~
+
+The trace-let form enables tracing a named let.
+
+Example:
+  > (trace-let f ([x 5])
+      (if (zero? x)
+          1
+          (* x (f (sub1 x)))))
+  >(f 5)
+  > (f 4)
+  > >(f 3)
+  > > (f 2)
+  > > >(f 1)
+  > > > (f 0)
+  < < < 1
+  < < <1
+  < < 2
+  < <6
+  < 24
+  <120
+  120
+
+                                        *untrace*
+(untrace id ...) ~
+
+Undoes the effects of the trace form for each id, set!ing each id back
+to the untraced procedure, but only if the current value of id is a
+traced procedure.  If the current value of a id is not a procedure
+installed by trace, then the variable is not changed.
+
+The result of an untrace expression is #<void>.
+
+                                        *current-trace-notify*
+(current-trace-notify) -> (string? . -> . any) ~
+(current-trace-notify proc) -> void?
+  proc : (string? . -> . any) ~
+
+A parameter that determines the way that trace output is displayed. The
+string given to proc is a trace; it does not end with a newline, but it
+may contain internal newlines. Each call or result is converted into a
+string using pretty-print.  The parameter’s default value prints the
+given string followed by a newline to (current-output-port).
+
+                                        *trace-call*
+(trace-call id proc #:<kw> kw-arg ...) -> any/c ~ ~
+  id : symbol? ~
+  proc : procedure? ~
+  kw-arg : any/c ~
+
+Calls proc with the arguments supplied in args, and possibly using
+keyword arguments. Also prints out the trace information during the
+call, as described above in the docs for trace, using id as the name of
+proc.
+
+                                        *current-trace-print-args*
+(current-trace-print-args) -> (-> symbol? ~
+                                  list?
+                                  (listof keyword?)
+                                  list?
+                                  number?
+                                  void?)
+(current-trace-print-args trace-print-args) -> void?
+  trace-print-args : (-> symbol? ~
+                         list?
+                         (listof keyword?)
+                         list?
+                         number?
+                         void?)
+
+The value of this parameter is invoked to print out the arguments of a
+traced call. It receives the name of the function, the function’s
+ordinary arguments, its keywords, the values of the keywords, and a
+number indicating the depth of the call.
+
+                                        *current-trace-print-results*
+(current-trace-print-results) -> (-> symbol? ~
+                                     list?
+                                     number?
+                                     any)
+(current-trace-print-results trace-print-results) -> void?
+  trace-print-results : (-> symbol? ~
+                            list?
+                            number?
+                            any)
+
+The value of this parameter is invoked to print out the results of a
+traced call. It receives the name of the function, the function’s
+results, and a number indicating the depth of the call.
+
+                                        *current-prefix-in*
+(current-prefix-in) -> string? ~
+(current-prefix-in prefix) -> void?
+  prefix : string? ~
+
+This string is used by the default value of current-trace-print-args
+indicating that the current line is showing the a call to a traced
+function.
+
+It defaults to ">".
+
+                                        *current-prefix-out*
+(current-prefix-out) -> string? ~
+(current-prefix-out prefix) -> void?
+  prefix : string? ~
+
+This string is used by the default value of current-trace-print-results
+indicating that the current line is showing the result of a traced call.
+
+It defaults to "<".

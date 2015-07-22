@@ -1,0 +1,18 @@
+Undefined
+
+ (require racket/undefined) package: base ~
+
+The bindings documented in this section are provided by the
+racket/undefined library, not racket/base or racket.
+
+The constant undefined can be used as a placeholder value for a value to
+be installed later, especially for cases where premature access of the
+value is either difficult or impossible to detect or prevent.
+
+The undefined value is always eq? to itself.
+
+Added in version 6.0.0.6 of package base.
+
+undefined : any/c ~
+
+The “undefined” constant.

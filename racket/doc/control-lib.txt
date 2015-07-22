@@ -1,0 +1,237 @@
+Additional Control Operators
+
+ (require racket/control) package: base ~
+
+The bindings documented in this section are provided by the
+racket/control library, not racket/base or racket.
+
+The racket/control library provides various control operators from the
+research literature on higher-order control operators, plus a few extra
+convenience forms. These control operators are implemented in terms of
+call-with-continuation-prompt, call-with-composable-continuation, etc.,
+and they generally work sensibly together. Many are redundant; for
+example, reset and prompt are aliases.
+
+                                        *call/prompt*
+(call/prompt proc [prompt-tag handler] arg ...) -> any ~
+  proc : procedure? ~
+  prompt-tag : continuation-prompt-tag? ~
+             = (default-continuation-prompt-tag)
+  handler : (or/c procedure? #f) = #f ~
+  arg : any/c ~
+
+The call/prompt binding is an alias for call-with-continuation-prompt.
+
+                                        *abort/cc*
+(abort/cc prompt-tag v ...) -> any ~
+  prompt-tag : any/c ~
+  v : any/c ~
+
+The abort/cc binding is an alias for abort-current-continuation.
+
+                                        *call/comp*
+(call/comp proc [prompt-tag]) -> any ~
+  proc : (continuation? . -> . any) ~
+  prompt-tag : continuation-prompt-tag? ~
+             = (default-continuation-prompt-tag)
+
+The call/comp binding is an alias for call-with-composable-continuation.
+
+                                        *abort*
+(abort v ...) -> any ~
+  v : any/c ~
+
+Returns the vs to a prompt using the default continuation prompt tag and
+the default abort handler.
+
+That is, (abort v ...) is equivalent to
+
+  (abort-current-continuation
+   (default-continuation-prompt-tag)
+   (lambda () (values v ...)))
+
+Example:
+  > (prompt
+      (printf "start here\n")
+      (printf "answer is ~a\n" (+ 2 (abort 3))))
+  start here
+  3
+
+                                        *%*
+(% expr)
+(% expr handler-expr)
+(% expr handler-expr #:tag tag-expr) ~
+(fcontrol v #:tag prompt-tag) -> any ~
+  v : any/c ~
+  prompt-tag : (default-continuation-prompt-tag) ~
+
+Sitaram’s operators [Sitaram93].
+
+The essential reduction rules are:
+
+  (% val proc) => val
+  (% E[(fcontrol val)] proc) => (proc val (lambda (x) E[x]))
+    ; where E has no %
+
+When handler-expr is omitted, % is the same as prompt. If prompt-tag is
+provided, % uses specific prompt tags like prompt-at.
+
+Examples:
+  > (% (+ 2 (fcontrol 5))
+       (lambda (v k)
+         (k v)))
+  7
+  > (% (+ 2 (fcontrol 5))
+       (lambda (v k)
+         v))
+  5
+
+                                        *prompt*
+(prompt expr ...+) ~
+(control id expr ...+)
+
+Among the earliest operators for higher-order control [Felleisen88a,
+Felleisen88, Sitaram90].
+
+The essential reduction rules are:
+
+  (prompt val) => val
+  (prompt E[(control k expr)]) => (prompt ((lambda (k) expr)
+                                           (lambda (v) E[v])))
+    ; where E has no prompt
+
+Examples:
+  > (prompt
+      (+ 2 (control k (k 5))))
+  7
+  > (prompt
+      (+ 2 (control k 5)))
+  5
+  > (prompt
+      (+ 2 (control k (+ 1 (control k1 (k1 6))))))
+  7
+  > (prompt
+      (+ 2 (control k (+ 1 (control k1 (k 6))))))
+  8
+  > (prompt
+      (+ 2 (control k (control k1 (control k2 (k2 6))))))
+  6
+
+                                        *prompt-at*
+(prompt-at prompt-tag-expr expr ...+) ~
+(control-at prompt-tag-expr id expr ...+)
+
+Like prompt and control, but using specific prompt tags:
+
+  (prompt-at tag val) => val
+  (prompt-at tag E[(control-at tag k expr)]) => (prompt-at tag
+                                                 ((lambda (k) expr)
+                                                  (lambda (v) E[v])))
+    ; where E has no prompt-at for tag
+
+                                        *reset*
+(reset expr ...+) ~
+(shift id expr ...+)
+
+Danvy and Filinski’s operators [Danvy90].
+
+The essential reduction rules are:
+
+  (reset val) => val
+  (reset E[(shift k expr)]) => (reset ((lambda (k) expr)
+                                       (lambda (v) (reset E[v]))))
+    ; where E has no reset
+
+The reset and prompt forms are interchangeable.
+
+                                        *reset-at*
+(reset-at prompt-tag-expr expr ...+) ~
+(shift-at prompt-tag-expr identifier expr ...+)
+
+Like reset and shift, but using the specified prompt tags.
+
+                                        *prompt*
+(prompt0 expr ...+) ~
+(reset0 expr ...+)
+(control0 id expr ...+)
+(shift0 id expr ...+)
+
+Generalizations of prompt, etc. [Shan04].
+
+The essential reduction rules are:
+
+  (prompt0 val) => val
+  (prompt0 E[(control0 k expr)]) => ((lambda (k) expr)
+                                     (lambda (v) E[v]))
+  (reset0 val) => val
+  (reset0 E[(shift0 k expr)]) => ((lambda (k) expr)
+                                  (lambda (v) (reset0 E[v])))
+
+The reset0 and prompt0 forms are interchangeable. Furthermore, the
+following reductions apply:
+
+  (prompt E[(control0 k expr)]) => (prompt ((lambda (k) expr)
+                                            (lambda (v) E[v])))
+  (reset E[(shift0 k expr)]) => (reset ((lambda (k) expr)
+                                        (lambda (v) (reset0 E[v]))))
+  (prompt0 E[(control k expr)]) => (prompt0 ((lambda (k) expr)
+                                             (lambda (v) E[v])))
+  (reset0 E[(shift k expr)]) => (reset0 ((lambda (k) expr)
+                                         (lambda (v) (reset E[v]))))
+
+That is, both the prompt/reset and control/shift sites must agree for
+0-like behavior, otherwise the non-0 behavior applies.
+
+                                        *prompt*
+(prompt0-at prompt-tag-expr expr ...+) ~
+(reset0-at prompt-tag-expr expr ...+)
+(control0-at prompt-tag-expr id expr ...+)
+(shift0-at prompt-tag-expr id expr ...+)
+
+Variants of prompt0, etc., that accept a prompt tag.
+
+                                        *spawn*
+(spawn proc) -> any ~
+  proc : ((any/c . -> . any) . -> . any) ~
+
+The operators of Hieb and Dybvig [Hieb90].
+
+The essential reduction rules are:
+
+  (prompt-at tag obj) => obj
+  (spawn proc) => (prompt tag (proc (lambda (x) (abort tag x))))
+  (prompt-at tag E[(abort tag proc)])
+    => (proc (lambda (x) (prompt-at tag E[x])))
+    ; where E has no prompt-at for tag
+
+                                        *splitter*
+(splitter proc) -> any ~
+  proc : (((-> any) . -> . any) ~
+          ((continuation? . -> . any) . -> . any)
+          . -> . any)
+
+The operator of Queinnec and Serpette [Queinnec91].
+
+The essential reduction rules are:
+
+  (splitter proc) => (prompt-at tag
+                      (proc (lambda (thunk)
+                                (abort tag thunk))
+                              (lambda (proc)
+                                (control0-at tag k (proc k)))))
+  (prompt-at tag E[(abort tag thunk)]) => (thunk)
+    ; where E has no prompt-at for tag
+  (prompt-at tag E[(control0-at tag k expr)]) => ((lambda (k) expr)
+                                                  (lambda (x) E[x]))
+    ; where E has no prompt-at for tag
+
+                                        *new-prompt*
+(new-prompt) -> any ~
+(set prompt-expr expr ...+)
+(cupto prompt-expr id expr ...+)
+
+The operators of Gunter et al. [Gunter95].
+
+In this library, new-prompt is an alias for
+make-continuation-prompt-tag, set is an alias for prompt0-at, and cupto
+is an alias for control0-at.

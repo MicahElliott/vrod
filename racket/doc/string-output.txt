@@ -1,0 +1,182 @@
+Byte and String Output
+
+                                        *write-char*
+(write-char char [out]) -> void? ~
+  char : char? ~
+  out : output-port? = (current-output-port) ~
+
+Writes a single character to out; more precisely, the bytes that are the
+UTF-8 encoding of char are written to out.
+
+                                        *write-byte*
+(write-byte byte [out]) -> void? ~
+  byte : byte? ~
+  out : output-port? = (current-output-port) ~
+
+Writes a single byte to out.
+
+                                        *newline*
+(newline [out]) -> void? ~
+  out : output-port? = (current-output-port) ~
+
+The same as (write-char #\newline out).
+
+                                        *write-string*
+(write-string str [out start-pos end-pos]) ~
+ -> exact-nonnegative-integer?
+  str : string? ~
+  out : output-port? = (current-output-port) ~
+  start-pos : exact-nonnegative-integer? = 0 ~
+  end-pos : exact-nonnegative-integer? = (string-length str) ~
+
+Writes characters to out from str starting from index start-pos
+(inclusive) up to end-pos (exclusive). Like substring, the
+exn:fail:contract exception is raised if start-pos or end-pos is
+out-of-range for str.
+
+The result is the number of characters written to out, which is always
+(- end-pos start-pos).
+
+If str is mutable, mutations after write-string returns do not affect
+the characters written to out. (This independence from mutation is not a
+special property of write-string, but instead generally true of output
+functions.)
+
+                                        *write-bytes*
+(write-bytes bstr [out start-pos end-pos]) ~
+ -> exact-nonnegative-integer?
+  bstr : bytes? ~
+  out : output-port? = (current-output-port) ~
+  start-pos : exact-nonnegative-integer? = 0 ~
+  end-pos : exact-nonnegative-integer? = (bytes-length bstr) ~
+
+Like write-string, but writes bytes instead of characters.
+
+                                        *write-bytes-avail*
+(write-bytes-avail  bstr           ~
+                   [out           
+                    start-pos     
+                    end-pos]) -> exact-nonnegative-integer?
+  bstr : bytes? ~
+  out : output-port? = (current-output-port) ~
+  start-pos : exact-nonnegative-integer? = 0 ~
+  end-pos : exact-nonnegative-integer? = (bytes-length bstr) ~
+
+Like write-bytes, but returns without blocking after writing as many
+bytes as it can immediately flush. It blocks only if no bytes can be
+flushed immediately. The result is the number of bytes written and
+flushed to out; if start-pos is the same as end-pos, then the result can
+be 0 (indicating a successful flush of any buffered data), otherwise the
+result is between 1 and (- end-pos start-pos), inclusive.
+
+The write-bytes-avail procedure never drops bytes; if write-bytes-avail
+successfully writes some bytes and then encounters an error, it
+suppresses the error and returns the number of written bytes.  (The
+error will be triggered by future writes.) If an error is encountered
+before any bytes have been written, an exception is raised.
+
+                                        *write-bytes-avail**
+(write-bytes-avail*  bstr       ~
+                    [out       
+                     start-pos 
+                     end-pos]) 
+ -> (or/c exact-nonnegative-integer? #f)
+  bstr : bytes? ~
+  out : output-port? = (current-output-port) ~
+  start-pos : exact-nonnegative-integer? = 0 ~
+  end-pos : exact-nonnegative-integer? = (bytes-length bstr) ~
+
+Like write-bytes-avail, but never blocks, returns #f if the port
+contains buffered data that cannot be written immediately, and returns 0
+if the port’s internal buffer (if any) is flushed but no additional
+bytes can be written immediately.
+
+                                        *write-bytes-avail/enable-break*
+(write-bytes-avail/enable-break  bstr       ~
+                                [out       
+                                 start-pos 
+                                 end-pos]) 
+ -> exact-nonnegative-integer?
+  bstr : bytes? ~
+  out : output-port? = (current-output-port) ~
+  start-pos : exact-nonnegative-integer? = 0 ~
+  end-pos : exact-nonnegative-integer? = (bytes-length bstr) ~
+
+Like write-bytes-avail, except that breaks are enabled during the write.
+The procedure provides a guarantee about the interaction of writing and
+breaks: if breaking is disabled when write-bytes-avail/enable-break is
+called, and if the exn:break exception is raised as a result of the
+call, then no bytes will have been written to out.  See also [missing].
+
+                                        *write-special*
+(write-special v [out]) -> boolean? ~
+  v : any/c ~
+  out : output-port? = (current-output-port) ~
+
+Writes v directly to out if the port supports special writes, or raises
+exn:fail:contract if the port does not support special write. The result
+is always #t, indicating that the write succeeded.
+
+                                        *write-special-avail**
+(write-special-avail* v [out]) -> boolean? ~
+  v : any/c ~
+  out : output-port? = (current-output-port) ~
+
+Like write-special, but without blocking. If v cannot be written
+immediately, the result is #f without writing v, otherwise the result is
+#t and v is written.
+
+                                        *write-bytes-avail-evt*
+(write-bytes-avail-evt  bstr           ~
+                       [out           
+                        start-pos     
+                        end-pos]) -> evt?
+  bstr : bytes? ~
+  out : output-port? = (current-output-port) ~
+  start-pos : exact-nonnegative-integer? = 0 ~
+  end-pos : exact-nonnegative-integer? = (bytes-length bstr) ~
+
+Similar to write-bytes-avail, but instead of writing bytes immediately,
+it returns a synchronizable event (see [missing]).  The out must support
+atomic writes, as indicated by port-writes-atomic?.
+
+Synchronizing on the object starts a write from bstr, and the event
+becomes ready when bytes are written (unbuffered) to the port. If
+start-pos and end-pos are the same, then the synchronization result is 0
+when the port’s internal buffer (if any) is flushed, otherwise the
+result is a positive exact integer. If the event is not selected in a
+synchronization, then no bytes will have been written to out.
+
+                                        *write-special-evt*
+(write-special-evt v [out]) -> evt? ~
+  v : any/c ~
+  out : output-port? = (current-output-port) ~
+
+Similar to write-special, but instead of writing the special value
+immediately, it returns a synchronizable event (see [missing]).  The out
+must support atomic writes, as indicated by port-writes-atomic?.
+
+Synchronizing on the object starts a write of the special value, and the
+event becomes ready when the value is written (unbuffered) to the port.
+If the event is not selected in a synchronization, then no value will
+have been written to out.
+
+                                        *port-writes-atomic?*
+(port-writes-atomic? out) -> boolean? ~
+  out : output-port? ~
+
+Returns #t if write-bytes-avail/enable-break can provide an exclusive-or
+guarantee (break or write, but not both) for out, and if the port can be
+used with procedures like write-bytes-avail-evt. Racket’s file-stream
+ports, pipes, string ports, and TCP ports all support atomic writes;
+ports created with make-output-port (see [missing]) may support atomic
+writes.
+
+                                        *port-writes-special?*
+(port-writes-special? out) -> boolean? ~
+  out : output-port? ~
+
+Returns #t if procedures like write-special can write arbitrary values
+to the port. Racket’s file-stream ports, pipes, string ports, and TCP
+ports all reject special values, but ports created with make-output-port
+(see [missing]) may support them.

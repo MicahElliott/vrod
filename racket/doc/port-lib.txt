@@ -1,0 +1,877 @@
+More Port Constructors, Procedures, and Events
+
+ (require racket/port) package: base ~
+
+The bindings documented in this section are provided by the racket/port
+and racket libraries, but not racket/base.
+
+1. Port String and List Conversions
+
+                                        *port->list*
+(port->list [r in]) -> (listof any/c) ~
+  r : (input-port? . -> . any/c) = read ~
+  in : input-port? = (current-input-port) ~
+
+Returns a list whose elements are produced by calling r on in until it
+produces eof.
+
+Examples:
+  > (define (read-number input-port)
+      (define char (read-char input-port))
+      (if (eof-object? char)
+       char
+       (string->number (string char))))
+
+  > (port->list read-number (open-input-string "12345"))
+  '(1 2 3 4 5)
+
+                                        *port->string*
+(port->string [in]) -> string? ~
+  in : input-port? = (current-input-port) ~
+
+Reads all characters from in and returns them as a string.
+
+Example:
+  > (port->string (open-input-string "hello world"))
+  "hello world"
+
+                                        *port->bytes*
+(port->bytes [in]) -> bytes? ~
+  in : input-port? = (current-input-port) ~
+
+Reads all bytes from in and returns them as a byte string.
+
+Example:
+  > (port->bytes (open-input-string "hello world"))
+  #"hello world"
+
+                                        *port->lines*
+(port->lines [in #:line-mode line-mode]) -> (listof string?) ~ ~
+  in : input-port? = (current-input-port) ~
+  line-mode : (or/c 'linefeed 'return 'return-linefeed 'any 'any-one) ~
+            = 'any
+
+Read all characters from in, breaking them into lines. The line-mode
+argument is the same as the second argument to read-line, but the
+default is 'any instead of 'linefeed.
+
+Example:
+  > (port->lines
+     (open-input-string "line 1\nline 2\n  line 3\nline 4"))
+  '("line 1" "line 2" "  line 3" "line 4")
+
+                                        *port->bytes-lines*
+(port->bytes-lines [in                           ~
+                    #:line-mode line-mode]) -> (listof bytes?) ~
+  in : input-port? = (current-input-port) ~
+  line-mode : (or/c 'linefeed 'return 'return-linefeed 'any 'any-one) ~
+            = 'any
+
+Like port->lines, but reading bytes and collecting them into lines like
+read-bytes-line.
+
+Example:
+  > (port->bytes-lines
+     (open-input-string "line 1\nline 2\n  line 3\nline 4"))
+  '(#"line 1" #"line 2" #"  line 3" #"line 4")
+
+                                        *display-lines*
+(display-lines  lst                          ~
+               [out                         
+                #:separator separator]) -> void? ~
+  lst : list? ~
+  out : output-port? = (current-output-port) ~
+  separator : any/c = #"\n" ~
+
+Uses display on each element of lst to out, adding separator after each
+element.
+
+                                        *call-with-output-string*
+(call-with-output-string proc) -> string? ~
+  proc : (output-port? . -> . any) ~
+
+Calls proc with an output port that accumulates all output into a
+string, and returns the string.
+
+The port passed to proc is like the one created by open-output-string,
+except that it is wrapped via dup-output-port, so that proc cannot
+access the port’s content using get-output-string. If control jumps back
+into proc, the port continues to accumulate new data, and
+call-with-output-string returns both the old data and newly accumulated
+data.
+
+                                        *call-with-output-bytes*
+(call-with-output-bytes proc) -> bytes? ~
+  proc : (output-port? . -> . any) ~
+
+Like call-with-output-string, but returns the accumulated result in a
+byte string instead of a string. Furthermore, the port’s content is
+emptied when call-with-output-bytes returns, so that if control jumps
+back into proc and returns a second time, only the newly accumulated
+bytes are returned.
+
+                                        *with-output-to-string*
+(with-output-to-string proc) -> string? ~
+  proc : (-> any) ~
+
+Equivalent to
+
+  (call-with-output-string
+   (lambda (p) (parameterize ([current-output-port p])
+                 (proc))))
+
+                                        *with-output-to-bytes*
+(with-output-to-bytes proc) -> bytes? ~
+  proc : (-> any) ~
+
+Equivalent to
+
+  (call-with-output-bytes
+   (lambda (p) (parameterize ([current-output-port p])
+                 (proc))))
+
+                                        *call-with-input-string*
+(call-with-input-string str proc) -> any ~
+  str : string? ~
+  proc : (input-port? . -> . any) ~
+
+Equivalent to (proc (open-input-string str)).
+
+                                        *call-with-input-bytes*
+(call-with-input-bytes bstr proc) -> any ~
+  bstr : bytes? ~
+  proc : (input-port? . -> . any) ~
+
+Equivalent to (proc (open-input-bytes bstr)).
+
+                                        *with-input-from-string*
+(with-input-from-string str proc) -> any ~
+  str : string? ~
+  proc : (-> any) ~
+
+Equivalent to
+
+  (parameterize ([current-input-port (open-input-string str)])
+    (proc))
+
+                                        *with-input-from-bytes*
+(with-input-from-bytes bstr proc) -> any ~
+  bstr : bytes? ~
+  proc : (-> any) ~
+
+Equivalent to
+
+  (parameterize ([current-input-port (open-input-bytes str)])
+    (proc))
+
+2. Creating Ports
+
+                                        *input-port-append*
+(input-port-append close-at-eof? in ...) -> input-port? ~
+  close-at-eof? : any/c ~
+  in : input-port? ~
+
+Takes any number of input ports and returns an input port. Reading from
+the input port draws bytes (and special non-byte values) from the given
+input ports in order. If close-at-eof? is true, then each port is closed
+when an end-of-file is encountered from the port, or when the result
+input port is closed. Otherwise, data not read from the returned input
+port remains available for reading in its original input port.
+
+See also merge-input, which interleaves data from multiple input ports
+as it becomes available.
+
+                                        *make-input-port/read-to-peek*
+(make-input-port/read-to-peek  name               ~
+                               read-in           
+                               fast-peek         
+                               close             
+                              [get-location      
+                               count-lines!      
+                               init-position     
+                               buffer-mode       
+                               buffering?        
+                               on-consumed]) -> input-port?
+  name : any/c ~
+  read-in : (bytes? ~
+             . -> . (or/c exact-nonnegative-integer?
+                          eof-object?
+                          procedure?
+                          evt?))
+  fast-peek : (or/c #f ~
+                    (bytes? exact-nonnegative-integer?
+                     (bytes? exact-nonnegative-integer?
+                      . -> . (or/c exact-nonnegative-integer?
+                                   eof-object?
+                                   procedure?
+                                   evt?
+                                   #f))
+                     . -> . (or/c exact-nonnegative-integer?
+                                  eof-object?
+                                  procedure?
+                                  evt?
+                                  #f)))
+  close : (-> any) ~
+  get-location : (or/c                                   = #f ~
+                  (->
+                   (values
+                    (or/c exact-positive-integer? #f)
+                    (or/c exact-nonnegative-integer? #f)
+                    (or/c exact-positive-integer? #f)))
+                  #f)
+  count-lines! : (-> any) = void ~
+  init-position : exact-positive-integer? = 1 ~
+  buffer-mode : (or/c (case-> ((or/c 'block 'none) . -> . any) ~
+                              (-> (or/c 'block 'none #f)))
+                      #f)
+              = #f
+  buffering? : any/c = #f ~
+  on-consumed : (or/c ((or/c exact-nonnegative-integer? eof-object? ~
+                             procedure? evt?)
+                       . -> . any)
+                      #f)
+              = #f
+
+Similar to make-input-port, but if the given read-in returns an event,
+the event’s value must be 0.  The resulting port’s peek operation is
+implemented automatically (in terms of read-in) in a way that can handle
+special non-byte values. The progress-event and commit operations are
+also implemented automatically. The resulting port is thread-safe, but
+not kill-safe (i.e., if a thread is terminated or suspended while using
+the port, the port may become damaged).
+
+The read-in, close, get-location, count-lines!, init-position, and
+buffer-mode procedures are the same as for make-input-port.
+
+The fast-peek argument can be either #f or a procedure of three
+arguments: a byte string to receive a peek, a skip count, and a
+procedure of two arguments. The fast-peek procedure can either implement
+the requested peek, or it can dispatch to its third argument to
+implement the peek. The fast-peek is not used when a peek request has an
+associated progress event.
+
+The buffering? argument determines whether read-in can be called to read
+more characters than are immediately demanded by the user of the new
+port. If buffer-mode is not #f, then buffering? determines the initial
+buffer mode, and buffering? is enabled after a buffering change only if
+the new mode is 'block.
+
+If on-consumed is not #f, it is called when data is read (or committed)
+from the port, as opposed to merely peeked. The argument to on-consumed
+is the result value of the port’s reading procedure, so it can be an
+integer or any result from read-in.
+
+                                        *make-limited-input-port*
+(make-limited-input-port  in                 ~
+                          limit             
+                         [close-orig?]) -> input-port?
+  in : input-port? ~
+  limit : exact-nonnegative-integer? ~
+  close-orig? : any/c = #t ~
+
+Returns a port whose content is drawn from in, but where an end-of-file
+is reported after limit bytes (and non-byte special values) have been
+read.  If close-orig? is true, then the original port is closed if the
+returned port is closed.
+
+Bytes are consumed from in only when they are consumed from the returned
+port. In particular, peeking into the returned port peeks into the
+original port.
+
+If in is used directly while the resulting port is also used, then the
+limit bytes provided by the port need not be contiguous parts of the
+original port’s stream.
+
+                                        *make-pipe-with-specials*
+(make-pipe-with-specials [limit           ~
+                          in-name        
+                          out-name]) -> input-port? output-port?
+  limit : exact-nonnegative-integer? = #f ~
+  in-name : any/c = 'pipe ~
+  out-name : any/c = 'pipe ~
+
+Returns two ports: an input port and an output port. The ports behave
+like those returned by make-pipe, except that the ports support non-byte
+values written with procedures such as write-special and read with
+procedures such as get-byte-or-special.
+
+The limit argument determines the maximum capacity of the pipe in bytes,
+but this limit is disabled if special values are written to the pipe
+before limit is reached. The limit is re-enabled after the special value
+is read from the pipe.
+
+The optional in-name and out-name arguments determine the names of the
+result ports.
+
+                                        *merge-input*
+(merge-input a-in b-in [buffer-limit]) -> input-port? ~
+  a-in : input-port? ~
+  b-in : input-port? ~
+  buffer-limit : (or/c exact-nonnegative-integer? #f) = 4096 ~
+
+Accepts two input ports and returns a new input port. The new port
+merges the data from two original ports, so data can be read from the
+new port whenever it is available from either of the two original ports.
+The data from the original ports are interleaved. When an end-of-file
+has been read from an original port, it no longer contributes characters
+to the new port. After an end-of-file has been read from both original
+ports, the new port returns end-of-file. Closing the merged port does
+not close the original ports.
+
+The optional buffer-limit argument limits the number of bytes to be
+buffered from a-in and b-in, so that the merge process does not advance
+arbitrarily beyond the rate of consumption of the merged data. A #f
+value disables the limit. As for make-pipe-with-specials, buffer-limit
+does not apply when a special value is produced by one of the input
+ports before the limit is reached.
+
+See also input-port-append, which concatenates input streams instead of
+interleaving them.
+
+                                        *open-output-nowhere*
+(open-output-nowhere [name special-ok?]) -> output-port? ~
+  name : any/c = 'nowhere ~
+  special-ok? : any/c = #t ~
+
+Creates and returns an output port that discards all output sent to it
+(without blocking). The name argument is used as the port’s name. If the
+special-ok?  argument is true, then the resulting port supports
+write-special, otherwise it does not.
+
+                                        *peeking-input-port*
+(peeking-input-port  in                                   ~
+                    [name                                
+                     skip                                
+                     #:init-position init-position]) -> input-port ~
+  in : input-port? ~
+  name : any/c = (object-name in) ~
+  skip : exact-nonnegative-integer? = 0 ~
+  init-position : exact-positive-integer? = 1 ~
+
+Returns an input port whose content is determined by peeking into in. In
+other words, the resulting port contains an internal skip count, and
+each read of the port peeks into in with the internal skip count, and
+then increments the skip count according to the amount of data
+successfully peeked.
+
+The optional name argument is the name of the resulting port. The skip
+argument is the port initial skip count, and it defaults to 0.
+
+The resulting port’s initial position (as reported by file-position) is
+(- init-position 1), no matter the position of in.
+
+The resulting port supports buffering, and a 'block buffer mode allows
+the port to peek further into in than requested. The resulting port’s
+initial buffer mode is 'block, unless in supports buffer mode and its
+mode is initially 'none (i.e., the initial buffer mode is taken from in
+when it supports buffering). If in supports buffering, adjusting the
+resulting port’s buffer mode via file-stream-buffer-mode adjusts in’s
+buffer mode.
+
+For example, when you read from a peeking port, you see the same answers
+as when you read from the original port:
+
+Examples:
+  > (define an-original-port (open-input-string "123456789"))
+
+  > (define a-peeking-port (peeking-input-port an-original-port))
+
+  > (file-stream-buffer-mode a-peeking-port 'none)
+
+  > (read-string 3 a-peeking-port)
+  "123"
+  > (read-string 3 an-original-port)
+  "123"
+
+Beware that the read from the original port is invisible to the peeking
+port, which keeps its own separate internal counter, and thus
+interleaving reads on the two ports can produce confusing results.
+Continuing the example before, if we read three more characters from the
+peeking port, we end up skipping over the 456 in the port (but only
+because we disabled buffering above):
+
+Example:
+  > (read-string 3 a-peeking-port)
+  "789"
+
+If we had left the buffer mode of a-peeking-port alone, that last
+read-string would have likely produced "456" as a result of buffering
+bytes from an-original-port earlier.
+
+Changed in version 6.1.0.3 of package base: Enabled buffering and
+buffer-mode adjustments via file-stream-buffer-mode, and set the port’s
+initial buffer mode to that of in.
+
+                                        *reencode-input-port*
+(reencode-input-port  in                     ~
+                      encoding              
+                     [error-bytes           
+                      close?                
+                      name                  
+                      convert-newlines?     
+                      enc-error])       -> input-port?
+  in : input-port? ~
+  encoding : string? ~
+  error-bytes : (or/c #f bytes?) = #f ~
+  close? : any/c = #f ~
+  name : any/c = (object-name in) ~
+  convert-newlines? : any/c = #f ~
+  enc-error : (string? input-port? . -> . any) ~
+            = (lambda (msg port) (error ...))
+
+Produces an input port that draws bytes from in, but converts the byte
+stream using (bytes-open-converter encoding-str "UTF-8"). In addition,
+if convert-newlines? is true, then decoded sequences that correspond to
+UTF-8 encodings of "\r\n", "\r\u0085", "\r", "\u0085", and "\u2028" are
+all converted to the UTF-8 encoding of "\n".
+
+If error-bytes is provided and not #f, then the given byte sequence is
+used in place of bytes from in that trigger conversion errors.
+Otherwise, if a conversion is encountered, enc-error is called, which
+must raise an exception.
+
+If close? is true, then closing the result input port also closes in.
+The name argument is used as the name of the result input port.
+
+In non-buffered mode, the resulting input port attempts to draw bytes
+from in only as needed to satisfy requests. Toward that end, the input
+port assumes that at least n bytes must be read to satisfy a request for
+n bytes. (This is true even if the port has already drawn some bytes, as
+long as those bytes form an incomplete encoding sequence.)
+
+                                        *reencode-output-port*
+(reencode-output-port  out                ~
+                       encoding          
+                      [error-bytes       
+                       close?            
+                       name              
+                       newline-bytes     
+                       enc-error])   -> output-port?
+  out : output-port? ~
+  encoding : string? ~
+  error-bytes : (or/c #f bytes?) = #f ~
+  close? : any/c = #f ~
+  name : any/c = (object-name out) ~
+  newline-bytes : (or/c #f bytes?) = #f ~
+  enc-error : (string? output-port? . -> . any) ~
+            = (lambda (msg port) (error ...))
+
+Produces an output port that directs bytes to out, but converts its byte
+stream using (bytes-open-converter "UTF-8" encoding-str). In addition,
+if newline-bytes is not #f, then bytes written to the port that are the
+UTF-8 encoding of "\n" are first converted to newline-bytes (before
+applying the convert from UTF-8 to encoding-str).
+
+If error-bytes is provided and not #f, then the given byte sequence is
+used in place of bytes that have been sent to the output port and that
+trigger conversion errors. Otherwise, enc-error is called, which must
+raise an exception.
+
+If close? is true, then closing the result output port also closes out.
+The name argument is used as the name of the result output port.
+
+The resulting port supports buffering, and the initial buffer mode is
+(or (file-stream-buffer-mode out) 'block). In 'block mode, the port’s
+buffer is flushed only when it is full or a flush is requested
+explicitly. In 'line mode, the buffer is flushed whenever a newline or
+carriage-return byte is written to the port. In 'none mode, the port’s
+buffer is flushed after every write. Implicit flushes for 'line or 'none
+leave bytes in the buffer when they are part of an incomplete encoding
+sequence.
+
+The resulting output port does not support atomic writes. An explicit
+flush or special-write to the output port can hang if the most recently
+written bytes form an incomplete encoding sequence.
+
+When the port is buffered, a flush callback is registered with the
+current plumber to flush the buffer.
+
+                                        *dup-input-port*
+(dup-input-port in [close?]) -> input-port? ~
+  in : input-port? ~
+  close? : any/c = #f ~
+
+Returns an input port that draws directly from in. Closing the resulting
+port closes in only if close? is #t.
+
+The new port is initialized with the port read handler of in, but
+setting the handler on the result port does not affect reading directly
+from in.
+
+                                        *dup-output-port*
+(dup-output-port out [close?]) -> output-port? ~
+  out : output-port? ~
+  close? : any/c = #f ~
+
+Returns an output port that propagates data directly to out. Closing the
+resulting port closes out only if close? is #t.
+
+The new port is initialized with the port display handler and port write
+handler of out, but setting the handlers on the result port does not
+affect writing directly to out.
+
+                                        *relocate-input-port*
+(relocate-input-port  in                ~
+                      line             
+                      column           
+                      position         
+                     [close?]          
+                      #:name name) -> input-port? ~
+  in : input-port? ~
+  line : (or/c exact-positive-integer? #f) ~
+  column : (or/c exact-nonnegative-integer? #f) ~
+  position : exact-positive-integer? ~
+  close? : any/c = #t ~
+  name : (object-name out) ~
+
+Produces an input port that is equivalent to in except in how it reports
+location information (and possibly its name). The resulting port’s
+content starts with the remaining content of in, and it starts at the
+given line, column, and position. A #f for the line or column means that
+the line and column will always be reported as #f.
+
+The line and column values are used only if line counting is enabled for
+in and for the resulting port, typically through port-count-lines!. The
+column value determines the column for the first line (i.e., the one
+numbered line), and later lines start at column 0. The given position is
+used even if line counting is not enabled.
+
+When line counting is on for the resulting port, reading from in instead
+of the resulting port increments location reports from the resulting
+port. Otherwise, the resulting port’s position does not increment when
+data is read from in.
+
+If close? is true, then closing the resulting port also closes in. If
+close? is #f, then closing the resulting port does not close in.
+
+The name argument is used as the name for the resulting port; the
+default value keeps the same name as in.
+
+                                        *relocate-output-port*
+(relocate-output-port  out               ~
+                       line             
+                       column           
+                       position         
+                      [close?]          
+                       #:name name) -> output-port? ~
+  out : output-port? ~
+  line : (or/c exact-positive-integer? #f) ~
+  column : (or/c exact-nonnegative-integer? #f) ~
+  position : exact-positive-integer? ~
+  close? : any/c = #t ~
+  name : (object-name out) ~
+
+Like relocate-input-port, but for output ports.
+
+                                        *transplant-input-port*
+(transplant-input-port  in                 ~
+                        get-location      
+                        init-pos          
+                       [close?            
+                        count-lines!]     
+                        #:name name)  -> input-port? ~
+  in : input-port? ~
+  get-location : (or/c ~
+                  (->
+                   (values
+                    (or/c exact-positive-integer? #f)
+                    (or/c exact-nonnegative-integer? #f)
+                    (or/c exact-positive-integer? #f)))
+                  #f)
+  init-pos : exact-positive-integer? ~
+  close? : any/c = #t ~
+  count-lines! : (-> any) = void ~
+  name : (object-name out) ~
+
+Like relocate-input-port, except that arbitrary position information can
+be produced (when line counting is enabled) via get-location, which is
+used as for make-input-port. If get-location is #f, then the port counts
+lines in the usual way starting from init-pos, independent of locations
+reported by in.
+
+If count-lines! is supplied, it is called when line counting is enabled
+for the resulting port. The default is void.
+
+                                        *transplant-output-port*
+(transplant-output-port  out                ~
+                         get-location      
+                         init-pos          
+                        [close?            
+                         count-lines!]     
+                         #:name name)  -> output-port? ~
+  out : output-port? ~
+  get-location : (or/c ~
+                  (->
+                   (values
+                    (or/c exact-positive-integer? #f)
+                    (or/c exact-nonnegative-integer? #f)
+                    (or/c exact-positive-integer? #f)))
+                  #f)
+  init-pos : exact-positive-integer? ~
+  close? : any/c = #t ~
+  count-lines! : (-> any) = void ~
+  name : (object-name out) ~
+
+Like transplant-input-port, but for output ports.
+
+                                        *filter-read-input-port*
+(filter-read-input-port  in             ~
+                         read-wrap     
+                         peek-wrap     
+                        [close?])  -> input-port?
+  in : input-port? ~
+  read-wrap : (bytes? (or/c exact-nonnegative-integer? ~
+                            eof-object?
+                            procedure?
+                            evt?)
+                      . -> .
+                      (or/c exact-nonnegative-integer?
+                            eof-object?
+                            procedure?
+                            evt?))
+  peek-wrap : (bytes? exact-nonnegative-integer? (or/c evt? #f) ~
+                      (or/c exact-nonnegative-integer?
+                       eof-object?
+                       procedure?
+                       evt?
+                       #f)
+               . -> . (or/c exact-nonnegative-integer?
+                       eof-object?
+                       procedure?
+                       evt?
+                       #f))
+  close? : any/c = #t ~
+
+Creates a port that draws from in, but each result from the port’s read
+and peek procedures (in the sense of make-input-port) is filtered by
+read-wrap and peek-wrap. The filtering procedures each receive both the
+arguments and results of the read and peek procedures on in for each
+call.
+
+If close? is true, then closing the resulting port also closes in.
+
+                                        *special-filter-input-port*
+(special-filter-input-port in proc [close?]) -> input-port? ~
+  in : input-port? ~
+  proc : (procedure? bytes? . -> . (or/c exact-nonnegative-integer? ~
+                                         eof-object?
+                                         procedure?
+                                         evt?))
+  close? : any/c = #t ~
+
+Produces an input port that is equivalent to in, except that when in
+produces a procedure to access a special value, proc is applied to the
+procedure to allow the special value to be replaced with an alternative.
+The proc is called with the special-value procedure and the byte string
+that was given to the port’s read or peek function (see
+make-input-port), and the result is used as the read or peek function’s
+result.  The proc can modify the byte string to substitute a byte for
+the special value, but the byte string is guaranteed only to hold at
+least one byte.
+
+If close? is true, then closing the resulting input port also closes in.
+
+3. Port Events
+
+                                        *eof-evt*
+(eof-evt in) -> evt? ~
+  in : input-port? ~
+
+Returns a synchronizable event that is ready when in produces an eof. If
+in produces a mid-stream eof, the eof is consumed by the event only if
+the event is chosen in a synchronization.
+
+                                        *read-bytes-evt*
+(read-bytes-evt k in) -> evt? ~
+  k : exact-nonnegative-integer? ~
+  in : input-port? ~
+
+Returns a synchronizable event that is ready when k bytes can be read
+from in, or when an end-of-file is encountered in in. If k is 0, then
+the event is ready immediately with "". For non-zero k, if no bytes are
+available before an end-of-file, the event’s result is eof. Otherwise,
+the event’s result is a byte string of up to k bytes, which contains as
+many bytes as are available (up to k) before an available end-of-file.
+(The result is a byte string on less than k bytes only when an
+end-of-file is encountered.)
+
+Bytes are read from the port if and only if the event is chosen in a
+synchronization, and the returned bytes always represent contiguous
+bytes in the port’s stream.
+
+The event can be synchronized multiple times—event concurrently—and each
+synchronization corresponds to a distinct read request.
+
+The in must support progress events, and it must not produce a special
+non-byte value during the read attempt.
+
+                                        *read-bytes!-evt*
+(read-bytes!-evt bstr in progress-evt) -> evt? ~
+  bstr : (and/c bytes? (not/c immutable?)) ~
+  in : input-port? ~
+  progress-evt : (or/c progress-evt? #f) ~
+
+Like read-bytes-evt, except that the read bytes are placed into bstr,
+and the number of bytes to read corresponds to (bytes-length bstr). The
+event’s result is either eof or the number of read bytes.
+
+The bstr may be mutated any time after the first synchronization attempt
+on the event and until either the event is selected, a non-#f
+progress-evt is ready, or the current custodian (at the time of
+synchronization) is shut down. Note that there is no time bound
+otherwise on when bstr might be mutated if the event is not selected by
+a synchronzation; nevertheless, multiple synchronization attempts can
+use the same result from read-bytes!-evt as long as there is no
+intervening read on in until one of the synchronization attempts selects
+the event.
+
+                                        *read-bytes-avail!-evt*
+(read-bytes-avail!-evt bstr in) -> evt? ~
+  bstr : (and/c bytes? (not/c immutable?)) ~
+  in : input-port? ~
+
+Like read-bytes!-evt, except that the event reads only as many bytes as
+are immediately available, after at least one byte or one eof becomes
+available.
+
+                                        *read-string-evt*
+(read-string-evt k in) -> evt? ~
+  k : exact-nonnegative-integer? ~
+  in : input-port? ~
+
+Like read-bytes-evt, but for character strings instead of byte strings.
+
+                                        *read-string!-evt*
+(read-string!-evt str in) -> evt? ~
+  str : (and/c string? (not/c immutable?)) ~
+  in : input-port? ~
+
+Like read-bytes!-evt, but for a character string instead of a byte
+string.
+
+                                        *read-line-evt*
+(read-line-evt in mode) -> evt? ~
+  in : input-port? ~
+  mode : (or/c 'linefeed 'return 'return-linefeed 'any 'any-one) ~
+
+Returns a synchronizable event that is ready when a line of characters
+or end-of-file can be read from in. The meaning of mode is the same as
+for read-line. The event result is the read line of characters (not
+including the line separator).
+
+A line is read from the port if and only if the event is chosen in a
+synchronization, and the returned line always represents contiguous
+bytes in the port’s stream.
+
+                                        *read-bytes-line-evt*
+(read-bytes-line-evt in mode) -> evt? ~
+  in : input-port? ~
+  mode : (or/c 'linefeed 'return 'return-linefeed 'any 'any-one) ~
+
+Like read-line-evt, but returns a byte string instead of a string.
+
+                                        *peek-bytes-evt*
+(peek-bytes-evt k skip progress-evt in) -> evt? ~
+  k : exact-nonnegative-integer? ~
+  skip : exact-nonnegative-integer? ~
+  progress-evt : (or/c progress-evt? #f) ~
+  in : input-port? ~
+(peek-bytes!-evt bstr skip progress-evt in) -> evt?
+  bstr : (and/c bytes? (not/c immutable?)) ~
+  skip : exact-nonnegative-integer? ~
+  progress-evt : (or/c progress-evt? #f) ~
+  in : input-port? ~
+(peek-bytes-avail!-evt bstr             
+                       skip             
+                       progress-evt     
+                       in)          -> evt?
+  bstr : (and/c bytes? (not/c immutable?)) ~
+  skip : exact-nonnegative-integer? ~
+  progress-evt : (or/c progress-evt? #f) ~
+  in : input-port? ~
+(peek-string-evt k skip progress-evt in) -> evt?
+  k : exact-nonnegative-integer? ~
+  skip : exact-nonnegative-integer? ~
+  progress-evt : (or/c progress-evt? #f) ~
+  in : input-port? ~
+(peek-string!-evt str skip progress-evt in) -> evt?
+  str : (and/c string? (not/c immutable?)) ~
+  skip : exact-nonnegative-integer? ~
+  progress-evt : (or/c progress-evt? #f) ~
+  in : input-port? ~
+
+Like the read-...-evt functions, but for peeking. The skip argument
+indicates the number of bytes to skip, and progress-evt indicates an
+event that effectively cancels the peek (so that the event never becomes
+ready). The progress-evt argument can be #f, in which case the event is
+never canceled.
+
+                                        *regexp-match-evt*
+(regexp-match-evt pattern in) -> any ~
+  pattern : (or/c string? bytes? regexp? byte-regexp?) ~
+  in : input-port? ~
+
+Returns a synchronizable event that is ready when pattern matches the
+stream of bytes/characters from in; see also regexp-match. The event’s
+value is the result of the match, in the same form as the result of
+regexp-match.
+
+If pattern does not require a start-of-stream match, then bytes skipped
+to complete the match are read and discarded when the event is chosen in
+a synchronization.
+
+Bytes are read from the port if and only if the event is chosen in a
+synchronization, and the returned match always represents contiguous
+bytes in the port’s stream. If not-yet-available bytes from the port
+might contribute to the match, the event is not ready.  Similarly, if
+pattern begins with a start-of-stream ^ and the pattern does not
+initially match, then the event cannot become ready until bytes have
+been read from the port.
+
+The event can be synchronized multiple times—even concurrently—and each
+synchronization corresponds to a distinct match request.
+
+The in port must support progress events. If in returns a special
+non-byte value during the match attempt, it is treated like eof.
+
+4. Copying Streams
+
+                                        *convert-stream*
+(convert-stream from-encoding      ~
+                in                
+                to-encoding       
+                out)          -> void?
+  from-encoding : string? ~
+  in : input-port? ~
+  to-encoding : string? ~
+  out : output-port? ~
+
+Reads data from in, converts it using (bytes-open-converter
+from-encoding to-encoding) and writes the converted bytes to out. The
+convert-stream procedure returns after reaching eof in in.
+
+If opening the converter fails, the exn:fail exception is raised.
+Similarly, if a conversion error occurs at any point while reading from
+in, then exn:fail exception is raised.
+
+                                        *copy-port*
+(copy-port in out ...+) -> void? ~
+  in : input-port? ~
+  out : output-port? ~
+
+Reads data from in and writes it back out to out, returning when in
+produces eof.  The copy is efficient, and it is without significant
+buffer delays (i.e., a byte that becomes available on in is immediately
+transferred to out, even if future reads on in must block). If in
+produces a special non-byte value, it is transferred to out using
+write-special.
+
+This function is often called from a “background” thread to continuously
+pump data from one stream to another.
+
+If multiple outs are provided, case data from in is written to every
+out. The different outs block output to each other, because each block
+of data read from in is written completely to one out before moving to
+the next out. The outs are written in the provided order, so
+non-blocking ports (e.g., file output ports) should be placed first in
+the argument list.

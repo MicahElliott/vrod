@@ -1,0 +1,101 @@
+Managing Ports
+
+                                        *input-port?*
+(input-port? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is an input port, #f otherwise.
+
+                                        *output-port?*
+(output-port? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is an output port, #f otherwise.
+
+                                        *port?*
+(port? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if either (input-port? v) or (output-port? v) is #t, #f
+otherwise.
+
+                                        *close-input-port*
+(close-input-port in) -> void? ~
+  in : input-port? ~
+
+Closes the input port in. For some kinds of ports, closing the port
+releases lower-level resources, such as a file handle. If the port is
+already closed, close-input-port has no effect.
+
+                                        *close-output-port*
+(close-output-port out) -> void? ~
+  out : output-port? ~
+
+Closes the output port out. For some kinds of ports, closing the port
+releases lower-level resources, such as a file handle. Also, if the port
+is buffered, closing may first flush the port before closing it, and
+this flushing process can block. If the port is already closed,
+close-output-port has no effect.
+
+                                        *port-closed?*
+(port-closed? port) -> boolean? ~
+  port : port? ~
+
+Returns #t if the input or output port port is closed, #f otherwise.
+
+                                        *port-closed-evt*
+(port-closed-evt port) -> evt? ~
+  port : port? ~
+
+Return a synchronizable event that becomes ready for synchronization
+when port is closed. The synchronization result of a port-closed event
+is the port-closed event itself.
+
+                                        *current-input-port*
+(current-input-port) -> input-port? ~
+(current-input-port in) -> void?
+  in : input-port? ~
+
+A parameter that determines a default input port for many operations,
+such as read.
+
+                                        *current-output-port*
+(current-output-port) -> output-port? ~
+(current-output-port out) -> void?
+  out : output-port? ~
+
+A parameter that determines a default output port for many operations,
+such as write.
+
+                                        *current-error-port*
+(current-error-port) -> output-port? ~
+(current-error-port out) -> void?
+  out : output-port? ~
+
+A parameter that determines an output port that is typically used for
+errors and logging. For example, the default error display handler
+writes to this port.
+
+                                        *file-stream-port?*
+(file-stream-port? port) -> boolean? ~
+  port : port? ~
+
+Returns #t if the given port is a file-stream port (see [missing]), #f
+otherwise.
+
+                                        *terminal-port?*
+(terminal-port? port) -> boolean? ~
+  port : port? ~
+
+Returns #t if the given port is attached to an interactive terminal, #f
+otherwise.
+
+eof : eof-object? ~
+
+A value (distinct from all other values) that represents an end-of-file.
+
+                                        *eof-object?*
+(eof-object? a) -> boolean? ~
+  a : any/c ~
+
+Returns #t if v is eof, #f otherwise.

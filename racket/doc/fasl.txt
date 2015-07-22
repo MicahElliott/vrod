@@ -1,0 +1,35 @@
+Fast-Load Serialization
+
+ (require racket/fasl) package: base ~
+
+The bindings documented in this section are provided by the racket/fasl
+library, not racket/base or racket.
+
+                                        *s-exp->fasl*
+(s-exp->fasl v [out]) -> (or/c (void) bytes?) ~
+  v : any/c ~
+  out : (or/c output-port? #f) = #f ~
+(fasl->s-exp in) -> any/c
+  in : (or/c input-port? bytes?) ~
+
+The s-exp->fasl function serializes v to a byte string, printing it
+directly to out if out is an output port or return the byte string
+otherwise. The fasl->s-exp function decodes a value from a byte string
+(supplied either directly or as an input port) that was encoded with
+s-exp->fasl.
+
+The v argument must be a value that could be quoted as a literal,
+because s-exp->fasl essentially uses (compile `',v) to encode the value
+using Racket’s built-in fast-load format for bytecode.
+
+The byte-string encoding produced by s-exp->fasl is specific to a
+version of Racket. That is, the resulting byte string can be decoded
+back to v only using the same version with which it was encoded.
+
+Examples:
+  > (define fasl (s-exp->fasl (list #("speed") 'racer #\!)))
+
+  > fasl
+  #"#~\0056.1.1T\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\1\0\0\0\1\0\0\0\0\36\0\0\0\220$\24r\220$\20\0\20\0\25_\20\1\6\5\5speedAracer\a!"
+  > (fasl->s-exp fasl)
+  '(#("speed") racer #\!)

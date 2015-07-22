@@ -1,0 +1,184 @@
+Parameters
+
++[missing] in [missing] introduces parameters.
+
+See [missing] for basic information on the parameter model. Parameters
+correspond to preserved thread fluids in Scsh [Gasbichler02].
+
+To parameterize code in a thread- and continuation-friendly manner, use
+parameterize. The parameterize form introduces a fresh thread cell for
+the dynamic extent of its body expressions.
+
+When a new thread is created, the parameterization for the new thread’s
+initial continuation is the parameterization of the creator thread.
+Since each parameter’s thread cell is preserved, the new thread
+“inherits” the parameter values of its creating thread. When a
+continuation is moved from one thread to another, settings introduced
+with parameterize effectively move with the continuation.
+
+In contrast, direct assignment to a parameter (by calling the parameter
+procedure with a value) changes the value in a thread cell, and
+therefore changes the setting only for the current thread. Consequently,
+as far as the memory manager is concerned, the value originally
+associated with a parameter through parameterize remains reachable as
+long the continuation is reachable, even if the parameter is mutated.
+
+                                        *make-parameter*
+(make-parameter v [guard]) -> parameter? ~
+  v : any/c ~
+  guard : (or/c (any/c . -> . any) #f) = #f ~
+
+Returns a new parameter procedure. The value of the parameter is
+initialized to v in all threads.  If guard is supplied, it is used as
+the parameter’s guard procedure.  A guard procedure takes one argument.
+Whenever the parameter procedure is applied to an argument, the argument
+is passed on to the guard procedure. The result returned by the guard
+procedure is used as the new parameter value.  A guard procedure can
+raise an exception to reject a change to the parameter’s value. The
+guard is not applied to the initial v.
+
+                                        *parameterize*
+(parameterize ([parameter-expr value-expr] ...) ~
+  body ...+)
+ 
+  parameter-expr : parameter? ~
+
++[missing] in [missing] introduces parameterize.
+
+The result of a parameterize expression is the result of the last body.
+The parameter-exprs determine the parameters to set, and the value-exprs
+determine the corresponding values to install while evaluating the
+body-exprs. All of the parameter-exprs are evaluated first (and checked
+with parameter?), then all value-exprs are evaluated, and then the
+parameters are bound in the continuation to preserved thread cells that
+contain the values of the value-exprs. The last body-expr is in tail
+position with respect to the entire parameterize form.
+
+Outside the dynamic extent of a parameterize expression, parameters
+remain bound to other thread cells. Effectively, therefore, old
+parameters settings are restored as control exits the parameterize
+expression.
+
+If a continuation is captured during the evaluation of parameterize,
+invoking the continuation effectively re-introduces the
+parameterization, since a parameterization is associated to a
+continuation via a continuation mark (see [missing]) using a private
+key.
+
+Examples:
+  > (parameterize ([exit-handler (lambda (x) 'no-exit)])
+      (exit))
+
+  > (define p1 (make-parameter 1))
+
+  > (define p2 (make-parameter 2))
+
+  > (parameterize ([p1 3]
+                   [p2 (p1)])
+      (cons (p1) (p2)))
+  '(3 . 1)
+  > (let ([k (let/cc out
+               (parameterize ([p1 2])
+                 (p1 3)
+                 (cons (let/cc k
+                         (out k))
+                       (p1))))])
+      (if (procedure? k)
+          (k (p1))
+          k))
+  '(1 . 3)
+  > (define ch (make-channel))
+
+  > (parameterize ([p1 0])
+      (thread (lambda ()
+                (channel-put ch (cons (p1) (p2))))))
+  #<thread>
+  > (channel-get ch)
+  '(0 . 2)
+  > (define k-ch (make-channel))
+
+  > (define (send-k)
+      (parameterize ([p1 0])
+        (thread (lambda ()
+                  (let/ec esc
+                    (channel-put ch
+                                 ((let/cc k
+                                    (channel-put k-ch k)
+                                    (esc)))))))))
+
+  > (send-k)
+  #<thread>
+  > (thread (lambda () ((channel-get k-ch)
+                        (let ([v (p1)])
+                          (lambda () v)))))
+  #<thread>
+  > (channel-get ch)
+  1
+  > (send-k)
+  #<thread>
+  > (thread (lambda () ((channel-get k-ch) p1)))
+  #<thread>
+  > (channel-get ch)
+  0
+
+                                        *parameterize**
+(parameterize* ((parameter-expr value-expr) ...) ~
+  body ...+)
+
+Analogous to let* compared to let, parameterize* is the same as a nested
+series of single-parameter parameterize forms.
+
+                                        *make-derived-parameter*
+(make-derived-parameter parameter      ~
+                        guard         
+                        wrap)     -> parameter?
+  parameter : parameter? ~
+  guard : (any/c . -> . any) ~
+  wrap : (any/c . -> . any) ~
+
+Returns a parameter procedure that sets or retrieves the same value as
+parameter, but with:
+
+* guard applied when setting the parameter (before any guard associated
+  with parameter), and
+
+* wrap applied when obtaining the parameter’s value.
+
+See also chaperone-procedure, which can also be used to guard parameter
+procedures.
+
+                                        *parameter?*
+(parameter? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a parameter procedure, #f otherwise.
+
+                                        *parameter-procedure*
+(parameter-procedure=? a b) -> boolean? ~
+  a : parameter? ~
+  b : parameter? ~
+
+Returns #t if the parameter procedures a and b always modify the same
+parameter with the same guards (although possibly with different
+chaperones), #f otherwise.
+
+                                        *current-parameterization*
+(current-parameterization) -> parameterization? ~
+
+Returns the current continuation’s parameterization.
+
+                                        *call-with-parameterization*
+(call-with-parameterization parameterization      ~
+                            thunk)           -> any
+  parameterization : parameterization? ~
+  thunk : (-> any) ~
+
+Calls thunk (via a tail call) with parameterization as the current
+parameterization.
+
+                                        *parameterization?*
+(parameterization? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a parameterization returned by
+current-parameterization, #f otherwise.

@@ -1,0 +1,73 @@
+Local Binding with Splicing Body
+
+ (require racket/splicing) package: base ~
+
+The bindings documented in this section are provided by the
+racket/splicing library, not racket/base or racket.
+
+splicing-let
+splicing-letrec
+splicing-let-values
+splicing-letrec-values
+splicing-let-syntax
+splicing-letrec-syntax
+splicing-let-syntaxes
+splicing-letrec-syntaxes
+splicing-letrec-syntaxes+values
+splicing-local
+
+Like let, letrec, let-values, letrec-values, let-syntax, letrec-syntax,
+let-syntaxes, letrec-syntaxes, letrec-syntaxes+values, and local, except
+that in a definition context, the body forms are spliced into the
+enclosing definition context (in the same way as for begin).
+
+Examples:
+  > (splicing-let-syntax ([one (lambda (stx) #'1)])
+      (define o one))
+
+  > o
+  1
+  > one
+  one: undefined;
+   cannot reference undefined identifier
+
+When a splicing binding form occurs in a top-level context or module
+context, its local bindings are treated similarly to definitions. In
+particular, if a reference to one of the splicing form’s bound variables
+is evaluated before the variable is initialized, an unbound variable
+error is raised, instead of the variable evaluating to the undefined
+value.  Also, syntax bindings are evaluated every time the module is
+visited, instead of only once during compilation as in let-syntax, etc.
+
+Example:
+  > (splicing-letrec ([x bad]
+                      [bad 1])
+      x)
+  bad.3: undefined;
+   cannot reference undefined identifier
+
+splicing-syntax-parameterize
+
+Like syntax-parameterize, except that in a definition context, the body
+forms are spliced into the enclosing definition context (in the same way
+as for begin). In a definition context, the body of
+splicing-syntax-parameterize can be empty.
+
+Note that require transformers and provide transformers are not affected
+by syntax parameterization.  While all uses of require and provide will
+be spliced into the enclosing context, derived import or export
+specifications will expand as if they had not been inside of the
+splicing-syntax-parameterize.
+
+Examples:
+  > (define-syntax-parameter place (lambda (stx) #'"Kansas"))
+
+  > (define-syntax-rule (where) `(at ,(place)))
+
+  > (where)
+  '(at "Kansas")
+  > (splicing-syntax-parameterize ([place (lambda (stx) #'"Oz")])
+      (define here (where)))
+
+  > here
+  '(at "Oz")

@@ -1,0 +1,286 @@
+Flonums
+
+ (require racket/flonum) package: base ~
+
+The racket/flonum library provides operations like fl+ that consume and
+produce only flonums. Flonum-specific operations can provide better
+performance when used consistently, and they are as safe as generic
+operations like +.
+
++See also [missing] in [missing].
+
+1. Flonum Arithmetic
+
+                                        *fl+*
+(fl+ a b) -> flonum? ~
+  a : flonum? ~
+  b : flonum? ~
+(fl- a b) -> flonum?
+  a : flonum? ~
+  b : flonum? ~
+(fl* a b) -> flonum?
+  a : flonum? ~
+  b : flonum? ~
+(fl/ a b) -> flonum?
+  a : flonum? ~
+  b : flonum? ~
+(flabs a) -> flonum?
+  a : flonum? ~
+
+Like +, -, *, /, and abs, but constrained to consume flonums. The result
+is always a flonum.
+
+                                        *fl*
+(fl= a b) -> boolean? ~
+  a : flonum? ~
+  b : flonum? ~
+(fl< a b) -> boolean?
+  a : flonum? ~
+  b : flonum? ~
+(fl> a b) -> boolean?
+  a : flonum? ~
+  b : flonum? ~
+(fl<= a b) -> boolean?
+  a : flonum? ~
+  b : flonum? ~
+(fl>= a b) -> boolean?
+  a : flonum? ~
+  b : flonum? ~
+(flmin a b) -> flonum?
+  a : flonum? ~
+  b : flonum? ~
+(flmax a b) -> flonum?
+  a : flonum? ~
+  b : flonum? ~
+
+Like =, <, >, <=, >=, min, and max, but constrained to consume flonums.
+
+                                        *flround*
+(flround a) -> flonum? ~
+  a : flonum? ~
+(flfloor a) -> flonum?
+  a : flonum? ~
+(flceiling a) -> flonum?
+  a : flonum? ~
+(fltruncate a) -> flonum?
+  a : flonum? ~
+
+Like round, floor, ceiling, and truncate, but constrained to consume
+flonums.
+
+                                        *flsin*
+(flsin a) -> flonum? ~
+  a : flonum? ~
+(flcos a) -> flonum?
+  a : flonum? ~
+(fltan a) -> flonum?
+  a : flonum? ~
+(flasin a) -> flonum?
+  a : flonum? ~
+(flacos a) -> flonum?
+  a : flonum? ~
+(flatan a) -> flonum?
+  a : flonum? ~
+(fllog a) -> flonum?
+  a : flonum? ~
+(flexp a) -> flonum?
+  a : flonum? ~
+(flsqrt a) -> flonum?
+  a : flonum? ~
+
+Like sin, cos, tan, asin, acos, atan, log, exp, and sqrt, but
+constrained to consume and produce flonums. The result is +nan.0 when a
+number outside the range -1.0 to 1.0 is given to flasin or flacos, or
+when a negative number is given to fllog or flsqrt.
+
+                                        *flexpt*
+(flexpt a b) -> flonum? ~
+  a : flonum? ~
+  b : flonum? ~
+
+Like expt, but constrained to consume and produce flonums.
+
+Due to the result constraint, the results compared to expt differ in the
+following cases: These special cases correspond to pow in C99 [C99].
+
+* (flexpt -1.0 +inf.0) — 1.0
+
+* (flexpt a +inf.0) where a is negative — (expt (abs a) +inf.0)
+
+* (flexpt a -inf.0) where a is negative — (expt (abs a) -inf.0)
+
+* (expt -inf.0 b) where b is a non-integer:
+
+  * b is negative — 0.0
+
+  * b is positive — +inf.0
+
+* (flexpt a b) where a is negative and b is not an integer — +nan.0
+
+                                        *->fl*
+(->fl a) -> flonum?
+  a : exact-integer? ~
+
+Like exact->inexact, but constrained to consume exact integers, so the
+result is always a flonum.
+
+                                        *fl->exact-integer*
+(fl->exact-integer a) -> exact-integer? ~
+  a : flonum? ~
+
+Like inexact->exact, but constrained to consume an integer flonum, so
+the result is always an exact integer.
+
+                                        *make-flrectangular*
+(make-flrectangular a b) ~
+ -> (and/c complex?
+           (lambda (c) (flonum? (real-part c)))
+           (lambda (c) (flonum? (imag-part c))))
+  a : flonum? ~
+  b : flonum? ~
+(flreal-part a) -> flonum?
+  a : (and/c complex? ~
+             (lambda (c) (flonum? (real-part c)))
+             (lambda (c) (flonum? (imag-part c))))
+(flimag-part a) -> flonum?
+  a : (and/c complex? ~
+             (lambda (c) (flonum? (real-part c)))
+             (lambda (c) (flonum? (imag-part c))))
+
+Like make-rectangular, real-part, and imag-part, but both parts of the
+complex number must be inexact.
+
+                                        *flrandom*
+(flrandom rand-gen) -> (and flonum? (>/c 0) (</c 1)) ~
+  rand-gen : pseudo-random-generator? ~
+
+Equivalent to (random rand-gen).
+
+2. Flonum Vectors
+
+A flvector is like a vector, but it holds only inexact real numbers.
+This representation can be more compact, and unsafe operations on
+flvectors (see racket/unsafe/ops) can execute more efficiently than
+unsafe operations on vectors of inexact reals.
+
+An f64vector as provided by ffi/vector stores the same kinds of values
+as a flvector, but with extra indirections that make f64vectors more
+convenient for working with foreign libraries. The lack of indirections
+makes unsafe flvector access more efficient.
+
+Two flvectors are equal? if they have the same length, and if the values
+in corresponding slots of the flvectors are equal?.
+
+                                        *flvector?*
+(flvector? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a flvector, #f otherwise.
+
+                                        *flvector*
+(flvector x ...) -> flvector? ~
+  x : flonum? ~
+
+Creates a flvector containing the given inexact real numbers.
+
+Example:
+  > (flvector 2.0 3.0 4.0 5.0)
+  (flvector 2.0 3.0 4.0 5.0)
+
+                                        *make-flvector*
+(make-flvector size [x]) -> flvector? ~
+  size : exact-nonnegative-integer? ~
+  x : flonum? = 0.0 ~
+
+Creates a flvector with size elements, where every slot in the flvector
+is filled with x.
+
+Example:
+  > (make-flvector 4 3.0)
+  (flvector 3.0 3.0 3.0 3.0)
+
+                                        *flvector-length*
+(flvector-length vec) -> exact-nonnegative-integer? ~
+  vec : flvector? ~
+
+Returns the length of vec (i.e., the number of slots in the flvector).
+
+                                        *flvector-ref*
+(flvector-ref vec pos) -> flonum? ~
+  vec : flvector? ~
+  pos : exact-nonnegative-integer? ~
+
+Returns the inexact real number in slot pos of vec. The first slot is
+position 0, and the last slot is one less than (flvector-length vec).
+
+                                        *flvector-set!*
+(flvector-set! vec pos x) -> flonum? ~
+  vec : flvector? ~
+  pos : exact-nonnegative-integer? ~
+  x : flonum? ~
+
+Sets the inexact real number in slot pos of vec. The first slot is
+position 0, and the last slot is one less than (flvector-length vec).
+
+                                        *flvector-copy*
+(flvector-copy vec [start end]) -> flvector? ~
+  vec : flvector? ~
+  start : exact-nonnegative-integer? = 0 ~
+  end : exact-nonnegative-integer? = (vector-length v) ~
+
+Creates a fresh flvector of size (- end start), with all of the elements
+of vec from start (inclusive) to end (exclusive).
+
+                                        *in-flvector*
+(in-flvector vec [start stop step]) -> sequence? ~
+  vec : flvector? ~
+  start : exact-nonnegative-integer? = 0 ~
+  stop : (or/c exact-integer? #f) = #f ~
+  step : (and/c exact-integer? (not/c zero?)) = 1 ~
+
+Returns a sequence equivalent to vec when no optional arguments are
+supplied.
+
+The optional arguments start, stop, and step are as in in-vector.
+
+A in-flvector application can provide better performance for flvector
+iteration when it appears directly in a for clause.
+
+                                        *for/flvector*
+(for/flvector maybe-length (for-clause ...) body ...) ~
+(for*/flvector maybe-length (for-clause ...) body ...)
+ 
+maybe-length = 
+             | #:length length-expr ~
+             | #:length length-expr #:fill fill-expr ~
+ 
+  length-expr : exact-nonnegative-integer? ~
+  fill-expr : flonum? ~
+
+Like for/vector or for*/vector, but for flvectors. The default fill-expr
+produces 0.0.
+
+                                        *shared-flvector*
+(shared-flvector x ...) -> flvector? ~
+  x : flonum? ~
+
+Creates a flvector containing the given inexact real numbers. For
+communication among places, the new flvector is allocated in the shared
+memory space.
+
+Example:
+  > (shared-flvector 2.0 3.0 4.0 5.0)
+  (flvector 2.0 3.0 4.0 5.0)
+
+                                        *make-shared-flvector*
+(make-shared-flvector size [x]) -> flvector? ~
+  size : exact-nonnegative-integer? ~
+  x : flonum? = 0.0 ~
+
+Creates a flvector with size elements, where every slot in the flvector
+is filled with x. For communication among places, the new flvector is
+allocated in the shared memory space.
+
+Example:
+  > (make-shared-flvector 4 3.0)
+  (flvector 3.0 3.0 3.0 3.0)

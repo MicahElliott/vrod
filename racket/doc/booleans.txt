@@ -1,0 +1,364 @@
+Booleans and Equality
+
+True and false booleans are represented by the values #t and #f,
+respectively, though operations that depend on a boolean value typically
+treat anything other than #f as true. The #t value is always eq? to
+itself, and #f is always eq? to itself.
+
+See [missing]     for information on reading     booleans and [missing]
+for information on printing booleans.
+
+See also and, or, andmap, and ormap.
+
+                                        *boolean?*
+(boolean? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is #t or #f, #f otherwise.
+
+Examples:
+  > (boolean? #f)
+  #t
+  > (boolean? #t)
+  #t
+  > (boolean? 'true)
+  #f
+
+                                        *not*
+(not v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is #f, #f otherwise.
+
+Examples:
+  > (not #f)
+  #t
+  > (not #t)
+  #f
+  > (not 'we-have-no-bananas)
+  #f
+
+                                        *equal?*
+(equal? v1 v2) -> boolean? ~
+  v1 : any/c ~
+  v2 : any/c ~
+
+Two values are equal? if and only if they are eqv?, unless otherwise
+specified for a particular datatype.
+
+Datatypes with further specification of equal? include strings, byte
+strings, pairs, mutable pairs, vectors, boxes, hash tables, and
+inspectable structures. In the last six cases, equality is recursively
+defined; if both v1 and v2 contain reference cycles, they are equal when
+the infinite unfoldings of the values would be equal. See also
+gen:equal+hash and prop:impersonator-of.
+
+Examples:
+  > (equal? 'yes 'yes)
+  #t
+  > (equal? 'yes 'no)
+  #f
+  > (equal? (expt 2 100) (expt 2 100))
+  #t
+  > (equal? 2 2.0)
+  #f
+  > (equal? (make-string 3 #\z) (make-string 3 #\z))
+  #t
+
+                                        *eqv?*
+(eqv? v1 v2) -> boolean? ~
+  v1 : any/c ~
+  v2 : any/c ~
+
+Two values are eqv? if and only if they are eq?, unless otherwise
+specified for a particular datatype.
+
+The number and character datatypes are the only ones for which eqv?
+differs from eq?. Two numbers are eqv? when they have the same
+exactness, precision, and are both equal and non-zero, both 0.0, both
+0.0f0, both -0.0, both -0.0f0, both +nan.0, or both +nan.f—considering
+real and imaginary components separately in the case of complex numbers.
+Two characters are eqv? when their char->integer results are equal.
+
+Examples:
+  > (eqv? 'yes 'yes)
+  #t
+  > (eqv? 'yes 'no)
+  #f
+  > (eqv? (expt 2 100) (expt 2 100))
+  #t
+  > (eqv? 2 2.0)
+  #f
+  > (eqv? (integer->char 955) (integer->char 955))
+  #t
+  > (eqv? (make-string 3 #\z) (make-string 3 #\z))
+  #f
+
+                                        *eq?*
+(eq? v1 v2) -> boolean? ~
+  v1 : any/c ~
+  v2 : any/c ~
+
+Return #t if v1 and v2 refer to the same object, #f otherwise. See also
+[missing].
+
+Examples:
+  > (eq? 'yes 'yes)
+  #t
+  > (eq? 'yes 'no)
+  #f
+  > (let ([v (mcons 1 2)]) (eq? v v))
+  #t
+  > (eq? (mcons 1 2) (mcons 1 2))
+  #f
+  > (eq? (make-string 3 #\z) (make-string 3 #\z))
+  #f
+
+                                        *equal?/recur*
+(equal?/recur v1 v2 recur-proc) -> boolean? ~
+  v1 : any/c ~
+  v2 : any/c ~
+  recur-proc : (any/c any/c -> any/c) ~
+
+Like equal?, but using recur-proc for recursive comparisons (which means
+that reference cycles are not handled automatically). Non-#f results
+from recur-proc are converted to #t before being returned by
+equal?/recur.
+
+Examples:
+  > (equal?/recur 1 1 (lambda (a b) #f))
+  #t
+  > (equal?/recur '(1) '(1) (lambda (a b) #f))
+  #f
+  > (equal?/recur '#(1 1 1) '#(1 1.2 3/4)
+                  (lambda (a b) (<= (abs (- a b)) 0.25)))
+  #t
+
+                                        *immutable?*
+(immutable? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is an immutable string, byte string, vector, hash table,
+or box, #f otherwise.
+
+Note that immutable? is not a general predicate for immutability
+(despite its name). It works only for a handful of datatypes for which a
+single predicate—string?, vector?, etc.—recognizes both mutable and
+immutable variants of the datatype. In particular, immutable? produces
+#f for a pair, even though pairs are immutable, since pair? implies
+immutability.
+
+Examples:
+  > (immutable? 'hello)
+  #f
+  > (immutable? "a string")
+  #t
+  > (immutable? (box 5))
+  #f
+  > (immutable? #(0 1 2 3))
+  #t
+  > (immutable? (make-hash))
+  #f
+  > (immutable? (make-immutable-hash '([a b])))
+  #t
+
+gen:equal+hash : any/c ~
+
+A generic interface (see [missing]) that supplies an equality predicate
+and hashing functions for a structure type. The following methods must
+be implemented:
+
+* equal-proc : (-> any/c any/c (-> any/c any/c boolean?) any/c) — tests
+  whether the first two  arguments are equal, where both values are
+  instances of the  structure type to which the generic interface is
+  associated  (or a subtype of the structure type).
+
+  The third argument is an equal?  predicate to use for  recursive
+  equality checks; use the given predicate instead of  equal? to ensure
+  that data cycles are handled  properly and to work with equal?/recur
+  (but beware  that an arbitrary function can be provided to
+  equal?/recur for recursive checks, which means that  arguments
+  provided to the predicate might be exposed to  arbitrary code).
+
+  The equal-proc is called for a pair of structures  only when they are
+  not eq?, and only when they both  have a gen:equal+hash value
+  inherited from the same  structure type. With this strategy, the order
+  in which  equal? receives two structures does not matter. It  also
+  means that, by default, a structure sub-type inherits the  equality
+  predicate of its parent, if any.
+
+* hash-proc : (-> any/c (-> any/c exact-integer?) exact-integer?) —
+  computes a hash code for the given structure, like equal-hash-code.
+  The first argument is an instance of the structure type (or one of its
+  subtypes) to which the generic interface is associated.
+
+  The second argument is an equal-hash-code-like procedure to use for
+  recursive hash-code computation; use the given procedure instead of
+  equal-hash-code to ensure that data cycles are handled properly.
+
+* hash2-proc : (-> any/c (-> any/c exact-integer?) exact-integer?) —
+  computes a secondary hash code for the given structure. This procedure
+  is like hash-proc, but analogous to equal-secondary-hash-code.
+
+Take care to ensure that hash-proc and hash2-proc are consistent with
+equal-proc. Specifically, hash-proc and hash2-proc should produce the
+same value for any two structures for which equal-proc produces a true
+value.
+
+When a structure type has no gen:equal+hash implementation, then
+transparent structures (i.e., structures with an inspector that is
+controlled by the current inspector) are equal? when they are instances
+of the same structure type (not counting sub-types), and when they have
+equal? field values.  For transparent structures, equal-hash-code and
+equal-secondary-hash-code derive hash code using the field values. For
+opaque structure types, equal? is the same as eq?, and equal-hash-code
+and equal-secondary-hash-code results are based only on eq-hash-code. If
+a structure has a prop:impersonator-of property, then the
+prop:impersonator-of property takes precedence over gen:equal+hash if
+the property value’s procedure returns a non-#f value when applied to
+the structure.
+
+Examples:
+  > (define (farm=? farm1 farm2 recursive-equal?)
+      (and (= (farm-apples farm1)
+              (farm-apples farm2))
+           (= (farm-oranges farm1)
+              (farm-oranges farm2))
+           (= (farm-sheep farm1)
+              (farm-sheep farm2))))
+
+  > (define (farm-hash-1 farm recursive-equal-hash)
+      (+ (* 10000 (farm-apples farm))
+         (* 100 (farm-oranges farm))
+         (* 1 (farm-sheep farm))))
+
+  > (define (farm-hash-2 farm recursive-equal-hash)
+      (+ (* 10000 (farm-sheep farm))
+         (* 100 (farm-apples farm))
+         (* 1 (farm-oranges farm))))
+
+  > (define-struct farm (apples oranges sheep)
+                   #:methods gen:equal+hash ~
+                   [(define equal-proc farm=?)
+                    (define hash-proc  farm-hash-1)
+                    (define hash2-proc farm-hash-2)])
+
+  > (define east (make-farm 5 2 20))
+
+  > (define west (make-farm 18 6 14))
+
+  > (define north (make-farm 5 20 20))
+
+  > (define south (make-farm 18 6 14))
+
+  > (equal? east west)
+  #f
+  > (equal? east north)
+  #f
+  > (equal? west south)
+  #t
+
+prop:equal+hash : struct-type-property? ~
+
+A deprecated structure type property (see [missing]) that supplies an
+equality predicate and hashing functions for a structure type. The
+gen:equal+hash generic interface should be used, instead. A
+prop:equal+hash property value is a list of three procedures that
+correspond to the methods of gen:equal+hash.
+
+1. Boolean Aliases
+
+ (require racket/bool) package: base ~
+
+The bindings documented in this section are provided by the racket/bool
+and racket libraries, but not racket/base.
+
+true : boolean? ~
+
+An alias for #t.
+
+false : boolean? ~
+
+An alias for #f.
+
+                                        *symbol*
+(symbol=? a b) -> boolean? ~
+  a : symbol? ~
+  b : symbol? ~
+
+Returns (equal? a b) (if a and b are symbols).
+
+                                        *boolean*
+(boolean=? a b) -> boolean? ~
+  a : boolean? ~
+  b : boolean? ~
+
+Returns (equal? a b) (if a and b are booleans).
+
+                                        *false?*
+(false? v) -> boolean? ~
+  v : any/c ~
+
+Returns (not v).
+
+                                        *nand*
+(nand expr ...) ~
+
+Same as (not (and expr ...)).
+
+Examples:
+  > (nand #f #t)
+  #t
+  > (nand #f (error 'ack "we don't get here"))
+  #t
+
+                                        *nor*
+(nor expr ...) ~
+
+Same as (not (or expr ...)).
+
+In the two argument case, returns #t if neither of the arguments is a
+true value.
+
+Examples:
+  > (nor #f #t)
+  #f
+  > (nor #t (error 'ack "we don't get here"))
+  #f
+
+                                        *implies*
+(implies expr1 expr2) ~
+
+Checks to be sure that the first expression implies the second.
+
+Same as (if expr1 expr2 #t).
+
+Examples:
+  > (implies #f #t)
+  #t
+  > (implies #f #f)
+  #t
+  > (implies #t #f)
+  #f
+  > (implies #f (error 'ack "we don't get here"))
+  #t
+
+                                        *xor*
+(xor b1 b2) -> any ~
+  b1 : any/c ~
+  b2 : any/c ~
+
+Returns the exclusive or of b1 and b2.
+
+If exactly one of b1 and b2 is not #f, then return it. Otherwise,
+returns #f.
+
+Examples:
+  > (xor 11 #f)
+  11
+  > (xor #f 22)
+  22
+  > (xor 11 22)
+  #f
+  > (xor #f #f)
+  #f

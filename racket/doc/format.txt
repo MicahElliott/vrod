@@ -1,0 +1,496 @@
+Converting Values to Strings
+
+ (require racket/format) package: base ~
+
+The bindings documented in this section are provided by the
+racket/format and racket libraries, but not racket/base.
+
+The racket/format library provides functions for converting Racket
+values to strings. In addition to features like padding and numeric
+formatting, the functions have the virtue of being shorter than format
+(with format string), number->string, or string-append.
+
+                                        *~a*
+(~a  v                                         
+     ...                                       
+    [#:separator separator                      ~
+     #:width width                              ~
+     #:max-width max-width                      ~
+     #:min-width min-width                      ~
+     #:limit-marker limit-marker                ~
+     #:align align                              ~
+     #:pad-string pad-string                    ~
+     #:left-pad-string left-pad-string          ~
+     #:right-pad-string right-pad-string]) -> string? ~
+  v : any/c ~
+  separator : string? = "" ~
+  width : (or/c exact-nonnegative-integer? #f) = #f ~
+  max-width : (or/c exact-nonnegative-integer? +inf.0) ~
+            = (or width +inf.0)
+  min-width : exact-nonnegative-integer? = (or width 0) ~
+  limit-marker : string? = "" ~
+  align : (or/c 'left 'center 'right) = 'left ~
+  pad-string : non-empty-string? = " " ~
+  left-pad-string : non-empty-string? = pad-string ~
+  right-pad-string : non-empty-string? = pad-string ~
+
+Converts each v to a string in display mode—that is, like (format "~a"
+v)—then concatentates the results with separator between consecutive
+items, and then pads or truncates the string to be at least min-width
+characters and at most max-width characters.
+
+  > (~a "north")
+  "north"
+  > (~a 'south)
+  "south"
+  > (~a #"east")
+  "east"
+  > (~a #\w "e" 'st)
+  "west"
+  > (~a (list "red" 'green #"blue"))
+  "(red green blue)"
+  > (~a 17)
+  "17"
+  > (~a #e1e20)
+  "100000000000000000000"
+  > (~a pi)
+  "3.141592653589793"
+  > (~a (expt 6.1 87))
+  "2.1071509386211452e+68"
+
+The ~a function is primarily useful for strings, numbers, and other
+atomic data. The ~v and ~s functions are better suited to compound data.
+
+Let s be the concatenated string forms of the vs plus separators. If s
+is longer than max-width characters, it is truncated to exactly
+max-width characters. If s is shorter than min-width characters, it is
+padded to exactly min-width characters. Otherwise s is returned
+unchanged. If min-width is greater than max-width, an exception is
+raised.
+
+If s is longer than max-width characters, it is truncated and the end of
+the string is replaced with limit-marker. If limit-marker is longer than
+max-width, an exception is raised.
+
+  > (~a "abcde" #:max-width 5) ~
+  "abcde"
+  > (~a "abcde" #:max-width 4) ~
+  "abcd"
+  > (~a "abcde" #:max-width 4 #:limit-marker "*") ~
+  "abc*"
+  > (~a "abcde" #:max-width 4 #:limit-marker "...") ~
+  "a..."
+  > (~a "The quick brown fox" #:max-width 15 #:limit-marker "") ~
+  "The quick brown"
+  > (~a "The quick brown fox" #:max-width 15 #:limit-marker "...") ~
+  "The quick br..."
+
+If s is shorter than min-width, it is padded to at least min-width
+characters. If align is 'left, then only right padding is added; if
+align is 'right, then only left padding is added; and if align is
+'center, then roughly equal amounts of left padding and right padding
+are added.
+
+Padding is specified as a non-empty string. Left padding consists of
+left-pad-string repeated in its entirety as many times as possible
+followed by a prefix of left-pad-string to fill the remaining space. In
+contrast, right padding consists of a suffix of right-pad-string
+followed by a number of copies of right-pad-string in its entirety. Thus
+left padding starts with the start of left-pad-string and right padding
+ends with the end of right-pad-string.
+
+  > (~a "apple" #:min-width 20 #:align 'left) ~
+  "apple               "
+  > (~a "pear" #:min-width 20 #:align 'left #:right-pad-string " .") ~
+  "pear . . . . . . . ."
+  > (~a "plum" #:min-width 20 #:align 'right #:left-pad-string ". ") ~
+  ". . . . . . . . plum"
+  > (~a "orange" #:min-width 20 #:align 'center ~
+                  #:left-pad-string "- " #:right-pad-string " -") ~
+  "- - - -orange- - - -"
+
+Use width to set both max-width and min-width simultaneously, ensuring
+that the resulting string is exactly width characters long:
+
+  > (~a "terse" #:width 6) ~
+  "terse "
+  > (~a "loquacious" #:width 6) ~
+  "loquac"
+
+                                        *~v*
+(~v  v                                         
+     ...                                       
+    [#:separator separator                      ~
+     #:width width                              ~
+     #:max-width max-width                      ~
+     #:min-width min-width                      ~
+     #:limit-marker limit-marker                ~
+     #:align align                              ~
+     #:pad-string pad-string                    ~
+     #:left-pad-string left-pad-string          ~
+     #:right-pad-string right-pad-string]) -> string? ~
+  v : any/c ~
+  separator : string? = " " ~
+  width : (or/c exact-nonnegative-integer? #f) = #f ~
+  max-width : (or/c exact-nonnegative-integer? +inf.0) ~
+            = (or width +inf.0)
+  min-width : exact-nonnegative-integer? = (or width 0) ~
+  limit-marker : string? = "..." ~
+  align : (or/c 'left 'center 'right) = 'left ~
+  pad-string : non-empty-string? = " " ~
+  left-pad-string : non-empty-string? = pad-string ~
+  right-pad-string : non-empty-string? = pad-string ~
+
+Like ~a, but each value is converted like (format "~v" v), the default
+separator is " ", and the default limit marker is "...".
+
+  > (~v "north")
+  "\"north\""
+  > (~v 'south)
+  "'south"
+  > (~v #"east")
+  "#\"east\""
+  > (~v #\w)
+  "#\\w"
+  > (~v (list "red" 'green #"blue"))
+  "'(\"red\" green #\"blue\")"
+
+Use ~v to produce text that talks about Racket values.
+
+  > (let ([nums (for/list ([i 10]) i)])
+      (~a "The even numbers in " (~v nums)
+          " are " (~v (filter even? nums)) "."))
+  "The even numbers in '(0 1 2 3 4 5 6 7 8 9) are '(0 2 4 6 8)."
+
+                                        *~s*
+(~s  v                                         
+     ...                                       
+    [#:separator separator                      ~
+     #:width width                              ~
+     #:max-width max-width                      ~
+     #:min-width min-width                      ~
+     #:limit-marker limit-marker                ~
+     #:align align                              ~
+     #:pad-string pad-string                    ~
+     #:left-pad-string left-pad-string          ~
+     #:right-pad-string right-pad-string]) -> string? ~
+  v : any/c ~
+  separator : string? = " " ~
+  width : (or/c exact-nonnegative-integer? #f) = #f ~
+  max-width : (or/c exact-nonnegative-integer? +inf.0) ~
+            = (or width +inf.0)
+  min-width : exact-nonnegative-integer? = (or width 0) ~
+  limit-marker : string? = "..." ~
+  align : (or/c 'left 'center 'right) = 'left ~
+  pad-string : non-empty-string? = " " ~
+  left-pad-string : non-empty-string? = pad-string ~
+  right-pad-string : non-empty-string? = pad-string ~
+
+Like ~a, but each value is converted like (format "~s" v), the default
+separator is " ", and the default limit marker is "...".
+
+  > (~s "north")
+  "\"north\""
+  > (~s 'south)
+  "south"
+  > (~s #"east")
+  "#\"east\""
+  > (~s #\w)
+  "#\\w"
+  > (~s (list "red" 'green #"blue"))
+  "(\"red\" green #\"blue\")"
+
+                                        *~e*
+(~e  v                                         
+     ...                                       
+    [#:separator separator                      ~
+     #:width width                              ~
+     #:max-width max-width                      ~
+     #:min-width min-width                      ~
+     #:limit-marker limit-marker                ~
+     #:align align                              ~
+     #:pad-string pad-string                    ~
+     #:left-pad-string left-pad-string          ~
+     #:right-pad-string right-pad-string]) -> string? ~
+  v : any/c ~
+  separator : string? = " " ~
+  width : (or/c exact-nonnegative-integer? #f) = #f ~
+  max-width : (or/c exact-nonnegative-integer? +inf.0) ~
+            = (or width +inf.0)
+  min-width : exact-nonnegative-integer? = (or width 0) ~
+  limit-marker : string? = "..." ~
+  align : (or/c 'left 'center 'right) = 'left ~
+  pad-string : non-empty-string? = " " ~
+  left-pad-string : non-empty-string? = pad-string ~
+  right-pad-string : non-empty-string? = pad-string ~
+
+Like ~a, but each value is converted like (format "~e" v), the default
+separator is " ", and the default limit marker is "...".
+
+  > (~e "north")
+  "\"north\""
+  > (~e 'south)
+  "'south"
+  > (~e #"east")
+  "#\"east\""
+  > (~e #\w)
+  "#\\w"
+  > (~e (list "red" 'green #"blue"))
+  "'(\"red\" green #\"blue\")"
+
+                                        *~r*
+(~r  x                                     
+    [#:sign sign                            ~
+     #:base base                            ~
+     #:precision precision                  ~
+     #:notation notation                    ~
+     #:format-exponent format-exponent      ~
+     #:min-width min-width                  ~
+     #:pad-string pad-string])         -> string? ~
+  x : rational? ~
+  sign : (or/c #f '+ '++ 'parens ~
+               (let ([ind (or/c string? (list/c string? string?))])
+                 (list/c ind ind ind)))
+       = #f
+  base : (or/c (integer-in 2 36) (list/c 'up (integer-in 2 36))) ~
+       = 10
+  precision : (or/c exact-nonnegative-integer?              = 6 ~
+                    (list/c '= exact-nonnegative-integer?))
+  notation : (or/c 'positional 'exponential ~
+                   (-> rational? (or/c 'positional 'exponential)))
+           = 'positional
+  format-exponent : (or/c #f string? (-> exact-integer? string?)) ~
+                  = #f
+  min-width : exact-positive-integer? = 1 ~
+  pad-string : non-empty-string? = " " ~
+
+Converts the rational number x to a string in either positional or
+exponential notation, depending on notation. The exactness or
+inexactness of x does not affect its formatting.
+
+The optional arguments control number formatting:
+
+* notation — determines whether the number is printed in positional or
+  exponential notation. If notation is a function, it is applied to x to
+  get the notation to be used.
+
+    > (~r 12345)
+    "12345"
+    > (~r 12345 #:notation 'exponential) ~
+    "1.2345e+04"
+    > (let ([pick-notation
+             (lambda (x)
+               (if (or (< (abs x) 0.001) (> (abs x) 1000))
+                   'exponential
+                   'positional))])
+        (for/list ([i (in-range 1 5)])
+          (~r (expt 17 i) #:notation pick-notation))) ~
+    '("17" "289" "4.913e+03" "8.3521e+04")
+
+* precision — controls the number of digits after the decimal point (or
+  more accurately, the radix point). When x is formatted in exponential
+  form, precision applies to the significand.
+
+  If precision is a natural number, then up to precision digits are
+  displayed, but trailing zeroes are dropped, and if all digits after
+  the decimal point are dropped the decimal point is also dropped. If
+  precision is (list '= digits), then exactly digits digits after the
+  decimal point are used, and the decimal point is never dropped.
+
+    > (~r pi)
+    "3.141593"
+    > (~r pi #:precision 4) ~
+    "3.1416"
+    > (~r pi #:precision 0) ~
+    "3"
+    > (~r 1.5 #:precision 4) ~
+    "1.5"
+    > (~r 1.5 #:precision '(= 4)) ~
+    "1.5000"
+    > (~r 50 #:precision 2) ~
+    "50"
+    > (~r 50 #:precision '(= 2)) ~
+    "50.00"
+    > (~r 50 #:precision '(= 0)) ~
+    "50."
+
+* min-width — if x would normally be printed with fewer than min-width
+  digits (including the decimal point but not including the sign
+  indicator), the digits are left-padded using pad-string.
+
+    > (~r 17)
+    "17"
+    > (~r 17 #:min-width 4) ~
+    "  17"
+    > (~r -42 #:min-width 4) ~
+    "-  42"
+    > (~r 1.5 #:min-width 4) ~
+    " 1.5"
+    > (~r 1.5 #:precision 4 #:min-width 10) ~
+    "       1.5"
+    > (~r 1.5 #:precision '(= 4) #:min-width 10) ~
+    "    1.5000"
+    > (~r #e1e10 #:min-width 6) ~
+    "10000000000"
+
+* pad-string — specifies the string used to pad the number to at least
+  min-width characters (not including the sign indicator). The padding
+  is placed between the sign and the normal digits of x.
+
+    > (~r 17 #:min-width 4 #:pad-string "0") ~
+    "0017"
+    > (~r -42 #:min-width 4 #:pad-string "0") ~
+    "-0042"
+
+* sign — controls how the sign of the number is indicated:
+
+  * If sign is #f (the default), no sign output is generated if x is
+    either positive or zero, and a minus sign is prefixed if x is
+    negative.
+
+      > (for/list ([x '(17 0 -42)]) (~r x))
+      '("17" "0" "-42")
+
+  * If sign is '+, no sign output is generated if x is zero, a plus sign
+    is prefixed if x is positive, and a minus sign is prefixed if x is
+    negative.
+
+      > (for/list ([x '(17 0 -42)]) (~r x #:sign '+)) ~
+      '("+17" "0" "-42")
+
+  * If sign is '++, a plus sign is prefixed if x is zero or positive,
+    and a minus sign is prefixed if x is negative.
+
+      > (for/list ([x '(17 0 -42)]) (~r x #:sign '++)) ~
+      '("+17" "+0" "-42")
+
+  * If sign is 'parens, no sign output is generated if x is zero or
+    positive, and the number is enclosed in parentheses if x is
+    negative.
+
+      > (for/list ([x '(17 0 -42)]) (~r x #:sign 'parens)) ~
+      '("17" "0" "(42)")
+
+  * If sign is (list pos-ind zero-ind neg-ind), then pos-ind, zero-ind,
+    and neg-ind are used to indicate positive, zero, and negative
+    numbers, respectively. Each indicator is either a string to be used
+    as a prefix or a list containing two strings: a prefix and a suffix.
+
+      > (let ([sign-table '(("" " up") "an even " ("" " down"))])
+          (for/list ([x '(17 0 -42)]) (~r x #:sign sign-table))) ~
+      '("17 up" "an even 0" "42 down")
+
+    The default behavior is equivalent to '("" "" "-"); the 'parens mode
+    is equivalent to '("" "" ("(" ")")).
+
+* base — controls the base that x is formatted in. If base is a number
+  greater than 10, then lower-case letters are used. If base is (list
+  'up base*) and base* is greater than 10, then upper-case letters are
+  used.
+
+    > (~r 100 #:base 7) ~
+    "202"
+    > (~r 4.5 #:base 2) ~
+    "100.1"
+    > (~r 3735928559 #:base 16) ~
+    "deadbeef"
+    > (~r 3735928559 #:base '(up 16)) ~
+    "DEADBEEF"
+    > (~r 3735928559 #:base '(up 16) #:notation 'exponential) ~
+    "D.EADBEF*16^+07"
+
+* format-exponent — determines how the exponent is displayed.
+
+  If format-exponent is a string, the exponent is displayed with an
+  explicit sign (as with a sign of '++) and at least two digits,
+  separated from the significand by the “exponent marker”
+  format-exponent:
+
+    > (~r 1234 #:notation 'exponential #:format-exponent "E") ~
+    "1.234E+03"
+
+  If format-exponent is #f, the “exponent marker” is "e" if base is 10
+  and a string involving base otherwise:
+
+    > (~r 1234 #:notation 'exponential) ~
+    "1.234e+03"
+    > (~r 1234 #:notation 'exponential #:base 8) ~
+    "2.322*8^+03"
+
+  If format-exponent is a procedure, it is applied to the exponent and
+  the resulting string is appended to the significand:
+
+    > (~r 1234 #:notation 'exponential ~
+               #:format-exponent (lambda (e) (format "E~a" e))) ~
+    "1.234E3"
+
+                                        *~.a*
+(~.a  v                                         
+      ...                                       
+     [#:separator separator                      ~
+      #:width width                              ~
+      #:max-width max-width                      ~
+      #:min-width min-width                      ~
+      #:limit-marker limit-marker                ~
+      #:align align                              ~
+      #:pad-string pad-string                    ~
+      #:left-pad-string left-pad-string          ~
+      #:right-pad-string right-pad-string]) -> string? ~
+  v : any/c ~
+  separator : string? = "" ~
+  width : (or/c exact-nonnegative-integer? #f) = #f ~
+  max-width : (or/c exact-nonnegative-integer? +inf.0) ~
+            = (or width +inf.0)
+  min-width : exact-nonnegative-integer? = (or width 0) ~
+  limit-marker : string? = "" ~
+  align : (or/c 'left 'center 'right) = 'left ~
+  pad-string : non-empty-string? = " " ~
+  left-pad-string : non-empty-string? = pad-string ~
+  right-pad-string : non-empty-string? = pad-string ~
+(~.v  v                                         
+      ...                                       
+     [#:separator separator                      ~
+      #:width width                              ~
+      #:max-width max-width                      ~
+      #:min-width min-width                      ~
+      #:limit-marker limit-marker                ~
+      #:align align                              ~
+      #:pad-string pad-string                    ~
+      #:left-pad-string left-pad-string          ~
+      #:right-pad-string right-pad-string]) -> string? ~
+  v : any/c ~
+  separator : string? = " " ~
+  width : (or/c exact-nonnegative-integer? #f) = #f ~
+  max-width : (or/c exact-nonnegative-integer? +inf.0) ~
+            = (or width +inf.0)
+  min-width : exact-nonnegative-integer? = (or width 0) ~
+  limit-marker : string? = "..." ~
+  align : (or/c 'left 'center 'right) = 'left ~
+  pad-string : non-empty-string? = " " ~
+  left-pad-string : non-empty-string? = pad-string ~
+  right-pad-string : non-empty-string? = pad-string ~
+(~.s  v                                         
+      ...                                       
+     [#:separator separator                      ~
+      #:width width                              ~
+      #:max-width max-width                      ~
+      #:min-width min-width                      ~
+      #:limit-marker limit-marker                ~
+      #:align align                              ~
+      #:pad-string pad-string                    ~
+      #:left-pad-string left-pad-string          ~
+      #:right-pad-string right-pad-string]) -> string? ~
+  v : any/c ~
+  separator : string? = " " ~
+  width : (or/c exact-nonnegative-integer? #f) = #f ~
+  max-width : (or/c exact-nonnegative-integer? +inf.0) ~
+            = (or width +inf.0)
+  min-width : exact-nonnegative-integer? = (or width 0) ~
+  limit-marker : string? = "..." ~
+  align : (or/c 'left 'center 'right) = 'left ~
+  pad-string : non-empty-string? = " " ~
+  left-pad-string : non-empty-string? = pad-string ~
+  right-pad-string : non-empty-string? = pad-string ~
+
+Like ~a, ~v, and ~s, but each v is formatted like (format "~.a" v),
+(format "~.v" v), and (format "~.s" v), respectively.

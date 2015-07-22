@@ -1,0 +1,60 @@
+Mutable Pairs and Lists
+
+A mutable pair is like a pair created by cons, but it supports set-mcar!
+and set-mcdr! mutation operations to change the parts of the mutable
+pair (like traditional Lisp and Scheme pairs).
+
+A mutable list is analogous to a list created with pairs, but instead
+created with mutable pairs.
+
+A mutable pair is not a pair; they are completely separate datatypes.
+Similarly, a mutable list is not a list, except that the empty list is
+also the empty mutable list. Instead of programming with mutable pairs
+and mutable lists, data structures such as pairs, lists, and hash tables
+are practically always better choices.
+
+A mutable list can be used as a single-valued sequence (see [missing]).
+The elements of the mutable list serve as elements of the sequence. See
+also in-mlist.
+
+1. Mutable Pair Constructors and Selectors
+
+                                        *mpair?*
+(mpair? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a mutable pair, #f otherwise.
+
+                                        *mcons*
+(mcons a d) -> mpair? ~
+  a : any/c ~
+  d : any/c ~
+
+Returns a newly allocated mutable pair whose first element is a and
+second element is d.
+
+                                        *mcar*
+(mcar p) -> any/c ~
+  p : mpair? ~
+
+Returns the first element of the mutable pair p.
+
+                                        *mcdr*
+(mcdr p) -> any/c ~
+  p : mpair? ~
+
+Returns the second element of the mutable pair p.
+
+                                        *set-mcar!*
+(set-mcar! p v) -> void? ~
+  p : mpair? ~
+  v : any/v ~
+
+Changes the mutable pair p so that its first element is v.
+
+                                        *set-mcdr!*
+(set-mcdr! p v) -> void? ~
+  p : mpair? ~
+  v : any/v ~
+
+Changes the mutable pair p so that its second element is v.

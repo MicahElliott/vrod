@@ -1,0 +1,283 @@
+Logging
+
+A logger accepts events that contain information to be logged for
+interested parties. A log receiver represents an interested party that
+receives logged events asynchronously. Each event has a topic and level
+of detail, and a log receiver subscribes to logging events at a certain
+level of detail (and higher) for a specific topic or for all topics. The
+levels, in increasing order of detail, are 'fatal, 'error, 'warning,
+'info, and 'debug.
+
+To help organize logged events, a logger can have a default topic and/or
+a parent logger. Every event reported to a logger is also propagated to
+its parent (if any), while the event message is prefixed with the
+logger’s topic (if any) if the message doesn’t already have a topic.
+Furthermore, events that are propagated from a logger to its parent can
+be filtered by level and topic.
+
+On start-up, Racket creates an initial logger that is used to record
+events from the core run-time system. For example, an 'debug event is
+reported for each garbage collection (see [missing]). For this initial
+logger, two log receivers are also created: one that writes events to
+the process’s original error output port, and one that writes events to
+the system log. The level of written events in each case is
+system-specific, and the default can be changed through command-line
+flags (see [missing]) or through environment variables:
+
+* If the PLTSTDERR environment variable is defined and is not overridden
+  by a command-line flag, it determines the level of the log receiver
+  that propagates events to the original error port.
+
+  The environment variable’s value can be a >level<: none, fatal, error,
+  warning, info, or debug; all events the corresponding level of higher
+  are printed. After an initial >level<, the value can contain
+  space-separated specifications of the form >level<@>topic<, which
+  prints events whose topics match >topic< only at the given >level< or
+  higher (where a >topic< contains any character other than a space or
+  @). For example, the value "error debug@GC" prints all events at the
+  'error level and higher, but prints events for the topic topic 'GC at
+  the 'debug level and higher (which includes all levels).
+
+  The default is "error".
+
+* If the PLTSYSLOG environment variable is defined and is not overridden
+  by a command-line flag, it determines the level of the log receiver
+  that propagates events to the system log. The possible values are the
+  same as for PLTSTDERR.
+
+  The default is "none" for Unix or "error" for Windows and Mac OS X.
+
+The current-logger parameter determines the current logger that is used
+by forms such as log-warning. On start-up, the initial value of this
+parameter is the initial logger. The run-time system sometimes uses the
+current logger to report events. For example, the bytecode compiler
+sometimes reports 'warning events when it detects an expression that
+would produce a run-time error if evaluated.
+
+1. Creating Loggers
+
+                                        *logger?*
+(logger? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a logger, #f otherwise.
+
+                                        *make-logger*
+(make-logger [topic                     ~
+              parent                   
+              propagate-level          
+              propagate-topic ...]     
+              ...)                 -> logger?
+  topic : (or/c symbol? #f) = #f ~
+  parent : (or/c logger? #f) = #f ~
+  propagate-level : (or/c 'none 'fatal 'error 'warning 'info 'debug) ~
+                  = 'debug
+  propagate-topic : (or/c #f symbol?) = #f ~
+
+Creates a new logger with an optional topic and parent.
+
+The optional propagate-level and propagate-topic arguments constrain the
+events that are propagated from the new logger to parent (when parent is
+not #f) in the same way that events are described for a log receiver in
+make-log-receiver. By default, all events are propagated to parent.
+
+Changed in version 6.1.1.3: Removed an optional argument to specify a
+notification callback, and added propagate-level and propagate-topic
+constraints for events to propagate.
+
+                                        *logger-name*
+(logger-name logger) -> (or/c symbol? #f) ~
+  logger : logger? ~
+
+Reports logger’s default topic, if any.
+
+                                        *current-logger*
+(current-logger) -> logger? ~
+(current-logger logger) -> void?
+  logger : logger? ~
+
+A parameter that determines the current logger.
+
+                                        *define-logger*
+(define-logger id) ~
+
+Defines log-id-fatal, log-id-error, log-id-warning, log-id-info, and
+log-id-debug as forms like log-fatal, log-error,log-warning, log-info,
+and log-debug. The define-logger form also defines id-logger, which is a
+logger with default topic 'id that is a child of (current-logger); the
+log-id-fatal, etc. forms use this new logger. The new logger is created
+when define-logger is evaluated.
+
+2. Logging Events
+
+                                        *log-message*
+(log-message  logger                 ~
+              level                 
+             [topic]                
+              message               
+              data                  
+             [prefix-message?]) -> void?
+  logger : logger? ~
+  level : (or/c 'fatal 'error 'warning 'info 'debug) ~
+  topic : (or/c symbol? #f) = (logger-name logger) ~
+  message : string? ~
+  data : any/c ~
+  prefix-message? : any/c = #t ~
+
+Reports an event to logger, which in turn distributes the information to
+any log receivers attached to logger or its ancestors that are
+interested in events at level or higher.
+
+Log receivers can filter events based on topic.  In addition, if topic
+and prefix-message? are not #f, then message is prefixed with the topic
+followed by ": " before it is sent to receivers.
+
+Changed in version 6.0.1.10: Added the prefix-message? argument.
+
+                                        *log-level?*
+(log-level? logger level [topic]) -> boolean? ~
+  logger : logger? ~
+  level : (or/c 'fatal 'error 'warning 'info 'debug) ~
+  topic : (or/c symbol? #f) = #f ~
+
+Reports whether any log receiver attached to logger or one of its
+ancestors is interested in level events (or potentially lower) for
+topic. If topic is #f, the result indicates whether a log receiver is
+interested in events at level for any topic.
+
+Use this function to avoid work generating an event for log-message if
+no receiver is interested in the information; this shortcut is built
+into log-fatal, log-error, log-warning, log-info, log-debug, and forms
+bound by define-logger, however, so it should not be used with those
+forms.
+
+The result of this function can change if a garbage collection
+determines that a log receiver is no longer accessible (and therefore
+that any event information it receives will never become accessible).
+
+Changed in version 6.1.1.3: Added the topic argument.
+
+                                        *log-max-level*
+(log-max-level logger [topic]) ~
+ -> (or/c #f 'fatal 'error 'warning 'info 'debug)
+  logger : logger? ~
+  topic : (or/c symbol? #f) = #f ~
+
+Similar to log-level?, but reports the maximum-detail level of logging
+for which log-level? on logger and topic returns #t. The result is #f if
+log-level? with logger and topic currently returns #f for all levels.
+
+Changed in version 6.1.1.3: Added the topic argument.
+
+                                        *log-all-levels*
+(log-all-levels logger) ~
+ -> (list/c (or/c #f 'fatal 'error 'warning 'info 'debug)
+            (or/c #f symbol?)
+            ... ...)
+  logger : logger? ~
+
+Summarizes the possible results of log-max-level on all possible
+interned symbols. The result list contains a sequence of symbols and #f,
+where the first, third, etc., list element corresponds to a level, and
+the second, fourth, etc., list element indicates a corresponding topic.
+The level is the result that log-max-level would produce for the topic,
+where the level for the #f topic (which is always present in the result
+list) indicates the result for any interned-symbol topic that does not
+appear in the list.
+
+The result is suitable as a sequence of arguments to make-log-receiver
+(after a logger argument) to create a new receiver for events that
+currently have receivers in logger.
+
+Added in version 6.1.1.4.
+
+                                        *log-level-evt*
+(log-level-evt logger) -> evt? ~
+  logger : logger? ~
+
+Creates a synchronizable event that is ready for synchronization when
+the result of log-level?, log-max-level, or log-all-levels can be
+different than before log-level-evt was called. The event’s
+synchronization result is the event itself.
+
+The condition reported by the event is a conservative approximation: the
+event can become ready for synchronization even if the results of
+log-level?, log-max-level, and log-all-levels are unchanged.
+Nevertheless, the expectation is that events produced by log-level-evt
+become ready infrequently, because they are triggered by the creation of
+a log receiver.
+
+Added in version 6.1.1.4.
+
+                                        *log-fatal*
+(log-fatal string-expr) ~
+(log-fatal format-string-expr v ...)
+(log-error string-expr)
+(log-error format-string-expr v ...)
+(log-warning string-expr)
+(log-warning format-string-expr v ...)
+(log-info string-expr)
+(log-info format-string-expr v ...)
+(log-debug string-expr)
+(log-debug format-string-expr v ...)
+
+Log an event with the current logger, evaluating string-expr or (format
+format-string-expr v ...) only if the logger has receivers that are
+interested in the event. In addition, the current continuation’s
+continuation marks are sent to the logger with the message string.
+
+These form are convenient for using the current logger, but libraries
+should generally use a logger for a specific topic—typically through
+similar convenience forms generated by define-logger.
+
+For each log-level,
+
+  (log-level string-expr)
+
+is equivalent to
+
+  (let ([l (current-logger)])
+    (when (log-level? l 'level)
+      (log-message l 'level string-expr
+                   (current-continuation-marks))))
+
+while
+
+  (log-level format-string-expr v ...)
+
+is equivalent to
+
+  (log-level (format format-string-expr v ...))
+
+3. Receiving Logged Events
+
+                                        *log-receiver?*
+(log-receiver? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a log receiver, #f otherwise.
+
+                                        *make-log-receiver*
+(make-log-receiver logger level [topic ...] ...) -> log-receiver? ~
+  logger : logger? ~
+  level : (or/c 'none 'fatal 'error 'warning 'info 'debug) ~
+  topic : (or/c #f symbol?) = #f ~
+
+Creates a log receiver to receive events of detail level and lower as
+reported to logger and its descendants, as long as either topic is #f or
+the event’s topic matches topic.
+
+A log receiver is a synchronizable event. It becomes ready for
+synchronization when a logging event is received, so use sync to receive
+an logged event. The log receiver’s synchronization result is an
+immutable vector containing four values: the level of the event as a
+symbol, an immutable string for the event message, an arbitrary value
+that was supplied as the last argument to log-message when the event was
+logged, and a symbol or #f for the event topic.
+
+Multiple pairs of level and topic can be provided to indicate different
+specific levels for different topics (where topic defaults to #f only
+for the last given level). A level for a #f topic applies only to events
+whose topic does not match any other provided topic. If the same topic
+is provided multiple times, the level provided with the last instance in
+the argument list takes precedence.

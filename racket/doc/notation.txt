@@ -1,0 +1,252 @@
+Notation for Documentation
+
+This chapter introduces essential terminology and notation that is used
+throughout Racket documentation.
+
+1. Notation for Module Documentation
+
+Since Racket programs are organized into modules, documentation reflects
+that organization with an annotation at the beginning of a section or
+subsection that describes the bindings that a particular module
+provides.
+
+For example, the section that describes the functionality provided by
+racket/list starts
+
+   (require racket/list) package: base ~
+
+Instead of require, some modules are introduced with #lang:
+
+   #lang racket/base package: base ~
+
+Using #lang means that the module is normally used as the language of a
+whole module—that is, by a module that starts #lang followed by the
+language—instead of imported with require. Unless otherwise specified,
+however, a module name documented with #lang can also be used with
+require to obtain the language’s bindings.
+
+The module annotation also shows the package that the module belongs to
+on the right-hand side. For more details about packages, see [missing].
+
+Sometimes, a module specification appears at the beginning of a document
+or at the start of a section that contains many subsections. The
+document’s section or section’s subsections are meant to “inherit” the
+module declaration of the enclosing document or section. Thus, bindings
+documented in [missing] are available from racket and racket/base unless
+otherwise specified in a section or subsection.
+
+2. Notation for Syntactic Form Documentation
+
++[missing] in [missing] introduces this notation for syntactic forms.
+
+Syntactic forms are specified with a grammar. Typically, the grammar
+starts with an open parenthesis followed by the syntactic form’s name,
+as in the grammar for if:
+
+  (if test-expr then-expr else-expr)
+
+Since every form is expressed in terms of syntax objects, parentheses in
+a grammar specification indicate a syntax object wrapping a list, and
+the leading if is an identifier that starts the list whose binding is
+the if binding of the module being documented—in this case, racket/base.
+Square brackets in the grammar indicate a syntax-object list in the same
+way as parentheses, but in places square brackets are normally used by
+convention in a program’s source.
+
+Italic identifiers in the grammar are metavariables that correspond to
+other grammar productions. Certain metavariable names have implicit
+grammar productions:
+
+* A metavariable that ends in id stands for an identifier.
+
+* A metavariable that ends in keyword stands for a syntax-object
+  keyword.
+
+* A metavariable that ends with expr stands for any form, and the form
+  will be parsed as an expression.
+
+* A metavariable that ends with body stands for any form; the form will
+  be parsed as either a local definition or an expression. A body can
+  parse as a definition only if it is not preceded by any expression,
+  and the last body must be an expression; see also [missing].
+
+* A metavariable that ends with datum stands for any form, and the form
+  is normally uninterpreted (e.g., quoted).
+
+* A metavariable that ends with number or boolean stands for any
+  syntax-object (i.e., literal) number or boolean, respectively.
+
+In a grammar, form ... stands for any number of forms (possibly zero)
+matching form, while form ...+ stands for one or more forms matching
+form.
+
+Metavariables without an implicit grammar are defined by productions
+alongside the syntactic form’s overall grammar. For example, in
+
+  (lambda formals body ...+)
+   
+  formals = id
+          | (id ...)
+          | (id ...+ . rest-id)
+
+the formals metavariable stands for either an identifier, zero or more
+identifiers in a syntax-object list, or a syntax object corresponding to
+a chain of one or more pairs where the chain ends in an identifier
+instead of an empty list.
+
+Some syntactic forms have multiple top-level grammars, in which case the
+documentation of the syntactic forms shows multiple grammars. For
+example,
+
+  (init-rest id)
+  (init-rest)
+
+indicates that init-rest can either be alone in its syntax-object list
+or followed by a single identifier.
+
+Finally, a grammar specification that includes expr metavariables may be
+augmented with run-time contracts on some of the metavariables, which
+indicate a predicate that the result of the expression must satisfy at
+run time. For example,
+
+  (parameterize ([parameter-expr value-expr] ...)
+    body ...+)
+   
+    parameter-expr : parameter? ~
+
+indicates that the result of each parameter-expr must be a value v for
+which (parameter? v) returns true.
+
+3. Notation for Function Documentation
+
+Procedures and other values are described using a notation based on
+contracts. In essence, these contracts describe the interfaces of the
+documented library using Racket predicates and expressions.
+
+For example, the following is the header of the definition of a typical
+procedure:
+
+  (char->integer char) -> exact-integer?
+    char : char? ~
+
+The function being defined, char->integer, is typeset as if it were
+being applied. The metavariables that come after the function name stand
+in for arguments. The white text in the corner identifies the kind of
+value that is being documented.
+
+Each metavariable is described with a contract. In the preceding
+example, the metavariable char has the contract char?. This contract
+specifies that any argument char that answers true to the char?
+predicate is valid. The documented function may or may not actually
+check this property, but the contract signals the intent of the
+implementer.
+
+The contract on the right of the arrow, exact-integer? in this case,
+specifies the expected result that is produced by the function.
+
+Contract specifications can be more expressive than just names of
+predicates. Consider the following header for argmax:
+
+  (argmax proc lst) -> any
+    proc : (-> any/c real?) ~
+    lst : (and/c pair? list?) ~
+
+The contract (-> any/c real?) denotes a function contract specifying
+that proc’s argument can be any single value and the result should be a
+real number. The contract (and/c pair? list?) for lst specifies that lst
+should pass both pair? and list? (i.e., that it is a non-empty list).
+
+Both -> and and/c are examples of contract combinators. Contract
+combinators such as or/c, cons/c, listof, and others are used throughout
+the documentation. Clicking on the hyperlinked combinator name will
+provide more information on its meaning.
+
+A Racket function may be documented as having one or more optional
+arguments. The read function is an example of such a function:
+
+  (read [in]) -> any
+    in : input-port? = (current-input-port) ~
+
+The brackets surrounding the in argument in the application syntax
+indicates that it is an optional argument.
+
+The header for read specifies a contract for the parameter in as usual.
+To the right of the contract, it also specifies a default value
+(current-input-port) that is used if read is called with no arguments.
+
+Functions may also be documented as accepting mandatory or optional
+keyword-based arguments.  For example, the sort function has two
+optional, keyword-based arguments:
+
+  (sort  lst                             
+         less-than?                      
+        [#:key extract-key                ~
+         #:cache-keys? cache-keys?]) -> list? ~
+    lst : list? ~
+    less-than? : (any/c any/c . -> . any/c) ~
+    extract-key : (any/c . -> . any/c) = (lambda (x) x) ~
+    cache-keys? : boolean? = #f ~
+
+The brackets around the extract-key and cache-keys?  arguments indicate
+that they are optional as before. The contract section of the header
+shows the default values that are provided for these keyword arguments.
+
+4. Notation for Structure Type Documentation
+
+A structure type is also documented using contract notation:
+
+  (struct color (red green blue alpha))
+    red : (and/c natural-number/c (<=/c 255)) ~
+    green : (and/c natural-number/c (<=/c 255)) ~
+    blue : (and/c natural-number/c (<=/c 255)) ~
+    alpha : (and/c natural-number/c (<=/c 255)) ~
+
+The structure type is typeset as it were declared in the source code of
+a program using the struct form. Each field of the structure is
+documented with a corresponding contract that specifies the values that
+are accepted for that field.
+
+In the example above, the structure type color has four fields: red,
+green, blue, and alpha. The constructor for the structure type accepts
+field values that satisfy (and/c natural-number/c (<=/c 255)), i.e.,
+non-negative exact integers up to 255.
+
+Additional keywords may appear after the field names in the
+documentation for a structure type:
+
+  (struct data-source (connector args extensions)
+      #:mutable) ~
+    connector : (or/c 'postgresql 'mysql 'sqlite3 'odbc) ~
+    args : list? ~
+    extensions : (listof (list/c symbol? any/c)) ~
+
+Here, the #:mutable keyword indicates that the fields of instances of
+the data-source structure type can be mutated with their respective
+setter functions.
+
+5. Notation for Parameter Documentation
+
+A parameter is documented the same way as a function:
+
+  (current-command-line-arguments) -> (vectorof string?)
+  (current-command-line-arguments argv) -> void?
+    argv : (vectorof (and/c string? immutable?)) ~
+
+Since parameters can be referenced or set, there are two entries in the
+header above. Calling current-command-line-arguments with no arguments
+accesses the parameter’s value, which must be a vector whose elements
+pass both string? and immutable?. Calling current-command-line-arguments
+with a single argument sets the parameter’s value, where the value must
+be a vector whose elements pass string? (and a guard on the parameter
+coerces the strings to immutable form, if necessary).
+
+6. Notation for Other Documentation
+
+Some libraries provide bindings to constant values. These values are
+documented with a separate header:
+
+  object% : class? ~
+
+The racket/class library provides the object% value, which is the root
+of the class hierarchy in Racket. Its documentation header just
+indicates that it is a value that satisfies the predicate class?.

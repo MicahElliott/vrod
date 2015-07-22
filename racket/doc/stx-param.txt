@@ -1,0 +1,115 @@
+Syntax Parameters
+
+ (require racket/stxparam) package: base ~
+
+The bindings documented in this section are provided by the
+racket/stxparam library, not racket/base or racket.
+
+                                        *define-syntax-parameter*
+(define-syntax-parameter id expr) ~
+
+Binds id as syntax to a syntax parameter. The expr is an expression in
+the transformer environment that serves as the default value for the
+syntax parameter. The value is typically obtained by a transformer using
+syntax-parameter-value.
+
+The id can be used with syntax-parameterize or syntax-parameter-value
+(in a transformer). If expr produces a procedure of one argument or a
+make-set!-transformer result, then id can be used as a macro. If expr
+produces a make-rename-transformer result, then id can be used as a
+macro that expands to a use of the target identifier, but
+syntax-local-value of id does not produce the target’s value.
+
+Examples:
+  > (define-syntax-parameter current-class #f)
+
+  > (define-syntax-parameter yield (make-rename-transformer #'abort))
+
+  > (define-syntax-parameter define/public
+      (λ (stx)
+        (raise-syntax-error #f "use of a class keyword not in a
+  class" stx)))
+
+  >
+  (begin-for-syntax (displayln (syntax-parameter-value #'current-class)))
+  #f
+
+  > (yield 5)
+  5
+
+                                        *syntax-parameterize*
+(syntax-parameterize ([id expr] ...) body-expr ...+) ~
+
++See also splicing-syntax-parameterize.
+
+Each id must be bound to a syntax parameter using
+define-syntax-parameter. Each expr is an expression in the transformer
+environment. During the expansion of the body-exprs, the value of each
+expr is bound to the corresponding id.
+
+If an expr produces a procedure of one argument or a
+make-set!-transformer result, then its id can be used as a macro during
+the expansion of the body-exprs. If expr produces a
+make-rename-transformer result, then id can be used as a macro that
+expands to a use of the target identifier, but syntax-local-value of id
+does not produce the target’s value.
+
+Examples:
+  > (define-syntax-parameter abort (syntax-rules ()))
+
+  > (define-syntax forever
+      (syntax-rules ()
+        [(forever body ...)
+         (call/cc (lambda (abort-k)
+           (syntax-parameterize
+               ([abort (syntax-rules () [(_) (abort-k)])])
+             (let loop () body ... (loop)))))]))
+
+  > (define-syntax-parameter it (syntax-rules ()))
+
+  > (define-syntax aif
+      (syntax-rules ()
+        [(aif test then else)
+         (let ([t test])
+           (syntax-parameterize ([it (syntax-id-rules () [_ t])])
+             (if t then else)))]))
+
+
+1. Syntax Parameter Inspection
+
+ (require racket/stxparam-exptime) package: base ~
+
+                                        *syntax-parameter-value*
+(syntax-parameter-value id-stx) -> any ~
+  id-stx : syntax? ~
+
+This procedure is intended for use in a transformer environment, where
+id-stx is an identifier bound in the normal environment to a syntax
+parameter. The result is the current value of the syntax parameter, as
+adjusted by syntax-parameterize form.
+
+This binding is provided for-syntax by racket/stxparam, since it is
+normally used in a transformer. It is provided normally by
+racket/stxparam-exptime.
+
+                                        *make-parameter-rename-transformer*
+(make-parameter-rename-transformer id-stx) -> any ~
+  id-stx : syntax? ~
+
+This procedure is intended for use in a transformer, where id-stx is an
+identifier bound to a syntax parameter. The result is a transformer that
+behaves as id-stx, but that cannot be used with syntax-parameterize or
+syntax-parameter-value.
+
+Using make-parameter-rename-transformer is analogous to defining a
+procedure that calls a parameter. Such a procedure can be exported to
+others to allow access to the parameter value, but not to change the
+parameter value. Similarly, make-parameter-rename-transformer allows a
+syntax parameter to be used as a macro, but not changed.
+
+The result of make-parameter-rename-transformer is not treated specially
+by syntax-local-value, unlike the result of make-rename-transformer.
+
+This binding is provided for-syntax by racket/stxparam, since it is
+normally used in a transformer. It is provided normally by
+racket/stxparam-exptime.

@@ -1,0 +1,376 @@
+Reading
+
+                                        *read*
+(read [in]) -> any ~
+  in : input-port? = (current-input-port) ~
+
+Reads and returns a single datum from in. If in has a handler associated
+to it via port-read-handler, then the handler is called. Otherwise, the
+default reader is used, as parameterized by the current-readtable
+parameter, as well as many other parameters.
+
+See [missing] for information on the default reader.
+
+                                        *read-syntax*
+(read-syntax [source-name in]) -> (or/c syntax? eof-object?) ~
+  source-name : any/c = (object-name in) ~
+  in : input-port? = (current-input-port) ~
+
+Like read, but produces a syntax object with source-location
+information. The source-name is used as the source field of the syntax
+object; it can be an arbitrary value, but it should generally be a path
+for the source file.
+
+See [missing] for information on the default reader in read-syntax mode.
+
+                                        *read/recursive*
+(read/recursive [in start readtable graph?]) -> any ~
+  in : input-port? = (current-input-port) ~
+  start : (or/c char? #f) = #f ~
+  readtable : (or/c readtable? #f) = (current-readtable) ~
+  graph? : any/c = #t ~
+
+Similar to calling read, but normally used during the dynamic extent of
+read within a reader-extension procedure (see [missing]). The main
+effect of using read/recursive instead of read is that graph-structure
+annotations (see [missing]) in the nested read are considered part of
+the overall read, at least when the graph? argument is true; since the
+result is wrapped in a placeholder, however, it is not directly
+inspectable.
+
+If start is provided and not #f, it is effectively prefixed to the
+beginning of in’s stream for the read. (To prefix multiple characters,
+use input-port-append.)
+
+The readtable argument is used for top-level parsing to satisfy the read
+request, including various delimiters of a built-in top-level form (such
+as parentheses and . for reading a hash table); recursive parsing within
+the read (e.g., to read the elements of a list) instead uses the current
+readtable as determined by the current-readtable parameter.  A reader
+macro might call read/recursive with a character and readtable to
+effectively invoke the readtable’s behavior for the character.  If
+readtable is #f, the default readtable is used for top-level parsing.
+
+When graph? is #f, graph structure annotations in the read datum are
+local to the datum.
+
+When called within the dynamic extent of read, the read/recursive
+procedure produces either an opaque placeholder value, a special-comment
+value, or an end-of-file.  The result is a special-comment value (see
+[missing]) when the input stream’s first non-whitespace content parses
+as a comment. The result is end-of-file when read/recursive encounters
+an end-of-file. Otherwise, the result is a placeholder that protects
+graph references that are not yet resolved. When this placeholder is
+returned within an S-expression that is produced by any reader-extension
+procedure (see [missing]) for the same outermost read, it will be
+replaced with the actual read value before the outermost read returns.
+
+See [missing] for an extended example that uses read/recursive.
+
+Changed in version 6.2: Adjusted use of readtable to more consistently
+apply to the delimiters of a built-in form.
+
+                                        *read-syntax/recursive*
+(read-syntax/recursive [source-name      ~
+                        in              
+                        start           
+                        readtable       
+                        graph?])    -> any
+  source-name : any/c = (object-name in) ~
+  in : input-port? = (current-input-port) ~
+  start : (or/c char? #f) = #f ~
+  readtable : (or/c readtable? #f) = (current-readtable) ~
+  graph? : any/c = #t ~
+
+Analogous to calling read/recursive, but the resulting value
+encapsulates S-expression structure with source-location information. As
+with read/recursive, when read-syntax/recursive is used within the
+dynamic extent of read-syntax, the result from read-syntax/recursive is
+either a special-comment value, end-of-file, or opaque graph-structure
+placeholder (not a syntax object). The placeholder can be embedded in an
+S-expression or syntax object returned by a reader macro, etc., and it
+will be replaced with the actual syntax object before the outermost
+read-syntax returns.
+
+Using read/recursive within the dynamic extent of read-syntax does not
+allow graph structure for reading to be included in the outer
+read-syntax parsing, and neither does using read-syntax/recursive within
+the dynamic extent of read. In those cases, read/recursive and
+read-syntax/recursive produce results like read and read-syntax, except
+that a special-comment value is returned when the input stream starts
+with a comment (after whitespace).
+
+See [missing] for an extended example that uses read-syntax/recursive.
+
+Changed in version 6.2: Adjusted use of readtable in the same way as for
+read/recursive.
+
+                                        *read-language*
+(read-language [in fail-thunk]) ~
+ -> (or/c (any/c any/c . -> . any) #f)
+  in : input-port? = (current-input-port) ~
+  fail-thunk : (-> any) = (lambda () (error ...)) ~
+
+Reads from in in the same way as read, but stopping as soon as a reader
+language (or its absence) is determined.
+
+A reader language is specified by #lang or #! (see [missing]) at the
+beginning of the input, though possibly after comment forms. The default
+readtable is used by read-language (instead of the value of
+current-readtable), and #reader forms (which might produce comments) are
+not allowed before #lang or #!.
+
++See also [missing] in [missing].
+
+When it finds a #lang or #! specification, instead of dispatching to a
+read or read-syntax function as read and read-syntax do, read-language
+dispatches to the get-info function (if any) exported by the same
+module. The result of the get-info function is the result of
+read-language if it is a function of two arguments; if get-info produces
+any other kind of result, the exn:fail:contract exception is raised. If
+no get-info function is exported, read-language returns #f.
+
+The function produced by get-info reflects information about the
+expected syntax of the input stream. The first argument to the function
+serves as a key on such information; acceptable keys and the
+interpretation of results is up to external tools, such as DrRacket (see
+the DrRacket documentation). If no information is available for a given
+key, the result should be the second argument.
+
+Examples:
+  > ((read-language (open-input-string "#lang algol60")) 'color-lexer #f)
+  standard-module-name-resolver: collection not found
+    for module path: (submod algol60 reader) ~
+    collection: "algol60" ~
+    in collection directories: ~
+     /usr/share/racket/collects
+     ... [96 additional linked and package directories]
+  > ((read-language (open-input-string "#lang
+  algol60")) 'something-else #f)
+  standard-module-name-resolver: collection not found
+    for module path: (submod algol60 reader) ~
+    collection: "algol60" ~
+    in collection directories: ~
+     /usr/share/racket/collects
+     ... [96 additional linked and package directories]
+
+The get-info function itself is applied to five arguments: the input
+port being read, the module path from which the get-info function was
+extracted, and the source line (positive exact integer or #f), column
+(non-negative exact integer or #f), and position (positive exact integer
+or #f) of the start of the #lang or #! form. The get-info function may
+further read from the given input port to determine its result, but it
+should read no further than necessary. The get-info function should not
+read from the port after returning a function.
+
+If in starts with a reader language specification but the relevant
+module does not export get-info (but perhaps does export read and
+read-syntax), then the result of read-language is #f.
+
+If in has a #lang or #! specification, but parsing and resolving the
+specification raises an exception, the exception is propagated by
+read-language. Having at least #l or #! (after comments and whitespace)
+counts as starting a #lang or #! specification.
+
+If in does not specify a reader language with #lang or #!, then
+fail-thunk is called. The default fail-thunk raises exn:fail:read or
+exn:fail:read:eof.
+
+                                        *read-case-sensitive*
+(read-case-sensitive) -> boolean? ~
+(read-case-sensitive on?) -> void?
+  on? : any/c ~
+
+A parameter that controls parsing and printing of symbols. When this
+parameter’s value is #f, the reader case-folds symbols (e.g., producing
+'hi when the input is any one of hi, Hi, HI, or hI). The parameter also
+affects the way that write prints symbols containing uppercase
+characters; if the parameter’s value is #f, then symbols are printed
+with uppercase characters quoted by a \ or |. The parameter’s value is
+overridden by quoting \ or | vertical-bar quotes and the #cs and #ci
+prefixes; see [missing] for more information. While a module is loaded,
+the parameter is set to #t (see current-load).
+
+                                        *read-square-bracket-as-paren*
+(read-square-bracket-as-paren) -> boolean? ~
+(read-square-bracket-as-paren on?) -> void?
+  on? : any/c ~
+
+A parameter that controls whether [ and ] are treated as parentheses.
+See [missing] for more information.
+
+                                        *read-curly-brace-as-paren*
+(read-curly-brace-as-paren) -> boolean? ~
+(read-curly-brace-as-paren on?) -> void?
+  on? : any/c ~
+
+A parameter that controls whether { and } are treated as parentheses.
+See [missing] for more information.
+
+                                        *read-accept-box*
+(read-accept-box) -> boolean? ~
+(read-accept-box on?) -> void?
+  on? : any/c ~
+
+A parameter that controls parsing #& input. See [missing] for more
+information.
+
+                                        *read-accept-compiled*
+(read-accept-compiled) -> boolean? ~
+(read-accept-compiled on?) -> void?
+  on? : any/c ~
+
+A parameter that controls parsing #~ compiled input. See [missing] and
+current-compile for more information.
+
+                                        *read-accept-bar-quote*
+(read-accept-bar-quote) -> boolean? ~
+(read-accept-bar-quote on?) -> void?
+  on? : any/c ~
+
+A parameter that controls parsing and printing of | in symbols. See
+[missing] and [missing] for more information.
+
+                                        *read-accept-graph*
+(read-accept-graph) -> boolean? ~
+(read-accept-graph on?) -> void?
+  on? : any/c ~
+
+A parameter value that controls parsing input with sharing. See
+[missing] for more information.
+
+                                        *read-decimal-as-inexact*
+(read-decimal-as-inexact) -> boolean? ~
+(read-decimal-as-inexact on?) -> void?
+  on? : any/c ~
+
+A parameter that controls parsing input numbers with a decimal point or
+exponent (but no explicit exactness tag). See [missing] for more
+information.
+
+                                        *read-accept-dot*
+(read-accept-dot) -> boolean? ~
+(read-accept-dot on?) -> void?
+  on? : any/c ~
+
+A parameter that controls parsing input with a dot, which is normally
+used for literal cons cells. See [missing] for more information.
+
+                                        *read-accept-infix-dot*
+(read-accept-infix-dot) -> boolean? ~
+(read-accept-infix-dot on?) -> void?
+  on? : any/c ~
+
+A parameter that controls parsing input with two dots to trigger infix
+conversion. See [missing] for more information.
+
+                                        *read-accept-quasiquote*
+(read-accept-quasiquote) -> boolean? ~
+(read-accept-quasiquote on?) -> void?
+  on? : any/c ~
+
+A parameter that controls parsing input with ` or , which is normally
+used for quasiquote, unquote, and unquote-splicing abbreviations. See
+[missing] for more information.
+
+                                        *read-accept-reader*
+(read-accept-reader) -> boolean? ~
+(read-accept-reader on?) -> void?
+  on? : any/c ~
+
+A parameter that controls whether #reader, #lang, or #! are allowed for
+selecting a parser. See [missing] for more information.
+
+                                        *read-accept-lang*
+(read-accept-lang) -> boolean? ~
+(read-accept-lang on?) -> void?
+  on? : any/c ~
+
+A parameter that (along with read-accept-reader controls whether #lang
+and #! are allowed for selecting a parser. See [missing] for more
+information.
+
+                                        *current-readtable*
+(current-readtable) -> (or/c readtable? #f) ~
+(current-readtable readtable) -> void?
+  readtable : (or/c readtable? #f) ~
+
+A parameter whose value determines a readtable that adjusts the parsing
+of S-expression input, where #f implies the default behavior. See
+[missing] for more information.
+
+                                        *call-with-default-reading-parameterization*
+(call-with-default-reading-parameterization thunk) -> any ~
+  thunk : (-> any) ~
+
+Calls thunk in tail position of a parameterize to set all reader
+parameters above to their default values.
+
+Using the default parameter values ensures consistency, and it also
+provides safety when reading from untrusted sources, since the default
+values disable evaluation of arbitrary code via #lang or #reader.
+
+                                        *current-reader-guard*
+(current-reader-guard) -> (any/c . -> . any) ~
+(current-reader-guard proc) -> void?
+  proc : (any/c . -> . any) ~
+
+A parameter whose value converts or rejects (by raising an exception) a
+module-path datum following #reader. See [missing] for more information.
+
+                                        *read-on-demand-source*
+(read-on-demand-source) ~
+ -> (or/c #f #t (and/c path? complete-path?))
+(read-on-demand-source mode) -> void?
+  mode : (or/c #f #t (and/c path? complete-path?)) ~
+
+A parameter that enables lazy parsing of compiled code, so that closure
+bodies and syntax objects are extracted (and validated) from marshaled
+compiled code on demand. Normally, this parameter is set by the default
+load handler when load-on-demand-enabled is #t.
+
+A #f value for read-on-demand-source disables lazy parsing of compiled
+code. A #t value enables lazy parsing.  A path value furthers enable
+lazy retrieval from disk—instead of keeping unparsed compiled code in
+memory—when the PLT_DELAY_FROM_ZO environment variable is set (to any
+value) on start-up.
+
+If the file at mode as a path changes before the delayed code is parsed
+when lazy retrieval from disk is enabled, then the on-demand parse most
+likely will encounter garbage, leading to an exception.
+
+                                        *port-read-handler*
+(port-read-handler in) -> (case-> ~
+                           (input-port? . -> . any)
+                           (input-port?  any/c . -> . any))
+  in : input-port? ~
+(port-read-handler in proc) -> void?
+  in : input-port? ~
+  proc : (case-> ~
+          (input-port? . -> . any)
+          (input-port? any/c . -> . any))
+
+Gets or sets the port read handler for in. The handler called to read
+from the port when the built-in read or read-syntax procedure is applied
+to the port. (The port read handler is not used for read/recursive or
+read-syntax/recursive.)
+
+A port read handler is applied to either one argument or two arguments:
+
+* A single argument is supplied when the port is used with read; the
+  argument is the port being read. The return value is the value that
+  was read from the port (or end-of-file).
+
+* Two arguments are supplied when the port is used with read-syntax; the
+  first argument is the port being read, and the second argument is a
+  value indicating the source. The return value is a syntax object that
+  was read from the port (or end-of-file).
+
+The default port read handler reads standard Racket expressions with
+Racket’s built-in parser (see [missing]). It handles a special result
+from a custom input port (see make-custom-input-port) by treating it as
+a single expression, except that special-comment values (see [missing])
+are treated as whitespace.
+
+The default port read handler itself can be customized through a
+readtable; see [missing] for more information.

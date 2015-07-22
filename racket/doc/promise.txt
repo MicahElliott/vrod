@@ -1,0 +1,147 @@
+Delayed Evaluation
+
+ (require racket/promise) package: base ~
+
+The bindings documented in this section are provided by the
+racket/promise and racket libraries, but not racket/base.
+
+A promise encapsulates an expression to be evaluated on demand via
+force. After a promise has been forced, every later force of the promise
+produces the same result.
+
+                                        *promise?*
+(promise? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a promise, #f otherwise.
+
+                                        *delay*
+(delay body ...+) ~
+
+Creates a promise that, when forced, evaluates the bodys to produce its
+value.  The result is then cached, so further uses of force produce the
+cached value immediately. This includes multiple values and exceptions.
+
+                                        *lazy*
+(lazy body ...+) ~
+
+Like delay, if the last body produces a promise when forced, then this
+promise is forced, too, to obtain a value. In other words, this form
+creates a composable promise, where the computation of its body is
+“attached” to the computation of the following promise, and a single
+force iterates through the whole chain, tail-calling each step.
+
+Note that the last body of this form must produce a single value, but
+the value can itself be a delay promise that returns multiple values.
+
+The lazy form is useful for implementing lazy libraries and languages,
+where tail calls can be wrapped in a promise.
+
+                                        *force*
+(force v) -> any ~
+  v : any/c ~
+
+If v is a promise, then the promise is forced to obtain a value. If the
+promise has not been forced before, then the result is recorded in the
+promise so that future forces on the promise produce the same value (or
+values). If forcing the promise raises an exception, then the exception
+is similarly recorded so that forcing the promise will raise the same
+exception every time.
+
+If v is forced again before the original call to force returns, then the
+exn:fail exception is raised.
+
+If v is not a promise, then it is returned as the result.
+
+                                        *promise-forced?*
+(promise-forced? promise) -> boolean? ~
+  promise : promise? ~
+
+Returns #t if promise has been forced.
+
+                                        *promise-running?*
+(promise-running? promise) -> boolean? ~
+  promise : promise? ~
+
+Returns #t if promise is currently being forced. (Note that a promise
+can be either running or forced but not both.)
+
+1. Additional Promise Kinds
+
+                                        *delay/name*
+(delay/name body ...+) ~
+
+Creates a “call-by-name” promise that is similar to delay-promises,
+except that the resulting value is not cached.  This kind of promise is
+essentially a thunk that is wrapped in a way that force recognizes.
+
+If a delay/name promise forces itself, no exception is raised, the
+promise is never considered “running” or “forced” in the sense of
+promise-running? and promise-forced?.
+
+                                        *delay/strict*
+(delay/strict body ...+) ~
+
+Creates a “strict” promise: it is evaluated immediately, and the result
+is wrapped in a promise value.  Note that the body can evaluate to
+multiple values, and forcing the resulting promise will return these
+values.
+
+                                        *delay/sync*
+(delay/sync body ...+) ~
+
+Produces a promise where an attempt to force the promise by a thread
+other than one currently running the promise causes the force to block
+until a result is available. This kind of promise is also a
+synchronizable event for use with sync; syncing on the promise does not
+force it, but merely waits until a value is forced by another thread.
+
+If a promise created by delay/sync is forced on a thread that is already
+running the promise, an exception is raised in the same way as for
+promises created with delay.
+
+                                        *delay/thread*
+(delay/thread body/option ...+) ~
+ 
+body/option = body
+            | #:group thread-group-expr ~
+
+Like delay/sync, but begins the computation immediately on a newly
+created thread. The thread is created under the thread group specified
+by thread-group-expr, which defaults to (make-thread-group). A #:group
+specification can appear at most once.
+
+Exceptions raised by the bodys are caught as usual and raised only when
+the promise is forced. Unlike delay/sync, if the thread running body
+terminates without producing a result or exception, force of the promise
+raises an exception (instead of blocking).
+
+                                        *delay/idle*
+(delay/idle body/option ...+) ~
+ 
+body/option = body
+            | #:wait-for wait-evt-expr ~
+            | #:work-while while-evt-expr ~
+            | #:tick tick-secs-expr ~
+            | #:use use-ratio-expr ~
+
+Like delay/thread, but with the following differences:
+
+* the computation does not start until the event produced by
+  wait-evt-expr is ready, where the default is (system-idle-evt);
+
+* the computation thread gets to work only when the process is otherwise
+  idle as determined by while-evt-expr, which also defaults to
+  (system-idle-evt);
+
+* the thread is allowed to run only periodically: out of every
+  tick-secs-expr (defaults to 0.2) seconds, the thread is allowed to run
+  use-ratio-expr (defaults to 0.12) of the time proportionally; i.e.,
+  the thread runs for (* tick-secs-expr use-ratio-expr) seconds.
+
+If the promise is forced before the computation is done, it runs the
+rest of the computation immediately without waiting on events or
+periodically restricting evaluation.
+
+A #:wait-for, #:work-while, #:tick, or #:use specification can appear at
+most once.

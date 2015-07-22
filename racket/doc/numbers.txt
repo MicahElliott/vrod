@@ -1,0 +1,2515 @@
+Numbers
+
++[missing] in [missing] introduces numbers.
+
+All numbers are complex numbers. Some of them are real numbers, and all
+of the real numbers that can be represented are also rational numbers,
+except for +inf.0 (positive infinity), +inf.f (single-precision
+variant), -inf.0 (negative infinity), -inf.f  (single-precision
+variant), +nan.0 (not-a-number), and +nan.f  (single-precision variant).
+Among the rational numbers, some are integers, because round applied to
+the number produces the same number.
+
++See [missing] for information on the syntax of number literals.
+
+Orthogonal to those categories, each number is also either an exact
+number or an inexact number. Unless otherwise specified, computations
+that involve an inexact number produce inexact results. Certain
+operations on inexact numbers, however, produce an exact number, such as
+multiplying an inexact number with an exact 0. Operations that
+mathematically produce irrational numbers for some rational arguments
+(e.g., sqrt) may produce inexact results even for exact arguments.
+
+In the case of complex numbers, either the real and imaginary parts are
+both exact or inexact with the same precision, or the number has an
+exact zero real part and an inexact imaginary part; a complex number
+with an exact zero imaginary part is a real number.
+
+Inexact real numbers are implemented as either single- or
+double-precision IEEE floating-point numbers—the latter by default, and
+the former only when a computation starts with numerical constants
+specified as single-precision numbers. Inexact real numbers that are
+represented as double-precision floating-point numbers are flonums.
+
+Inexact numbers can be coerced to exact form, except for the inexact
+numbers +inf.0, +inf.f, -inf.0, -inf.f, +nan.0, and +nan.f, which have
+no exact form. Dividing a number by exact zero raises an exception;
+dividing a non-zero number other than +nan.0 or +nan.f by an inexact
+zero returns +inf.0, +inf.f, -inf.0 or -inf.f, depending on the sign and
+precision of the dividend. The +nan.0 value is not = to itself, but
++nan.0 is eqv? to itself, and +nan.f is similarly eqv? but not = to
+itself. Conversely, (= 0.0 -0.0) is #t, but (eqv? 0.0 -0.0) is #f, and
+the same for 0.0f0 and -0.0f0 (which are single-precision variants). The
+datum -nan.0 refers to the same constant as +nan.0, and -nan.f is the
+same as +nan.f.
+
+Calculations with infinites produce results consistent with IEEE double-
+or single-precision floating point where IEEE specifies the result; in
+cases where IEEE provides no specification, the result corresponds to
+the limit approaching infinity, or +nan.0 or +nan.f if no such limit
+exists.
+
+The precision and size of exact numbers is limited only by available
+memory (and the precision of operations that can produce irrational
+numbers). In particular, adding, multiplying, subtracting, and dividing
+exact numbers always produces an exact result.
+
+A fixnum is an exact integer whose two’s complement representation fit
+into 31 bits on a 32-bit platform or 63 bits on a 64-bit platform;
+furthermore, no allocation is required when computing with fixnums. See
+also the racket/fixnum module, below.
+
+Two fixnums that are = are also the same according to eq?. Otherwise,
+the result of eq? applied to two numbers is undefined, except that
+numbers produced by the default reader in read-syntax mode are interned
+and therefore eq? when they are eqv?.
+
+Two real numbers are eqv? when they are both inexact with the same
+precision or both exact, and when they are = (except for +nan.0, +nan.f,
+0.0, 0.0f0, -0.0, and -0.0f0, as noted above). Two complex numbers are
+eqv? when their real and imaginary parts are eqv?. Two numbers are
+equal? when they are eqv?.
+
+See [missing]     for information on reading     numbers and [missing]
+for information on printing numbers.
+
+    1 Number Types
+
+    2 Generic Numerics
+      2.1 Arithmetic
+      2.2 Number Comparison
+      2.3 Powers and Roots
+      2.4 Trigonometric Functions
+      2.5 Complex Numbers
+      2.6 Bitwise Operations
+      2.7 Random Numbers
+      2.8 Number–String Conversions
+      2.9 Extra Constants and Functions
+
+    3 Flonums
+      3.1 Flonum Arithmetic
+      3.2 Flonum Vectors
+
+    4 Fixnums
+      4.1 Fixnum Arithmetic
+      4.2 Fixnum Vectors
+
+    5 Extflonums
+      5.1 Extflonum Arithmetic
+      5.2 Extflonum Constants
+      5.3 Extflonum Vectors
+      5.4 Extflonum Byte Strings
+
+1. Number Types
+
+                                        *number?*
+(number? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v  is a number, #f otherwise.
+
+Examples:
+  > (number? 1)
+  #t
+  > (number? 2+3i)
+  #t
+  > (number? "hello")
+  #f
+
+                                        *complex?*
+(complex? v) -> boolean? ~
+  v : any/c ~
+
+Returns (number? v), because all numbers are complex numbers.
+
+                                        *real?*
+(real? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is  a real number, #f otherwise.
+
+Examples:
+  > (real? 1)
+  #t
+  > (real? +inf.0)
+  #t
+  > (real? 2+3i)
+  #f
+  > (real? 2.0+0.0i)
+  #f
+  > (real? "hello")
+  #f
+
+                                        *rational?*
+(rational? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if  v is a rational number, #f otherwise.
+
+Examples:
+  > (rational? 1)
+  #t
+  > (rational? +inf.0)
+  #f
+  > (rational? "hello")
+  #f
+
+                                        *integer?*
+(integer? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v  is a number that is an integer, #f otherwise.
+
+Examples:
+  > (integer? 1)
+  #t
+  > (integer? 2.3)
+  #f
+  > (integer? 4.0)
+  #t
+  > (integer? +inf.0)
+  #f
+  > (integer? 2+3i)
+  #f
+  > (integer? "hello")
+  #f
+
+                                        *exact-integer?*
+(exact-integer? v) -> boolean? ~
+  v : any/c ~
+
+Returns (and (integer? v) (exact? v)).
+
+Examples:
+  > (exact-integer? 1)
+  #t
+  > (exact-integer? 4.0)
+  #f
+
+                                        *exact-nonnegative-integer?*
+(exact-nonnegative-integer? v) -> boolean? ~
+  v : any/c ~
+
+Returns (and (exact-integer? v) (not (negative? v))).
+
+Examples:
+  > (exact-nonnegative-integer? 0)
+  #t
+  > (exact-nonnegative-integer? -1)
+  #f
+
+                                        *exact-positive-integer?*
+(exact-positive-integer? v) -> boolean? ~
+  v : any/c ~
+
+Returns (and (exact-integer? v) (positive? v)).
+
+Examples:
+  > (exact-positive-integer? 1)
+  #t
+  > (exact-positive-integer? 0)
+  #f
+
+                                        *inexact-real?*
+(inexact-real? v) -> boolean? ~
+  v : any/c ~
+
+Returns (and (real? v) (inexact? v)).
+
+                                        *fixnum?*
+(fixnum? v) -> boolean? ~
+  v : any/c ~
+
+Return #t if v is a fixnum, #f otherwise.
+
+Note: the result of this function is platform-dependent, so using it in
+syntax transformers can lead to platform-dependent bytecode files.
+
+                                        *flonum?*
+(flonum? v) -> boolean? ~
+  v : any/c ~
+
+Return #t if v is a flonum, #f otherwise.
+
+                                        *double-flonum?*
+(double-flonum? v) -> boolean? ~
+  v : any/c ~
+
+Identical to flonum?.
+
+                                        *single-flonum?*
+(single-flonum? v) -> boolean? ~
+  v : any/c ~
+
+Return #t if v is a single-precision floating-point number, #f
+otherwise.
+
+                                        *zero?*
+(zero? z) -> boolean? ~
+  z : number? ~
+
+Returns (= 0 z).
+
+Examples:
+  > (zero? 0)
+  #t
+  > (zero? -0.0)
+  #t
+
+                                        *positive?*
+(positive? x) -> boolean? ~
+  x : real? ~
+
+Returns (> x 0).
+
+Examples:
+  > (positive? 10)
+  #t
+  > (positive? -10)
+  #f
+  > (positive? 0.0)
+  #f
+
+                                        *negative?*
+(negative? x) -> boolean? ~
+  x : real? ~
+
+Returns (< x 0).
+
+Examples:
+  > (negative? 10)
+  #f
+  > (negative? -10)
+  #t
+  > (negative? -0.0)
+  #f
+
+                                        *even?*
+(even? n) -> boolean? ~
+  n : integer? ~
+
+Returns (zero? (modulo n 2)).
+
+Examples:
+  > (even? 10.0)
+  #t
+  > (even? 11)
+  #f
+  > (even? +inf.0)
+  even?: contract violation
+    expected: integer ~
+    given: +inf.0 ~
+
+                                        *odd?*
+(odd? n) -> boolean? ~
+  n : integer? ~
+
+Returns (not (even? n)).
+
+Examples:
+  > (odd? 10.0)
+  #f
+  > (odd? 11)
+  #t
+  > (odd? +inf.0)
+  odd?: contract violation
+    expected: integer ~
+    given: +inf.0 ~
+
+                                        *exact?*
+(exact? z) -> boolean? ~
+  z : number? ~
+
+Returns #t if z  is an exact number, #f otherwise.
+
+Examples:
+  > (exact? 1)
+  #t
+  > (exact? 1.0)
+  #f
+
+                                        *inexact?*
+(inexact? z) -> boolean? ~
+  z : number? ~
+
+Returns #t if z  is an inexact number, #f otherwise.
+
+Examples:
+  > (inexact? 1)
+  #f
+  > (inexact? 1.0)
+  #t
+
+                                        *inexact->exact*
+(inexact->exact z) -> exact? ~
+  z : number? ~
+
+Coerces z to an  exact number. If z is already exact, it is returned. If
+z  is +inf.0, -inf.0, +nan.0,  +inf.f, -inf.f, or +nan.f, then the
+exn:fail:contract exception is raised.
+
+Examples:
+  > (inexact->exact 1)
+  1
+  > (inexact->exact 1.0)
+  1
+
+                                        *exact->inexact*
+(exact->inexact z) -> inexact? ~
+  z : number? ~
+
+Coerces z to an  inexact number. If z is already inexact, it is
+returned.
+
+Examples:
+  > (exact->inexact 1)
+  1.0
+  > (exact->inexact 1.0)
+  1.0
+
+                                        *real->single-flonum*
+(real->single-flonum x) -> single-flonum? ~
+  x : real? ~
+
+Coerces x to a single-precision floating-point number. If x is already a
+single-precision floating-point number, it is returned.
+
+                                        *real->double-flonum*
+(real->double-flonum x) -> flonum? ~
+  x : real? ~
+
+Coerces x to a double-precision floating-point number. If x is already a
+double-precision floating-point number, it is returned.
+
+2. Generic Numerics
+
+Most Racket numeric operations work on any kind of number.
+
+2.1. Arithmetic
+
+                                        *+*
+(+ z ...) -> number?
+  z : number? ~
+
+Returns the sum of the zs, adding pairwise from left to  right. If no
+arguments are provided, the result is 0.
+
+Examples:
+  > (+ 1 2)
+  3
+  > (+ 1.0 2+3i 5)
+  8.0+3.0i
+  > (+)
+  0
+
+                                        *-*
+(- z) -> number?
+  z : number? ~
+(- z w ...+) -> number?
+  z : number? ~
+  w : number? ~
+
+When no ws are supplied, returns (- 0 z).  Otherwise, returns the
+subtraction of the ws from z  working pairwise from left to right.
+
+Examples:
+  > (- 5 3.0)
+  2.0
+  > (- 1)
+  -1
+  > (- 2+7i 1 3)
+  -2+7i
+
+                                        ***
+(* z ...) -> number?
+  z : number? ~
+
+Returns the product of the zs, multiplying pairwise from left  to right.
+If no arguments are provided, the result is  1. Multiplying any number
+by exact 0 produces exact  0.
+
+Examples:
+  > (* 2 3)
+  6
+  > (* 8.0 9)
+  72.0
+  > (* 1+2i 3+4i)
+  -5+10i
+
+                                        */*
+(/ z) -> number?
+  z : number? ~
+(/ z w ...+) -> number?
+  z : number? ~
+  w : number? ~
+
+When no ws are supplied, returns (/ 1 z).  Otherwise, returns the
+division of z by the ws working  pairwise from left to right.
+
+If z is exact 0 and no w is exact  0, then the result is exact 0. If any
+w is  exact 0, the exn:fail:contract:divide-by-zero exception is raised.
+
+Examples:
+  > (/ 3 4)
+  3/4
+  > (/ 81 3 3)
+  9
+  > (/ 10.0)
+  0.1
+  > (/ 1+2i 3+4i)
+  11/25+2/25i
+
+                                        *quotient*
+(quotient n m) -> integer? ~
+  n : integer? ~
+  m : integer? ~
+
+Returns (truncate (/ n m)).
+
+Examples:
+  > (quotient 10 3)
+  3
+  > (quotient -10.0 3)
+  -3.0
+  > (quotient +inf.0 3)
+  quotient: contract violation
+    expected: integer? ~
+    given: +inf.0 ~
+    argument position: 1st ~
+    other arguments...: ~
+     3
+
+                                        *remainder*
+(remainder n m) -> integer? ~
+  n : integer? ~
+  m : integer? ~
+
+Returns q with the same sign as n such that
+
+* (abs q) is between 0 (inclusive) and (abs m) (exclusive), and
+
+* (+ q (* m (quotient n m))) equals n.
+
+If m is exact 0, the  exn:fail:contract:divide-by-zero exception is
+raised.
+
+Examples:
+  > (remainder 10 3)
+  1
+  > (remainder -10.0 3)
+  -1.0
+  > (remainder 10.0 -3)
+  1.0
+  > (remainder -10 -3)
+  -1
+  > (remainder +inf.0 3)
+  remainder: contract violation
+    expected: integer? ~
+    given: +inf.0 ~
+    argument position: 1st ~
+    other arguments...: ~
+     3
+
+                                        *quotient/remainder*
+(quotient/remainder n m) -> integer? integer? ~
+  n : integer? ~
+  m : integer? ~
+
+Returns (values (quotient n m) (remainder n m)), but the  combination
+may be computed more efficiently than separate calls to  quotient and
+remainder.
+
+Example:
+  > (quotient/remainder 10 3)
+  3
+  1
+
+                                        *modulo*
+(modulo n m) -> integer? ~
+  n : integer? ~
+  m : integer? ~
+
+Returns q with the same sign as m where
+
+* (abs q) is between 0 (inclusive) and (abs m) (exclusive), and
+
+* the difference between q and (- n (* m (quotient n m))) is a multiple
+  of m.
+
+If m is exact 0, the  exn:fail:contract:divide-by-zero exception is
+raised.
+
+Examples:
+  > (modulo 10 3)
+  1
+  > (modulo -10.0 3)
+  2.0
+  > (modulo 10.0 -3)
+  -2.0
+  > (modulo -10 -3)
+  -1
+  > (modulo +inf.0 3)
+  modulo: contract violation
+    expected: integer? ~
+    given: +inf.0 ~
+    argument position: 1st ~
+    other arguments...: ~
+     3
+
+                                        *add*
+(add1 z) -> number? ~
+  z : number? ~
+
+Returns (+ z 1).
+
+                                        *sub*
+(sub1 z) -> number? ~
+  z : number? ~
+
+Returns (- z 1).
+
+                                        *abs*
+(abs x) -> number? ~
+  x : real? ~
+
+Returns the absolute value of  x.
+
+Examples:
+  > (abs 1.0)
+  1.0
+  > (abs -1)
+  1
+
+                                        *max*
+(max x ...+) -> real? ~
+  x : real? ~
+
+Returns the largest of the xs, or +nan.0 if any  x is +nan.0.  If any x
+is inexact, the  result is coerced to inexact.
+
+Examples:
+  > (max 1 3 2)
+  3
+  > (max 1 3 2.0)
+  3.0
+
+                                        *min*
+(min x ...+) -> real? ~
+  x : real? ~
+
+Returns the smallest of the xs, or +nan.0 if any  x is +nan.0.  If any x
+is inexact, the  result is coerced to inexact.
+
+Examples:
+  > (min 1 3 2)
+  1
+  > (min 1 3 2.0)
+  1.0
+
+                                        *gcd*
+(gcd n ...) -> rational? ~
+  n : rational? ~
+
+Returns the greatest common divisor (a non-negative  number) of the ns;
+for non-integer ns, the result  is the gcd of the numerators divided  by
+the lcm of the denominators.  If no arguments are provided, the result
+is 0. If all arguments are zero, the result is zero.
+
+Examples:
+  > (gcd 10)
+  10
+  > (gcd 12 81.0)
+  3.0
+  > (gcd 1/2 1/3)
+  1/6
+
+                                        *lcm*
+(lcm n ...) -> rational? ~
+  n : rational? ~
+
+Returns the least common multiple (a non-negative number)  of the ns;
+non-integer ns, the result is  the absolute value of the product divided
+by the  gcd. If no arguments are provided, the result is  1. If any
+argument is zero, the result is zero; furthermore,  if any argument is
+exact 0, the result is exact 0.
+
+Examples:
+  > (lcm 10)
+  10
+  > (lcm 3 4.0)
+  12.0
+  > (lcm 1/2 2/3)
+  2
+
+                                        *round*
+(round x) -> (or/c integer? +inf.0 -inf.0 +nan.0) ~
+  x : real? ~
+
+Returns the integer closest to x, resolving ties in favor of  an even
+number, but +inf.0, -inf.0, and +nan.0  round to themselves.
+
+Examples:
+  > (round 17/4)
+  4
+  > (round -17/4)
+  -4
+  > (round 2.5)
+  2.0
+  > (round -2.5)
+  -2.0
+  > (round +inf.0)
+  +inf.0
+
+                                        *floor*
+(floor x) -> (or/c integer? +inf.0 -inf.0 +nan.0) ~
+  x : real? ~
+
+Returns the largest integer that is no more than x, but  +inf.0, -inf.0,
+and +nan.0 floor to  themselves.
+
+Examples:
+  > (floor 17/4)
+  4
+  > (floor -17/4)
+  -5
+  > (floor 2.5)
+  2.0
+  > (floor -2.5)
+  -3.0
+  > (floor +inf.0)
+  +inf.0
+
+                                        *ceiling*
+(ceiling x) -> (or/c integer? +inf.0 -inf.0 +nan.0) ~
+  x : real? ~
+
+Returns the smallest integer that is at least as large as x,  but
++inf.0, -inf.0, and +nan.0 ceiling to  themselves.
+
+Examples:
+  > (ceiling 17/4)
+  5
+  > (ceiling -17/4)
+  -4
+  > (ceiling 2.5)
+  3.0
+  > (ceiling -2.5)
+  -2.0
+  > (ceiling +inf.0)
+  +inf.0
+
+                                        *truncate*
+(truncate x) -> (or/c integer? +inf.0 -inf.0 +nan.0) ~
+  x : real? ~
+
+Returns the integer farthest from 0 that is not farther from  0 than x,
+but +inf.0, -inf.0, and  +nan.0 truncate to themselves.
+
+Examples:
+  > (truncate 17/4)
+  4
+  > (truncate -17/4)
+  -4
+  > (truncate 2.5)
+  2.0
+  > (truncate -2.5)
+  -2.0
+  > (truncate +inf.0)
+  +inf.0
+
+                                        *numerator*
+(numerator q) -> integer? ~
+  q : rational? ~
+
+Coerces q to an exact number, finds the numerator of the  number
+expressed in its simplest fractional form, and returns this  number
+coerced to the exactness of q.
+
+Examples:
+  > (numerator 5)
+  5
+  > (numerator 17/4)
+  17
+  > (numerator 2.3)
+  2589569785738035.0
+
+                                        *denominator*
+(denominator q) -> integer? ~
+  q : rational? ~
+
+Coerces q to an exact number, finds the numerator of the  number
+expressed in its simplest fractional form, and returns this  number
+coerced to the exactness of q.
+
+Examples:
+  > (denominator 5)
+  1
+  > (denominator 17/4)
+  4
+  > (denominator 2.3)
+  1125899906842624.0
+
+                                        *rationalize*
+(rationalize x tolerance) -> real? ~
+  x : real? ~
+  tolerance : real? ~
+
+Among the real numbers within (abs tolerance) of x,  returns the one
+corresponding to an exact number whose  denominator is the smallest.  If
+multiple integers are within  tolerance of x, the one closest to 0 is
+used.
+
+Examples:
+  > (rationalize 1/4 1/10)
+  1/3
+  > (rationalize -1/4 1/10)
+  -1/3
+  > (rationalize 1/4 1/4)
+  0
+  > (rationalize 11/40 1/4)
+  1/2
+
+2.2. Number Comparison
+
+(= z w ...+) -> boolean?
+  z : number? ~
+  w : number? ~
+
+Returns  #t if all of the arguments are numerically equal,  #f
+otherwise.  An inexact number is numerically equal to an  exact number
+when the exact coercion of the inexact number is the  exact number.
+Also, 0.0 and -0.0 are numerically  equal, but +nan.0 is not numerically
+equal to itself.
+
+Examples:
+  > (= 1 1.0)
+  #t
+  > (= 1 2)
+  #f
+  > (= 2+3i 2+3i 2+3i)
+  #t
+
+                                        *<*
+(< x y ...+) -> boolean?
+  x : real? ~
+  y : real? ~
+
+Returns #t if  the arguments in the given order are strictly increasing,
+#f otherwise.
+
+Examples:
+  > (< 1 1)
+  #f
+  > (< 1 2 3)
+  #t
+  > (< 1 +inf.0)
+  #t
+  > (< 1 +nan.0)
+  #f
+
+                                        *<*
+(<= x y ...+) -> boolean?
+  x : real? ~
+  y : real? ~
+
+Returns #t  if the arguments in the given order are non-decreasing,  #f
+otherwise.
+
+Examples:
+  > (<= 1 1)
+  #t
+  > (<= 1 2 1)
+  #f
+
+                                        *>*
+(> x y ...+) -> boolean?
+  x : real? ~
+  y : real? ~
+
+Returns #t if  the arguments in the given order are strictly decreasing,
+#f otherwise.
+
+Examples:
+  > (> 1 1)
+  #f
+  > (> 3 2 1)
+  #t
+  > (> +inf.0 1)
+  #t
+  > (> +nan.0 1)
+  #f
+
+                                        *>*
+(>= x y ...+) -> boolean?
+  x : real? ~
+  y : real? ~
+
+Returns #t  if the arguments in the given order are non-increasing,  #f
+otherwise.
+
+Examples:
+  > (>= 1 1)
+  #t
+  > (>= 1 2 1)
+  #f
+
+2.3. Powers and Roots
+
+                                        *sqrt*
+(sqrt z) -> number? ~
+  z : number? ~
+
+Returns the principal square root of z.  The  result is exact if z is
+exact and z’s square root  is rational. See also integer-sqrt.
+
+Examples:
+  > (sqrt 4/9)
+  2/3
+  > (sqrt 2)
+  1.4142135623730951
+  > (sqrt -1)
+  0+1i
+
+                                        *integer-sqrt*
+(integer-sqrt n) -> complex? ~
+  n : integer? ~
+
+Returns (floor (sqrt n)) for positive n.  The  result is exact if n is
+exact.  For  negative n, the result is (* (integer-sqrt (- n)) 0+1i).
+
+Examples:
+  > (integer-sqrt 4.0)
+  2.0
+  > (integer-sqrt 5)
+  2
+  > (integer-sqrt -4.0)
+  0+2.0i
+  > (integer-sqrt -4)
+  0+2i
+
+                                        *integer-sqrt/remainder*
+(integer-sqrt/remainder n) -> complex? integer? ~
+  n : integer? ~
+
+Returns (integer-sqrt n) and (- n (expt (integer-sqrt n) 2)).
+
+Examples:
+  > (integer-sqrt/remainder 4.0)
+  2.0
+  0.0
+  > (integer-sqrt/remainder 5)
+  2
+  1
+
+                                        *expt*
+(expt z w) -> number? ~
+  z : number? ~
+  w : number? ~
+
+Returns z raised to the power of w.
+
+If w is  exact 0, the result is exact 1.  If w is 0.0 or -0.0  and z is
+a real number, the  result is 1.0 (even if z is +nan.0).
+
+If z is exact 1, the result is exact 1.  If z is 1.0 and w is a real
+number, the  result is 1.0 (even if w is +nan.0).
+
+If z is  exact 0 and w is negative, the
+exn:fail:contract:divide-by-zero exception is raised.
+
+Further special cases when w is a real number: These special cases
+correspond to pow in C99 [C99], except when z is negative and w is a not
+an integer.
+
+* (expt 0.0 w):
+
+  * w is negative — +inf.0
+
+  * w is positive — 0.0
+
+* (expt -0.0 w):
+
+  * w is negative:
+
+    * w is an odd integer — -inf.0
+
+    * w otherwise rational — +inf.0
+
+  * w is positive:
+
+    * w is an odd integer — -0.0
+
+    * w otherwise rational — 0.0
+
+* (expt z -inf.0) for positive z:
+
+  * z is less than 1.0 — +inf.0
+
+  * z is greater than 1.0 — 0.0
+
+* (expt z +inf.0) for positive z:
+
+  * z is less than 1.0 — 0.0
+
+  * z is greater than 1.0 — +inf.0
+
+* (expt -inf.0 w) for integer w:
+
+  * w is negative:
+
+    * w is odd — -0.0
+
+    * w is even — 0.0
+
+  * w is positive:
+
+    * w is odd — -inf.0
+
+    * w is even — +inf.0
+
+* (expt +inf.0 w):
+
+  * w is negative — 0.0
+
+  * w is positive — +inf.0
+
+Examples:
+  > (expt 2 3)
+  8
+  > (expt 4 0.5)
+  2.0
+  > (expt +inf.0 0)
+  1
+
+                                        *exp*
+(exp z) -> number? ~
+  z : number? ~
+
+Returns Euler’s number raised to the power of z. The result  is normally
+inexact, but it is exact 1 when z is an  exact 0.
+
+Examples:
+  > (exp 1)
+  2.718281828459045
+  > (exp 2+3i)
+  -7.315110094901103+1.0427436562359045i
+  > (exp 0)
+  1
+
+                                        *log*
+(log z) -> number? ~
+  z : number? ~
+
+Returns the natural logarithm of z.  The result is normally  inexact,
+but it is exact 0 when z is an exact  1. When z is exact 0,
+exn:fail:contract:divide-by-zero exception is raised.
+
+Examples:
+  > (log (exp 1))
+  1.0
+  > (log 2+3i)
+  1.2824746787307684+0.982793723247329i
+  > (log 1)
+  0
+
+2.4. Trigonometric Functions
+
+                                        *sin*
+(sin z) -> number? ~
+  z : number? ~
+
+Returns the sine of z, where z is in radians. The  result is normally
+inexact, but it is exact 0 if z  is exact 0.
+
+Examples:
+  > (sin 3.14159)
+  2.65358979335273e-06
+  > (sin 1.0+5.0i)
+  62.44551846769653+40.0921657779984i
+
+                                        *cos*
+(cos z) -> number? ~
+  z : number? ~
+
+Returns the cosine of z, where z is in radians.
+
+Examples:
+  > (cos 3.14159)
+  -0.9999999999964793
+  > (cos 1.0+5.0i)
+  40.095806306298826-62.43984868079963i
+
+                                        *tan*
+(tan z) -> number? ~
+  z : number? ~
+
+Returns the tangent of z, where z is in radians. The  result is normally
+inexact, but it is exact 0 if z  is exact 0.
+
+Examples:
+  > (tan 0.7854)
+  1.0000036732118496
+  > (tan 1.0+5.0i)
+  8.256719834227411e-05+1.0000377833796008i
+
+                                        *asin*
+(asin z) -> number? ~
+  z : number? ~
+
+Returns the arcsine in radians of z. The result is normally  inexact,
+but it is exact 0 if z is exact 0.
+
+Examples:
+  > (asin 0.25)
+  0.25268025514207865
+  > (asin 1.0+5.0i)
+  0.1937931365549321+2.3309746530493123i
+
+                                        *acos*
+(acos z) -> number? ~
+  z : number? ~
+
+Returns the arccosine in radians of z.
+
+Examples:
+  > (acos 0.25)
+  1.318116071652818
+  > (acos 1.0+5.0i)
+  1.3770031902399644-2.3309746530493123i
+
+                                        *atan*
+(atan z) -> number? ~
+  z : number? ~
+(atan y x) -> number?
+  y : real? ~
+  x : real? ~
+
+In the one-argument case, returns the arctangent of the inexact
+approximation of z, except that the result is an exact  0 for an exact 0
+argument.
+
+In the two-argument case, the result is roughly the same as (atan (/
+(exact->inexact y)) (exact->inexact x)), but the signs of y  and x
+determine the quadrant of the result. Moreover, a  suitable angle is
+returned when y divided by x  produces +nan.0 in the case that neither y
+nor  x is +nan.0. Finally, if y is exact  0 and x is an exact positive
+number, the result is  exact 0. If both x and y are exact  0, the
+exn:fail:contract:divide-by-zero exception is raised.
+
+Examples:
+  > (atan 0.5)
+  0.4636476090008061
+  > (atan 2 1)
+  1.1071487177940904
+  > (atan -2 -1)
+  -2.0344439357957027
+  > (atan 1.0+5.0i)
+  1.530881333938778+0.19442614214700213i
+  > (atan +inf.0 -inf.0)
+  2.356194490192345
+
+2.5. Complex Numbers
+
+                                        *make-rectangular*
+(make-rectangular x y) -> number? ~
+  x : real? ~
+  y : real? ~
+
+Returns (+ x (* y 0+1i)).
+
+Example:
+  > (make-rectangular 3 4.0)
+  3.0+4.0i
+
+                                        *make-polar*
+(make-polar magnitude angle) -> number? ~
+  magnitude : real? ~
+  angle : real? ~
+
+Returns (+ (* magnitude (cos angle)) (* magnitude (sin angle) 0+1i)).
+
+Examples:
+  > (make-polar 10 (* pi 1/2))
+  6.123233995736766e-16+10.0i
+  > (make-polar 10 (* pi 1/4))
+  7.0710678118654755+7.071067811865475i
+
+                                        *real-part*
+(real-part z) -> real? ~
+  z : number? ~
+
+Returns the real part of the complex number z in rectangle  coordinates.
+
+Examples:
+  > (real-part 3+4i)
+  3
+  > (real-part 5.0)
+  5.0
+
+                                        *imag-part*
+(imag-part z) -> real? ~
+  z : number? ~
+
+Returns the imaginary part of the complex number z in  rectangle
+coordinates.
+
+Examples:
+  > (imag-part 3+4i)
+  4
+  > (imag-part 5.0)
+  0
+  > (imag-part 5.0+0.0i)
+  0.0
+
+                                        *magnitude*
+(magnitude z) -> (and/c real? (not/c negative?)) ~
+  z : number? ~
+
+Returns the magnitude of the complex number z in polar  coordinates.
+
+Examples:
+  > (magnitude -3)
+  3
+  > (magnitude 3.0)
+  3.0
+  > (magnitude 3+4i)
+  5
+
+                                        *angle*
+(angle z) -> real? ~
+  z : number? ~
+
+Returns the angle of  the complex number z in polar coordinates.
+
+The result is guaranteed to be between (- pi) and  pi, possibly equal to
+pi (but never equal  to (- pi)).
+
+Examples:
+  > (angle -3)
+  3.141592653589793
+  > (angle 3.0)
+  0
+  > (angle 3+4i)
+  0.9272952180016122
+  > (angle +inf.0+inf.0i)
+  0.7853981633974483
+  > (angle -1)
+  3.141592653589793
+
+2.6. Bitwise Operations
+
+                                        *bitwise-ior*
+(bitwise-ior n ...) -> exact-integer? ~
+  n : exact-integer? ~
+
+Returns  the bitwise “inclusive or” of the ns in their (semi-infinite)
+two’s complement representation. If no arguments are provided, the
+result is 0.
+
+Examples:
+  > (bitwise-ior 1 2)
+  3
+  > (bitwise-ior -32 1)
+  -31
+
+                                        *bitwise-and*
+(bitwise-and n ...) -> exact-integer? ~
+  n : exact-integer? ~
+
+Returns  the bitwise “and” of the ns in their (semi-infinite) two’s
+complement representation. If no arguments are provided, the result  is
+-1.
+
+Examples:
+  > (bitwise-and 1 2)
+  0
+  > (bitwise-and -32 -1)
+  -32
+
+                                        *bitwise-xor*
+(bitwise-xor n ...) -> exact-integer? ~
+  n : exact-integer? ~
+
+Returns  the bitwise “exclusive or” of the ns in their (semi-infinite)
+two’s complement representation. If no arguments are provided, the
+result is 0.
+
+Examples:
+  > (bitwise-xor 1 5)
+  4
+  > (bitwise-xor -32 -1)
+  31
+
+                                        *bitwise-not*
+(bitwise-not n) -> exact-integer? ~
+  n : exact-integer? ~
+
+Returns the  bitwise “not” of n in its (semi-infinite) two’s complement
+representation.
+
+Examples:
+  > (bitwise-not 5)
+  -6
+  > (bitwise-not -1)
+  0
+
+                                        *bitwise-bit-set?*
+(bitwise-bit-set? n m) -> boolean? ~
+  n : exact-integer? ~
+  m : exact-nonnegative-integer? ~
+
+Returns #t when the mth bit of n is set in n’s         (semi-infinite)
+two’s complement representation.
+
+This operation is equivalent to (not (zero? (bitwise-and n
+(arithmetic-shift 1 m)))), but it is faster and runs in constant time
+when n is positive.
+
+Examples:
+  > (bitwise-bit-set? 5 0)
+  #t
+  > (bitwise-bit-set? 5 2)
+  #t
+  > (bitwise-bit-set? -5 (expt 2 700))
+  #t
+
+                                        *bitwise-bit-field*
+(bitwise-bit-field n start end) -> exact-integer? ~
+  n : exact-integer? ~
+  start : exact-nonnegative-integer? ~
+  end : (and/c exact-nonnegative-integer? ~
+               (start . <= . end))
+
+Extracts the bits between position start and (- end 1) (inclusive) from
+n and shifts them down to the least significant portion of the number.
+
+This operation is equivalent to the computation
+
+  (bitwise-and (sub1 (arithmetic-shift 1 (- end start)))
+               (arithmetic-shift n (- start)))
+
+but it runs in constant time when n is positive, start and end are
+fixnums, and (- end start) is no more than the maximum width of a
+fixnum.
+
+Each pair of examples below uses the same numbers, showing the result
+both in binary and as integers.
+
+Examples:
+  > (format "~b" (bitwise-bit-field (string->number "1101" 2) 1 1))
+  "0"
+  > (bitwise-bit-field 13 1 1)
+  0
+  > (format "~b" (bitwise-bit-field (string->number "1101" 2) 1 3))
+  "10"
+  > (bitwise-bit-field 13 1 3)
+  2
+  > (format "~b" (bitwise-bit-field (string->number "1101" 2) 1 4))
+  "110"
+  > (bitwise-bit-field 13 1 4)
+  6
+
+                                        *arithmetic-shift*
+(arithmetic-shift n m) -> exact-integer? ~
+  n : exact-integer? ~
+  m : exact-integer? ~
+
+Returns the bitwise “shift” of n in its  (semi-infinite) two’s
+complement representation.  If m is  non-negative, the integer n is
+shifted left by m bits;  i.e., m new zeros are introduced as rightmost
+digits. If  m is negative, n is shifted right by (- m)  bits; i.e., the
+rightmost m digits are dropped.
+
+Examples:
+  > (arithmetic-shift 1 10)
+  1024
+  > (arithmetic-shift 255 -3)
+  31
+
+                                        *integer-length*
+(integer-length n) -> exact-integer? ~
+  n : exact-integer? ~
+
+Returns  the number of bits in the (semi-infinite) two’s complement
+representation of n after removing all leading zeros (for  non-negative
+n) or ones (for negative n).
+
+Examples:
+  > (integer-length 8)
+  4
+  > (integer-length -8)
+  3
+
+2.7. Random Numbers
+
+                                        *random*
+(random k [rand-gen]) -> exact-nonnegative-integer? ~
+  k : (integer-in 1 4294967087) ~
+  rand-gen : pseudo-random-generator? ~
+           = (current-pseudo-random-generator)
+(random [rand-gen]) -> (and/c real? inexact? (>/c 0) (</c 1))
+  rand-gen : pseudo-random-generator? ~
+           = (current-pseudo-random-generator)
+
+When called with an integer argument k, returns a random exact integer
+in the range 0 to k-1. When called with zero arguments, returns a random
+inexact number between 0 and 1, exclusive.
+
+In each case, the number is provided by the given pseudo-random number
+generator (which defaults to the current one, as produced by
+current-pseudo-random-generator). The generator maintains an internal
+state for generating numbers. The random number generator uses a 54-bit
+version of L’Ecuyer’s MRG32k3a algorithm [L'Ecuyer02].
+
+                                        *random-seed*
+(random-seed k) -> void? ~
+  k : (integer-in 1 (sub1 (expt 2 31))) ~
+
+Seeds the current pseudo-random number generator with k. Seeding a
+generator sets its internal state deterministically; that is, seeding a
+generator with a particular number forces it to produce a sequence of
+pseudo-random numbers that is the same across runs and across platforms.
+
+The random-seed function is convenient for some purposes, but note that
+the space of states for a pseudo-random number generator is much larger
+that the space of allowed values for k. Use
+vector->pseudo-random-generator! to set a pseudo-random number generator
+to any of its possible states.
+
+                                        *make-pseudo-random-generator*
+(make-pseudo-random-generator) -> pseudo-random-generator? ~
+
+Returns a new pseudo-random number generator. The new generator is
+seeded with a number derived from (current-milliseconds).
+
+                                        *pseudo-random-generator?*
+(pseudo-random-generator? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a pseudo-random number generator, #f otherwise.
+
+                                        *current-pseudo-random-generator*
+(current-pseudo-random-generator) -> pseudo-random-generator? ~
+(current-pseudo-random-generator rand-gen) -> void?
+  rand-gen : pseudo-random-generator? ~
+
+A parameter that determines the pseudo-random number generator used by
+random.
+
+                                        *pseudo-random-generator->vector*
+(pseudo-random-generator->vector rand-gen) ~
+ -> pseudo-random-generator-vector?
+  rand-gen : pseudo-random-generator? ~
+
+Produces a vector that represents the complete internal state of
+rand-gen. The vector is suitable as an argument to
+vector->pseudo-random-generator to recreate the generator in its current
+state (across runs and across platforms).
+
+                                        *vector->pseudo-random-generator*
+(vector->pseudo-random-generator vec) ~
+ -> pseudo-random-generator?
+  vec : pseudo-random-generator-vector? ~
+
+Produces a pseudo-random number generator whose internal state
+corresponds to vec.
+
+                                        *vector->pseudo-random-generator!*
+(vector->pseudo-random-generator! rand-gen      ~
+                                  vec)     -> void?
+  rand-gen : pseudo-random-generator? ~
+  vec : pseudo-random-generator-vector? ~
+
+Like vector->pseudo-random-generator, but changes rand-gen to the given
+state, instead of creating a new generator.
+
+                                        *pseudo-random-generator-vector?*
+(pseudo-random-generator-vector? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a vector of six exact integers, where the first three
+integers are in the range 0 to 4294967086, inclusive; the last three
+integers are in the range 0 to 4294944442, inclusive; at least one of
+the first three integers is non-zero; and at least one of the last three
+integers is non-zero. Otherwise, the result is #f.
+
+2.8. Number–String Conversions
+
+                                        *number->string*
+(number->string z [radix]) -> string? ~
+  z : number? ~
+  radix : (or/c 2 8 10 16) = 10 ~
+
+Returns a string that is the printed form of z  in the base specified by
+radix. If z is inexact,  radix must be 10, otherwise the
+exn:fail:contract exception is raised.
+
+Examples:
+  > (number->string 3.0)
+  "3.0"
+  > (number->string 255 8)
+  "377"
+
+                                        *string->number*
+(string->number s [radix]) -> (or/c number? #f) ~
+  s : string? ~
+  radix : (integer-in 2 16) = 10 ~
+
+Reads and returns a number datum from s (see [missing]), returning #f if
+s does not parse exactly as a number datum (with no whitespace). The
+optional radix argument specifies the default base for the number, which
+can be overridden by #b, #o, #d, or #x in the string. The
+read-decimal-as-inexact parameter affects string->number in the same as
+way as read.
+
+Examples:
+  > (string->number "3.0+2.5i")
+  3.0+2.5i
+  > (string->number "hello")
+  #f
+  > (string->number "111" 7)
+  57
+  > (string->number "#b111" 7)
+  7
+
+                                        *real->decimal-string*
+(real->decimal-string n [decimal-digits]) -> string? ~
+  n : real? ~
+  decimal-digits : exact-nonnegative-integer? = 2 ~
+
+Prints n into a string and returns the string. The printed form of n
+shows exactly decimal-digits digits after the decimal point. The printed
+form uses a minus sign if n is negative, and it does not use a plus sign
+if n is positive.
+
+Before printing, n is converted to an exact number, multiplied by (expt
+10 decimal-digits), rounded, and then divided again by (expt 10
+decimal-digits).  The result of this process is an exact number whose
+decimal representation has no more than decimal-digits digits after the
+decimal (and it is padded with trailing zeros if necessary).
+
+Examples:
+  > (real->decimal-string pi)
+  "3.14"
+  > (real->decimal-string pi 5)
+  "3.14159"
+
+                                        *integer-bytes->integer*
+(integer-bytes->integer  bstr             ~
+                         signed?         
+                        [big-endian?     
+                         start           
+                         end])       -> exact-integer?
+  bstr : bytes? ~
+  signed? : any/c ~
+  big-endian? : any/c = (system-big-endian?) ~
+  start : exact-nonnegative-integer? = 0 ~
+  end : exact-nonnegative-integer? = (bytes-length bstr) ~
+
+Converts the machine-format number encoded in bstr to an exact integer.
+The start and end arguments specify the substring to decode, where (-
+end start) must be 2, 4, or 8. If signed? is true, then the bytes are
+decoded as a two’s-complement number, otherwise it is decoded as an
+unsigned integer. If big-endian? is true, then the first character’s
+ASCII value provides the most significant eight bits of the number,
+otherwise the first character provides the least-significant eight bits,
+and so on.
+
+                                        *integer->integer-bytes*
+(integer->integer-bytes  n                ~
+                         size-n          
+                         signed?         
+                        [big-endian?     
+                         dest-bstr       
+                         start])     -> bytes?
+  n : exact-integer? ~
+  size-n : (or/c 2 4 8) ~
+  signed? : any/c ~
+  big-endian? : any/c = (system-big-endian?) ~
+  dest-bstr : (and/c bytes? (not/c immutable?)) ~
+            = (make-bytes size-n)
+  start : exact-nonnegative-integer? = 0 ~
+
+Converts the exact integer n to a machine-format number encoded in a
+byte string of length size-n, which must be 2, 4, or 8. If signed? is
+true, then the number is encoded as two’s complement, otherwise it is
+encoded as an unsigned bit stream. If big-endian? is true, then the most
+significant eight bits of the number are encoded in the first character
+of the resulting byte string, otherwise the least-significant bits are
+encoded in the first byte, and so on.
+
+The dest-bstr argument must be a mutable byte string of length size-n.
+The encoding of n is written into dest-bstr starting at offset start,
+and dest-bstr is returned as the result.
+
+If n cannot be encoded in a string of the requested size and format, the
+exn:fail:contract exception is raised. If dest-bstr is not of length
+size-n, the exn:fail:contract exception is raised.
+
+                                        *floating-point-bytes->real*
+(floating-point-bytes->real  bstr             ~
+                            [big-endian?     
+                             start           
+                             end])       -> flonum?
+  bstr : bytes? ~
+  big-endian? : any/c = (system-big-endian?) ~
+  start : exact-nonnegative-integer? = 0 ~
+  end : exact-nonnegative-integer? = (bytes-length bstr) ~
+
+Converts the IEEE floating-point number encoded in bstr from position
+start (inclusive) to end (exclusive) to an inexact real number. The
+difference between start an end must be either 4 or 8 bytes. If
+big-endian? is true, then the first byte’s ASCII value provides the most
+significant eight bits of the IEEE representation, otherwise the first
+byte provides the least-significant eight bits, and so on.
+
+                                        *real->floating-point-bytes*
+(real->floating-point-bytes  x                ~
+                             size-n          
+                            [big-endian?     
+                             dest-bstr       
+                             start])     -> bytes?
+  x : real? ~
+  size-n : (or/c 4 8) ~
+  big-endian? : any/c = (system-big-endian?) ~
+  dest-bstr : (and/c bytes? (not/c immutable?)) ~
+            = (make-bytes size-n)
+  start : exact-nonnegative-integer? = 0 ~
+
+Converts the real number x to its IEEE representation in a byte string
+of length size-n, which must be 4 or 8. If big-endian? is true, then the
+most significant eight bits of the number are encoded in the first byte
+of the resulting byte string, otherwise the least-significant bits are
+encoded in the first character, and so on.
+
+The dest-bstr argument must be a mutable byte string of length size-n.
+The encoding of n is written into dest-bstr starting with byte start,
+and dest-bstr is returned as the result.
+
+If dest-bstr is provided and it has less than start plus size-n bytes,
+the exn:fail:contract exception is raised.
+
+                                        *system-big-endian?*
+(system-big-endian?) -> boolean? ~
+
+Returns #t if the native encoding of numbers is big-endian for the
+machine running Racket, #f if the native encoding is little-endian.
+
+2.9. Extra Constants and Functions
+
+ (require racket/math) package: base ~
+
+The bindings documented in this section are provided by the racket/math
+and racket libraries, but not racket/base.
+
+pi : flonum? ~
+
+An approximation of π, the ratio of a circle’s circumference to its
+diameter.
+
+Examples:
+  > pi
+  3.141592653589793
+  > (cos pi)
+  -1.0
+
+pi.f : single-flonum? ~
+
+Like pi, but in single precision.
+
+Examples:
+  > pi.f
+  3.1415927f0
+  > (* 2.0f0 pi)
+  6.283185307179586
+  > (* 2.0f0 pi.f)
+  6.2831855f0
+
+                                        *degrees->radians*
+(degrees->radians x) -> real? ~
+  x : real? ~
+
+Converts an x-degree angle to radians.
+
+Examples:
+  > (degrees->radians 180)
+  3.141592653589793
+  > (sin (degrees->radians 45))
+  0.7071067811865475
+
+                                        *radians->degrees*
+(radians->degrees x) -> real? ~
+  x : real? ~
+
+Converts x radians to degrees.
+
+Examples:
+  > (radians->degrees pi)
+  180.0
+  > (radians->degrees (* 1/4 pi))
+  45.0
+
+                                        *sqr*
+(sqr z) -> number? ~
+  z : number? ~
+
+Returns (* z z).
+
+                                        *sgn*
+(sgn x) -> (or/c (=/c -1) (=/c 0) (=/c 1) +nan.0 +nan.f) ~
+  x : real? ~
+
+Returns the sign of x as either -1, 0, 1, or not-a-number.
+
+Examples:
+  > (sgn 10)
+  1
+  > (sgn -10.0)
+  -1.0
+  > (sgn 0)
+  0
+  > (sgn +nan.0)
+  +nan.0
+
+                                        *conjugate*
+(conjugate z) -> number? ~
+  z : number? ~
+
+Returns the complex conjugate of z.
+
+Examples:
+  > (conjugate 1)
+  1
+  > (conjugate 3+4i)
+  3-4i
+
+                                        *sinh*
+(sinh z) -> number? ~
+  z : number? ~
+
+Returns the hyperbolic sine of z.
+
+                                        *cosh*
+(cosh z) -> number? ~
+  z : number? ~
+
+Returns the hyperbolic cosine of z.
+
+                                        *tanh*
+(tanh z) -> number? ~
+  z : number? ~
+
+Returns the hyperbolic tangent of z.
+
+                                        *exact-round*
+(exact-round x) -> exact-integer? ~
+  x : rational? ~
+
+Equivalent to (inexact->exact (round x)).
+
+                                        *exact-floor*
+(exact-floor x) -> exact-integer? ~
+  x : rational? ~
+
+Equivalent to (inexact->exact (floor x)).
+
+                                        *exact-ceiling*
+(exact-ceiling x) -> exact-integer? ~
+  x : rational? ~
+
+Equivalent to (inexact->exact (ceiling x)).
+
+                                        *exact-truncate*
+(exact-truncate x) -> exact-integer? ~
+  x : rational? ~
+
+Equivalent to (inexact->exact (truncate x)).
+
+                                        *order-of-magnitude*
+(order-of-magnitude r) -> (and/c exact? integer?) ~
+  r : (and/c real? positive?) ~
+
+Computes the greatest exact integer m such that:
+
+  (<= (expt 10 m)
+      (inexact->exact r))
+
+Hence also:
+
+  (< (inexact->exact r)
+     (expt 10 (add1 m)))
+
+Examples:
+  > (order-of-magnitude 999)
+  2
+  > (order-of-magnitude 1000)
+  3
+  > (order-of-magnitude 1/100)
+  -2
+  > (order-of-magnitude 1/101)
+  -3
+
+                                        *nan?*
+(nan? x) -> boolean? ~
+  x : real? ~
+
+Returns #t if x is eqv? to +nan.0 or +nan.f; otherwise #f.
+
+                                        *infinite?*
+(infinite? x) -> boolean? ~
+  x : real? ~
+
+Returns #t if z is +inf.0, -inf.0, +inf.f, -inf.f; otherwise #f.
+
+3. Flonums
+
+ (require racket/flonum) package: base ~
+
+The racket/flonum library provides operations like fl+ that consume and
+produce only flonums. Flonum-specific operations can provide better
+performance when used consistently, and they are as safe as generic
+operations like +.
+
++See also [missing] in [missing].
+
+3.1. Flonum Arithmetic
+
+                                        *fl+*
+(fl+ a b) -> flonum? ~
+  a : flonum? ~
+  b : flonum? ~
+(fl- a b) -> flonum?
+  a : flonum? ~
+  b : flonum? ~
+(fl* a b) -> flonum?
+  a : flonum? ~
+  b : flonum? ~
+(fl/ a b) -> flonum?
+  a : flonum? ~
+  b : flonum? ~
+(flabs a) -> flonum?
+  a : flonum? ~
+
+Like +, -, *, /, and abs, but constrained to consume flonums. The result
+is always a flonum.
+
+                                        *fl*
+(fl= a b) -> boolean? ~
+  a : flonum? ~
+  b : flonum? ~
+(fl< a b) -> boolean?
+  a : flonum? ~
+  b : flonum? ~
+(fl> a b) -> boolean?
+  a : flonum? ~
+  b : flonum? ~
+(fl<= a b) -> boolean?
+  a : flonum? ~
+  b : flonum? ~
+(fl>= a b) -> boolean?
+  a : flonum? ~
+  b : flonum? ~
+(flmin a b) -> flonum?
+  a : flonum? ~
+  b : flonum? ~
+(flmax a b) -> flonum?
+  a : flonum? ~
+  b : flonum? ~
+
+Like =, <, >, <=, >=, min, and max, but constrained to consume flonums.
+
+                                        *flround*
+(flround a) -> flonum? ~
+  a : flonum? ~
+(flfloor a) -> flonum?
+  a : flonum? ~
+(flceiling a) -> flonum?
+  a : flonum? ~
+(fltruncate a) -> flonum?
+  a : flonum? ~
+
+Like round, floor, ceiling, and truncate, but constrained to consume
+flonums.
+
+                                        *flsin*
+(flsin a) -> flonum? ~
+  a : flonum? ~
+(flcos a) -> flonum?
+  a : flonum? ~
+(fltan a) -> flonum?
+  a : flonum? ~
+(flasin a) -> flonum?
+  a : flonum? ~
+(flacos a) -> flonum?
+  a : flonum? ~
+(flatan a) -> flonum?
+  a : flonum? ~
+(fllog a) -> flonum?
+  a : flonum? ~
+(flexp a) -> flonum?
+  a : flonum? ~
+(flsqrt a) -> flonum?
+  a : flonum? ~
+
+Like sin, cos, tan, asin, acos, atan, log, exp, and sqrt, but
+constrained to consume and produce flonums. The result is +nan.0 when a
+number outside the range -1.0 to 1.0 is given to flasin or flacos, or
+when a negative number is given to fllog or flsqrt.
+
+                                        *flexpt*
+(flexpt a b) -> flonum? ~
+  a : flonum? ~
+  b : flonum? ~
+
+Like expt, but constrained to consume and produce flonums.
+
+Due to the result constraint, the results compared to expt differ in the
+following cases: These special cases correspond to pow in C99 [C99].
+
+* (flexpt -1.0 +inf.0) — 1.0
+
+* (flexpt a +inf.0) where a is negative — (expt (abs a) +inf.0)
+
+* (flexpt a -inf.0) where a is negative — (expt (abs a) -inf.0)
+
+* (expt -inf.0 b) where b is a non-integer:
+
+  * b is negative — 0.0
+
+  * b is positive — +inf.0
+
+* (flexpt a b) where a is negative and b is not an integer — +nan.0
+
+                                        *->fl*
+(->fl a) -> flonum?
+  a : exact-integer? ~
+
+Like exact->inexact, but constrained to consume exact integers, so the
+result is always a flonum.
+
+                                        *fl->exact-integer*
+(fl->exact-integer a) -> exact-integer? ~
+  a : flonum? ~
+
+Like inexact->exact, but constrained to consume an integer flonum, so
+the result is always an exact integer.
+
+                                        *make-flrectangular*
+(make-flrectangular a b) ~
+ -> (and/c complex?
+           (lambda (c) (flonum? (real-part c)))
+           (lambda (c) (flonum? (imag-part c))))
+  a : flonum? ~
+  b : flonum? ~
+(flreal-part a) -> flonum?
+  a : (and/c complex? ~
+             (lambda (c) (flonum? (real-part c)))
+             (lambda (c) (flonum? (imag-part c))))
+(flimag-part a) -> flonum?
+  a : (and/c complex? ~
+             (lambda (c) (flonum? (real-part c)))
+             (lambda (c) (flonum? (imag-part c))))
+
+Like make-rectangular, real-part, and imag-part, but both parts of the
+complex number must be inexact.
+
+                                        *flrandom*
+(flrandom rand-gen) -> (and flonum? (>/c 0) (</c 1)) ~
+  rand-gen : pseudo-random-generator? ~
+
+Equivalent to (random rand-gen).
+
+3.2. Flonum Vectors
+
+A flvector is like a vector, but it holds only inexact real numbers.
+This representation can be more compact, and unsafe operations on
+flvectors (see racket/unsafe/ops) can execute more efficiently than
+unsafe operations on vectors of inexact reals.
+
+An f64vector as provided by ffi/vector stores the same kinds of values
+as a flvector, but with extra indirections that make f64vectors more
+convenient for working with foreign libraries. The lack of indirections
+makes unsafe flvector access more efficient.
+
+Two flvectors are equal? if they have the same length, and if the values
+in corresponding slots of the flvectors are equal?.
+
+                                        *flvector?*
+(flvector? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a flvector, #f otherwise.
+
+                                        *flvector*
+(flvector x ...) -> flvector? ~
+  x : flonum? ~
+
+Creates a flvector containing the given inexact real numbers.
+
+Example:
+  > (flvector 2.0 3.0 4.0 5.0)
+  (flvector 2.0 3.0 4.0 5.0)
+
+                                        *make-flvector*
+(make-flvector size [x]) -> flvector? ~
+  size : exact-nonnegative-integer? ~
+  x : flonum? = 0.0 ~
+
+Creates a flvector with size elements, where every slot in the flvector
+is filled with x.
+
+Example:
+  > (make-flvector 4 3.0)
+  (flvector 3.0 3.0 3.0 3.0)
+
+                                        *flvector-length*
+(flvector-length vec) -> exact-nonnegative-integer? ~
+  vec : flvector? ~
+
+Returns the length of vec (i.e., the number of slots in the flvector).
+
+                                        *flvector-ref*
+(flvector-ref vec pos) -> flonum? ~
+  vec : flvector? ~
+  pos : exact-nonnegative-integer? ~
+
+Returns the inexact real number in slot pos of vec. The first slot is
+position 0, and the last slot is one less than (flvector-length vec).
+
+                                        *flvector-set!*
+(flvector-set! vec pos x) -> flonum? ~
+  vec : flvector? ~
+  pos : exact-nonnegative-integer? ~
+  x : flonum? ~
+
+Sets the inexact real number in slot pos of vec. The first slot is
+position 0, and the last slot is one less than (flvector-length vec).
+
+                                        *flvector-copy*
+(flvector-copy vec [start end]) -> flvector? ~
+  vec : flvector? ~
+  start : exact-nonnegative-integer? = 0 ~
+  end : exact-nonnegative-integer? = (vector-length v) ~
+
+Creates a fresh flvector of size (- end start), with all of the elements
+of vec from start (inclusive) to end (exclusive).
+
+                                        *in-flvector*
+(in-flvector vec [start stop step]) -> sequence? ~
+  vec : flvector? ~
+  start : exact-nonnegative-integer? = 0 ~
+  stop : (or/c exact-integer? #f) = #f ~
+  step : (and/c exact-integer? (not/c zero?)) = 1 ~
+
+Returns a sequence equivalent to vec when no optional arguments are
+supplied.
+
+The optional arguments start, stop, and step are as in in-vector.
+
+A in-flvector application can provide better performance for flvector
+iteration when it appears directly in a for clause.
+
+                                        *for/flvector*
+(for/flvector maybe-length (for-clause ...) body ...) ~
+(for*/flvector maybe-length (for-clause ...) body ...)
+ 
+maybe-length = 
+             | #:length length-expr ~
+             | #:length length-expr #:fill fill-expr ~
+ 
+  length-expr : exact-nonnegative-integer? ~
+  fill-expr : flonum? ~
+
+Like for/vector or for*/vector, but for flvectors. The default fill-expr
+produces 0.0.
+
+                                        *shared-flvector*
+(shared-flvector x ...) -> flvector? ~
+  x : flonum? ~
+
+Creates a flvector containing the given inexact real numbers. For
+communication among places, the new flvector is allocated in the shared
+memory space.
+
+Example:
+  > (shared-flvector 2.0 3.0 4.0 5.0)
+  (flvector 2.0 3.0 4.0 5.0)
+
+                                        *make-shared-flvector*
+(make-shared-flvector size [x]) -> flvector? ~
+  size : exact-nonnegative-integer? ~
+  x : flonum? = 0.0 ~
+
+Creates a flvector with size elements, where every slot in the flvector
+is filled with x. For communication among places, the new flvector is
+allocated in the shared memory space.
+
+Example:
+  > (make-shared-flvector 4 3.0)
+  (flvector 3.0 3.0 3.0 3.0)
+
+4. Fixnums
+
+ (require racket/fixnum) package: base ~
+
+The racket/fixnum library provides operations like fx+ that consume and
+produce only fixnums. The operations in this library are meant to be
+safe versions of unsafe operations like unsafe-fx+. These safe
+operations are generally no faster than using generic primitives like +.
+
+The expected use of the racket/fixnum library is for code where the
+require of racket/fixnum is replaced with
+
+  (require (filtered-in
+            (λ (name) (regexp-replace #rx"unsafe-" name ""))
+            racket/unsafe/ops))
+
+to drop in unsafe versions of the library. Alternately, when
+encountering crashes with code that uses unsafe fixnum operations, use
+the racket/fixnum library to help debug the problems.
+
+4.1. Fixnum Arithmetic
+
+                                        *fx+*
+(fx+ a b) -> fixnum? ~
+  a : fixnum? ~
+  b : fixnum? ~
+(fx- a b) -> fixnum?
+  a : fixnum? ~
+  b : fixnum? ~
+(fx* a b) -> fixnum?
+  a : fixnum? ~
+  b : fixnum? ~
+(fxquotient a b) -> fixnum?
+  a : fixnum? ~
+  b : fixnum? ~
+(fxremainder a b) -> fixnum?
+  a : fixnum? ~
+  b : fixnum? ~
+(fxmodulo a b) -> fixnum?
+  a : fixnum? ~
+  b : fixnum? ~
+(fxabs a) -> fixnum?
+  a : fixnum? ~
+
+Safe versions of unsafe-fx+, unsafe-fx-, unsafe-fx*, unsafe-fxquotient,
+unsafe-fxremainder, unsafe-fxmodulo, and unsafe-fxabs. The
+exn:fail:contract:non-fixnum-result exception is raised if the
+arithmetic result would not be a fixnum.
+
+                                        *fxand*
+(fxand a b) -> fixnum? ~
+  a : fixnum? ~
+  b : fixnum? ~
+(fxior a b) -> fixnum?
+  a : fixnum? ~
+  b : fixnum? ~
+(fxxor a b) -> fixnum?
+  a : fixnum? ~
+  b : fixnum? ~
+(fxnot a) -> fixnum?
+  a : fixnum? ~
+(fxlshift a b) -> fixnum?
+  a : fixnum? ~
+  b : fixnum? ~
+(fxrshift a b) -> fixnum?
+  a : fixnum? ~
+  b : fixnum? ~
+
+Safe versions of unsafe-fxand, unsafe-fxior, unsafe-fxxor, unsafe-fxnot,
+unsafe-fxlshift, and unsafe-fxrshift.  The
+exn:fail:contract:non-fixnum-result exception is raised if the
+arithmetic result would not be a fixnum.
+
+                                        *fx*
+(fx= a b) -> boolean? ~
+  a : fixnum? ~
+  b : fixnum? ~
+(fx< a b) -> boolean?
+  a : fixnum? ~
+  b : fixnum? ~
+(fx> a b) -> boolean?
+  a : fixnum? ~
+  b : fixnum? ~
+(fx<= a b) -> boolean?
+  a : fixnum? ~
+  b : fixnum? ~
+(fx>= a b) -> boolean?
+  a : fixnum? ~
+  b : fixnum? ~
+(fxmin a b) -> fixnum?
+  a : fixnum? ~
+  b : fixnum? ~
+(fxmax a b) -> fixnum?
+  a : fixnum? ~
+  b : fixnum? ~
+
+Safe versions of unsafe-fx=, unsafe-fx<,  unsafe-fx>, unsafe-fx<=,
+unsafe-fx>=,  unsafe-fxmin, and unsafe-fxmax.
+
+                                        *fx->fl*
+(fx->fl a) -> flonum? ~
+  a : fixnum? ~
+(fl->fx a) -> fixnum?
+  a : flonum? ~
+
+Safe versions of unsafe-fx->fl and unsafe-fl->fx.
+
+4.2. Fixnum Vectors
+
+A fxvector is like a vector, but it holds only fixnums. The only
+advantage of a fxvector over a vector is that a shared version can be
+created with functions like shared-fxvector.
+
+Two fxvectors are equal? if they have the same length, and if the values
+in corresponding slots of the fxvectors are equal?.
+
+                                        *fxvector?*
+(fxvector? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a fxvector, #f otherwise.
+
+                                        *fxvector*
+(fxvector x ...) -> fxvector? ~
+  x : fixnum? ~
+
+Creates a fxvector containing the given fixnums.
+
+Example:
+  > (fxvector 2 3 4 5)
+  (fxvector 2 3 4 5)
+
+                                        *make-fxvector*
+(make-fxvector size [x]) -> fxvector? ~
+  size : exact-nonnegative-integer? ~
+  x : fixnum? = 0 ~
+
+Creates a fxvector with size elements, where every slot in the fxvector
+is filled with x.
+
+Example:
+  > (make-fxvector 4 3)
+  (fxvector 3 3 3 3)
+
+                                        *fxvector-length*
+(fxvector-length vec) -> exact-nonnegative-integer? ~
+  vec : fxvector? ~
+
+Returns the length of vec (i.e., the number of slots in the fxvector).
+
+                                        *fxvector-ref*
+(fxvector-ref vec pos) -> fixnum? ~
+  vec : fxvector? ~
+  pos : exact-nonnegative-integer? ~
+
+Returns the fixnum in slot pos of vec. The first slot is position 0, and
+the last slot is one less than (fxvector-length vec).
+
+                                        *fxvector-set!*
+(fxvector-set! vec pos x) -> fixnum? ~
+  vec : fxvector? ~
+  pos : exact-nonnegative-integer? ~
+  x : fixnum? ~
+
+Sets the fixnum in slot pos of vec. The first slot is position 0, and
+the last slot is one less than (fxvector-length vec).
+
+                                        *fxvector-copy*
+(fxvector-copy vec [start end]) -> fxvector? ~
+  vec : fxvector? ~
+  start : exact-nonnegative-integer? = 0 ~
+  end : exact-nonnegative-integer? = (vector-length v) ~
+
+Creates a fresh fxvector of size (- end start), with all of the elements
+of vec from start (inclusive) to end (exclusive).
+
+                                        *in-fxvector*
+(in-fxvector vec [start stop step]) -> sequence? ~
+  vec : fxvector? ~
+  start : exact-nonnegative-integer? = 0 ~
+  stop : (or/c exact-integer? #f) = #f ~
+  step : (and/c exact-integer? (not/c zero?)) = 1 ~
+
+Returns a sequence equivalent to vec when no optional arguments are
+supplied.
+
+The optional arguments start, stop, and step are as in in-vector.
+
+An in-fxvector application can provide better performance for fxvector
+iteration when it appears directly in a for clause.
+
+                                        *for/fxvector*
+(for/fxvector maybe-length (for-clause ...) body ...) ~
+(for*/fxvector maybe-length (for-clause ...) body ...)
+ 
+maybe-length = 
+             | #:length length-expr ~
+             | #:length length-expr #:fill fill-expr ~
+ 
+  length-expr : exact-nonnegative-integer? ~
+  fill-expr : fixnum? ~
+
+Like for/vector or for*/vector, but for fxvectors. The default fill-expr
+produces 0.
+
+                                        *shared-fxvector*
+(shared-fxvector x ...) -> fxvector? ~
+  x : fixnum? ~
+
+Creates a fxvector containing the given fixnums. For communication among
+places, the new fxvector is allocated in the shared memory space.
+
+Example:
+  > (shared-fxvector 2 3 4 5)
+  (fxvector 2 3 4 5)
+
+                                        *make-shared-fxvector*
+(make-shared-fxvector size [x]) -> fxvector? ~
+  size : exact-nonnegative-integer? ~
+  x : fixnum? = 0 ~
+
+Creates a fxvector with size elements, where every slot in the fxvector
+is filled with x. For communication among places, the new fxvector is
+allocated in the shared memory space.
+
+Example:
+  > (make-shared-fxvector 4 3)
+  (fxvector 3 3 3 3)
+
+5. Extflonums
+
+ (require racket/extflonum) package: base ~
+
+An extflonum is an extended-precision (80-bit) floating-point number.
+extflonum arithmetic is supported on platforms with extended-precision
+hardware and where the extflonum implementation does not conflict with
+normal double-precision arithmetic (i.e., on x86 and x86_64 platforms
+when Racket is compiled to use SSE instructions for floating-point
+operations, and on Windows when "longdouble.dll" is available).
+
+A extflonum is not a number in the sense of number?. Only
+extflonum-specific operations such as extfl+ perform extflonum
+arithmetic.
+
+A literal extflonum is written like an inexact number, but using an
+explicit t or T exponent marker (see [missing]). For example, 3.5t0 is
+an extflonum. The extflonum infinities and non-a-number values are
++inf.t, -inf.t, and +nan.t.
+
+If (extflonum-available?) produces #f, then all operations exported by
+racket/extflonum raise exn:fail:unsupported, except for extflonum?,
+extflonum-available?, and extflvector? (which always work). The reader
+(see [missing]) always accepts extflonum input; when extflonum
+operations are not supported, printing an extflonum from the reader uses
+its source notation (as opposed to normalizing the format).
+
+Two extflonums are equal? if extfl= produces #t for the extflonums. If
+extflonums are not supported in a platform, extflonums are equal? only
+if they are eq?.
+
+                                        *extflonum?*
+(extflonum? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is an extflonum, #f otherwise.
+
+                                        *extflonum-available?*
+(extflonum-available?) -> boolean? ~
+
+Returns #t if extflonum operations are supported on the current
+platform, #f otherwise.
+
+5.1. Extflonum Arithmetic
+
+                                        *extfl+*
+(extfl+ a b) -> extflonum? ~
+  a : extflonum? ~
+  b : extflonum? ~
+(extfl- a b) -> extflonum?
+  a : extflonum? ~
+  b : extflonum? ~
+(extfl* a b) -> extflonum?
+  a : extflonum? ~
+  b : extflonum? ~
+(extfl/ a b) -> extflonum?
+  a : extflonum? ~
+  b : extflonum? ~
+(extflabs a) -> extflonum?
+  a : extflonum? ~
+
+Like fl+, fl-, fl*, fl/, and flabs, but for extflonums.
+
+                                        *extfl*
+(extfl= a b) -> boolean? ~
+  a : extflonum? ~
+  b : extflonum? ~
+(extfl< a b) -> boolean?
+  a : extflonum? ~
+  b : extflonum? ~
+(extfl> a b) -> boolean?
+  a : extflonum? ~
+  b : extflonum? ~
+(extfl<= a b) -> boolean?
+  a : extflonum? ~
+  b : extflonum? ~
+(extfl>= a b) -> boolean?
+  a : extflonum? ~
+  b : extflonum? ~
+(extflmin a b) -> extflonum?
+  a : extflonum? ~
+  b : extflonum? ~
+(extflmax a b) -> extflonum?
+  a : extflonum? ~
+  b : extflonum? ~
+
+Like fl=, fl<, fl>, fl<=, fl>=, flmin, and flmax, but for extflonums.
+
+                                        *extflround*
+(extflround a) -> extflonum? ~
+  a : extflonum? ~
+(extflfloor a) -> extflonum?
+  a : extflonum? ~
+(extflceiling a) -> extflonum?
+  a : extflonum? ~
+(extfltruncate a) -> extflonum?
+  a : extflonum? ~
+
+Like flround, flfloor, flceiling, and fltruncate, but for extflonums.
+
+                                        *extflsin*
+(extflsin a) -> extflonum? ~
+  a : extflonum? ~
+(extflcos a) -> extflonum?
+  a : extflonum? ~
+(extfltan a) -> extflonum?
+  a : extflonum? ~
+(extflasin a) -> extflonum?
+  a : extflonum? ~
+(extflacos a) -> extflonum?
+  a : extflonum? ~
+(extflatan a) -> extflonum?
+  a : extflonum? ~
+(extfllog a) -> extflonum?
+  a : extflonum? ~
+(extflexp a) -> extflonum?
+  a : extflonum? ~
+(extflsqrt a) -> extflonum?
+  a : extflonum? ~
+(extflexpt a b) -> extflonum?
+  a : extflonum? ~
+  b : extflonum? ~
+
+Like flsin, flcos, fltan, flasin, flacos, flatan, fllog, flexp, and
+flsqrt, and flexpt, but for extflonums.
+
+                                        *->extfl*
+(->extfl a) -> extflonum?
+  a : exact-integer? ~
+(extfl->exact-integer a) -> exact-integer?
+  a : extflonum? ~
+(real->extfl a) -> extflonum?
+  a : real? ~
+(extfl->exact a) -> (and/c real? exact?)
+  a : real? ~
+(extfl->inexact a) -> flonum?
+  a : real? ~
+
+The first four are like ->fl, fl->exact, fl->real, inexact->exact, but
+for extflonums. The extfl->inexact function converts a extflonum to its
+closest "flonum" approximation.
+
+5.2. Extflonum Constants
+
+pi.t : extflonum? ~
+
+Like pi, but with 80 bits precision.
+
+5.3. Extflonum Vectors
+
+An extflvector is like an flvector, but it holds only extflonums. See
+also [missing].
+
+Two extflvectors are equal? if they have the same length, and if the
+values in corresponding slots of the extflvectors are equal?.
+
+                                        *extflvector?*
+(extflvector? v) -> boolean? ~
+  v : any/c ~
+(extflvector x ...) -> extflvector?
+  x : extflonum? ~
+(make-extflvector size [x]) -> extflvector?
+  size : exact-nonnegative-integer? ~
+  x : extflonum? = 0.0 ~
+(extflvector-length vec) -> exact-nonnegative-integer?
+  vec : extflvector? ~
+(extflvector-ref vec pos) -> extflonum?
+  vec : extflvector? ~
+  pos : exact-nonnegative-integer? ~
+(extflvector-set! vec pos x) -> extflonum?
+  vec : extflvector? ~
+  pos : exact-nonnegative-integer? ~
+  x : extflonum? ~
+(extflvector-copy vec [start end]) -> extflvector?
+  vec : extflvector? ~
+  start : exact-nonnegative-integer? = 0 ~
+  end : exact-nonnegative-integer? = (vector-length v) ~
+
+Like flvector?, flvector, make-flvector, flvector-length, flvector-ref,
+flvector-set, and flvector-copy, but for extflvectors.
+
+                                        *in-extflvector*
+(in-extflvector vec [start stop step]) -> sequence? ~
+  vec : extflvector? ~
+  start : exact-nonnegative-integer? = 0 ~
+  stop : (or/c exact-integer? #f) = #f ~
+  step : (and/c exact-integer? (not/c zero?)) = 1 ~
+(for/extflvector maybe-length (for-clause ...) body ...)
+(for*/extflvector maybe-length (for-clause ...) body ...)
+ 
+maybe-length = 
+             | #:length length-expr ~
+             | #:length length-expr #:fill fill-expr ~
+ 
+  length-expr : exact-nonnegative-integer? ~
+  fill-expr : extflonum? ~
+
+Like in-flvector, for/flvector, and for*/flvector, but for extflvectors.
+
+                                        *make-shared-extflvector*
+(make-shared-extflvector size [x]) -> extflvector? ~
+  size : exact-nonnegative-integer? ~
+  x : extflonum? = 0.0 ~
+
+Like make-shared-flvector, but for extflvectors.
+
+5.4. Extflonum Byte Strings
+
+                                        *floating-point-bytes->extfl*
+(floating-point-bytes->extfl  bstr             ~
+                             [big-endian?     
+                              start           
+                              end])       -> extflonum?
+  bstr : bytes? ~
+  big-endian? : any/c = (system-big-endian?) ~
+  start : exact-nonnegative-integer? = 0 ~
+  end : exact-nonnegative-integer? = (bytes-length bstr) ~
+
+Like floating-point-bytes->real, but  for extflonums: Converts the
+extended-precision floating-point number encoded in bstr from position
+start (inclusive) to end (exclusive) to an extflonum. The difference
+between start an end must be 10 bytes.
+
+                                        *extfl->floating-point-bytes*
+(extfl->floating-point-bytes  x                ~
+                             [big-endian?     
+                              dest-bstr       
+                              start])     -> bytes?
+  x : extflonum? ~
+  big-endian? : any/c = (system-big-endian?) ~
+  dest-bstr : (and/c bytes? (not/c immutable?)) ~
+            = (make-bytes 10)
+  start : exact-nonnegative-integer? = 0 ~
+
+Like real->floating-point-bytes, but  for extflonums: Converts x to its
+representation in a byte string of length 10.

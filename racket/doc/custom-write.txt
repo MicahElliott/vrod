@@ -1,0 +1,104 @@
+Printer Extension
+
+gen:custom-write : any/c ~
+
+A generic interface (see [missing]) that supplies a method, write-proc
+used by the default printer to display, write, or print instances of the
+structure type.
+
+A write-proc method takes three arguments: the structure to be printed,
+the target port, and an argument that is #t for write mode, #f for
+display mode, or 0 or 1 indicating the current quoting depth for print
+mode.  The procedure should print the value to the given port using
+write, display, print, fprintf, write-special, etc.
+
+The port write handler, port display handler, and print handler are
+specially configured for a port given to a custom-write procedure.
+Printing to the port through display, write, or print prints a value
+recursively with sharing annotations. To avoid a recursive print (i.e.,
+to print without regard to sharing with a value currently being
+printed), print instead to a string or pipe and transfer the result to
+the target port using write-string or write-special. To print
+recursively to a port other than the one given to the custom-write
+procedure, copy the given port’s write handler, display handler, and
+print handler to the other port.
+
+The port given to a custom-write handler is not necessarily the actual
+target port. In particular, to detect cycles and sharing, the printer
+invokes a custom-write procedure with a port that records recursive
+prints, and does not retain any other output.
+
+Recursive print operations may trigger an escape from the call to the
+custom-write procedure (e.g., for pretty-printing where a tentative
+print attempt overflows the line, or for printing error output of a
+limited width).
+
+The following example definition of a tuple type includes custom-write
+procedures that print the tuple’s list content using angle brackets in
+write and print mode and no brackets in display mode. Elements of the
+tuple are printed recursively, so that graph and cycle structure can be
+represented.
+
+Examples:
+  (define (tuple-print tuple port mode)
+    (when mode (write-string "<" port))
+    (let ([l (tuple-ref tuple)]
+          [recur (case mode
+                   [(#t) write]
+                   [(#f) display]
+                   [else (lambda (p port) (print p port mode))])])
+      (unless (zero? (vector-length l))
+        (recur (vector-ref l 0) port)
+        (for-each (lambda (e)
+                    (write-string ", " port)
+                    (recur e port))
+                  (cdr (vector->list l)))))
+    (when mode (write-string ">" port)))
+
+
+  > (struct tuple (ref)
+            #:methods gen:custom-write ~
+            [(define write-proc tuple-print)])
+
+  > (display (tuple #(1 2 "a")))
+  1, 2, a
+
+  > (print (tuple #(1 2 "a")))
+  <1, 2, "a">
+
+  > (let ([t (tuple (vector 1 2 "a"))])
+      (vector-set! (tuple-ref t) 0 t)
+      (write t))
+  #0=<#0#, 2, "a">
+
+
+prop:custom-write : struct-type-property? ~
+
+A deprecated structure type property (see [missing]) that supplies a
+procedure that corresponds to gen:custom-write’s write-proc. Use
+gen:custom-write, instead.
+
+                                        *custom-write?*
+(custom-write? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v has the prop:custom-write property, #f otherwise.
+
+                                        *custom-write-accessor*
+(custom-write-accessor v) ~
+ -> (custom-write? output-port? boolean? . -> . any)
+  v : custom-write? ~
+
+Returns the custom-write procedure associated with v.
+
+prop:custom-print-quotable : struct-type-property? ~
+custom-print-quotable? : struct-type-property? ~
+custom-print-quotable-accessor : struct-type-property? ~
+
+A property and associated predicate and accessor. The property value is
+one of 'self, 'never, 'maybe, or 'always. When a structure has this
+property in addition to a prop:custom-write property value, then the
+property value affects printing in print mode; see [missing]. When a
+value does not have the prop:custom-print-quotable, it is equivalent to
+having the 'self property value, which is suitable both for self-quoting
+forms and printed forms that are unreadable.

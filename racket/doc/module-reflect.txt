@@ -1,0 +1,587 @@
+Module Names and Loading
+
+1. Resolving Module Names
+
+The syntax/modresolve library provides additional operations for
+resolving and manipulating module names.
+
+The name of a declared module is represented by a resolved module path,
+which encapsulates either a symbol or a complete filesystem path (see
+[missing]). A symbol normally refers to a predefined module or module
+declared through reflective evaluation (e.g., eval). A filesystem path
+normally refers to a module declaration that was loaded on demand via
+require or other forms.
+
+A module path is a datum that matches the grammar for module-path for
+require. A module path is relative to another module.
+
+                                        *resolved-module-path?*
+(resolved-module-path? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a resolved module path, #f otherwise.
+
+                                        *make-resolved-module-path*
+(make-resolved-module-path path) -> resolved-module-path? ~
+  path : (or/c symbol? ~
+               (and/c path? complete-path?)
+               (cons/c (or/c symbol?
+                             (and/c path? complete-path?))
+                       (non-empty-listof symbol?)))
+
+Returns a resolved module path that encapsulates path, where a list path
+corresponds to a submodule path. If path is a path or starts with a
+path, the path normally should be cleansed (see cleanse-path) and
+simplified (see simplify-path).
+
+A resolved module path is interned. That is, if two resolved module path
+values encapsulate paths that are equal?, then the resolved module path
+values are eq?.
+
+                                        *resolved-module-path-name*
+(resolved-module-path-name module-path) ~
+ -> (or/c symbol?
+          (and/c path? complete-path?)
+          (cons/c (or/c symbol?
+                        (and/c path? complete-path?))
+                  (non-empty-listof symbol?)))
+  module-path : resolved-module-path? ~
+
+Returns the path or symbol encapsulated by a resolved module path. A
+list result corresponds to a submodule path.
+
+                                        *module-path?*
+(module-path? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v corresponds to a datum that matches the grammar for
+module-path for require, #f otherwise. Note that a path (in the sense of
+path?) is a module path.
+
+                                        *current-module-name-resolver*
+(current-module-name-resolver) ~
+ -> (case->
+     (resolved-module-path? (or/c #f namespace?) . -> . any)
+     (module-path?
+      (or/c #f resolved-module-path?)
+      (or/c #f syntax?)
+      boolean?
+      . -> .
+      resolved-module-path?))
+(current-module-name-resolver proc) -> void?
+  proc : (case-> ~
+          (resolved-module-path? (or/c #f namespace?) . -> . any)
+          (module-path?
+           (or/c #f resolved-module-path?)
+           (or/c #f syntax?)
+           boolean?
+           . -> .
+           resolved-module-path?))
+
+A parameter that determines the current module name resolver, which
+manages the conversion from other kinds of module references to a
+resolved module path. For example, when the expander encounters (require
+module-path) where module-path is not an identifier, then the expander
+passes 'module-path to the module name resolver to obtain a symbol or
+resolved module path. When such a require appears within a module, the
+module path resolver is also given the name of the enclosing module, so
+that a relative reference can be converted to an absolute symbol or
+resolved module path.
+
+The default module name resolver uses collection-file-path to convert
+lib and symbolic-shorthand module paths to filesystem paths. The
+collection-file-path function, in turn, uses the
+current-library-collection-links and current-library-collection-paths
+parameters.
+
+A module name resolver takes two and four arguments:
+
+* When given two arguments, the first is a name for a module that is now
+  declared in the current namespace, and the second is optionally a
+  namespace from which the declaration was copied. The module name
+  resolver’s result in this case is ignored.
+
+  The current module name resolver is called with two arguments by
+  namespace-attach-module or namespace-attach-module-declaration to
+  notify the resolver that a module declaration was attached to the
+  current namespace (and should not be loaded in the future for the
+  namespace’s module registry). Evaluation of a module declaration also
+  calls the current module name resolver with two arguments, where the
+  first is the declared module and the second is #f. No other Racket
+  operation invokes the module name resolver with two arguments, but
+  other tools (such as DrRacket) might call this resolver in this mode
+  to avoid redundant module loads.
+
+* When given four arguments, the first is a module path, equivalent to a
+  quoted module-path for require. The second is name for the source
+  module, if any, to which the path is relative; if the second argument
+  is #f, the module path is relative to (or
+  (current-load-relative-directory) (current-directory)).  The third
+  argument is a syntax object that can be used for error reporting, if
+  it is not #f. If the last argument is #t, then the module declaration
+  should be loaded (if it is not already), otherwise the module path
+  should be simply resolved to a name. The result is the resolved name.
+
+For the second case, the standard module name resolver keeps a table per
+module registry containing loaded module name. If a resolved module path
+is not in the table, and #f is not provided as the fourth argument to
+the module name resolver, then the name is put into the table and the
+corresponding file is loaded with a variant of load/use-compiled that
+passes the expected module name to the compiled-load handler.
+
+While loading a file, the default module name resolver sets the
+current-module-declare-name parameter to the resolved module name (while
+the compiled-load handler sets current-module-declare-source). Also, the
+default module name resolver records in a private continuation mark the
+module being loaded, and it checks whether such a mark already exists;
+if such a continuation mark does exist in the current continuation, then
+the exn:fail exception is raised with a message about a dependency
+cycle.
+
+The default module name resolver cooperates with the default
+compiled-load handler: on a module-attach notification, bytecode-file
+information recorded by the compiled-load handler for the source
+namespace’s module registry is transferred to the target namespace’s
+module registry.
+
+The default module name resolver also maintains a small, module
+registry-specific cache that maps lib and symbolic module paths to their
+resolutions. This cache is consulted before checking parameters such as
+current-library-collection-links and current-library-collection-paths,
+so results may “stick” even if those parameter values change. An entry
+is added to the cache only when the fourth argument to the module name
+resolver is true (indicating that a module should be loaded) and only
+when loading succeeds.
+
+Module loading is suppressed (i.e., #f is supplied as a fourth argument
+to the module name resolver) when resolving module paths in syntax
+objects (see [missing]). When a syntax object is manipulated, the
+current namespace might not match the original namespace for the syntax
+object, and the module should not necessarily be loaded in the current
+namespace.
+
+For historical reasons, the default module name resolver currently
+accepts three arguments, in addition to two and four. Three arguments
+are treated the same as four arguments with the fourth argument as #t,
+except that an error is also logged. Support for three arguments will be
+removed in a future version.
+
+Changed in version 6.0.1.12: Added error logging to the default module
+name resolver when called with three arguments.
+
+                                        *current-module-declare-name*
+(current-module-declare-name) ~
+ -> (or/c resolved-module-path? #f)
+(current-module-declare-name name) -> void?
+  name : (or/c resolved-module-path? #f) ~
+
+A parameter that determines a module name that is used when evaluating a
+module declaration (when the parameter value is not #f). In that case,
+the id from the module declaration is ignored, and the parameter’s value
+is used as the name of the declared module.
+
+When declaring submodules, current-module-declare-name determines the
+name used for the submodule’s root module, while its submodule path
+relative to the root module is unaffected.
+
+                                        *current-module-declare-source*
+(current-module-declare-source) ~
+ -> (or/c symbol? (and/c path? complete-path?) #f)
+(current-module-declare-source src) -> void?
+  src : (or/c symbol? (and/c path? complete-path?) #f) ~
+
+A parameter that determines source information to be associated with a
+module when evaluating a module declaration. Source information is used
+in error messages and reflected by variable-reference->module-source.
+When the parameter value is #f, the module’s name (as determined by
+current-module-declare-name) is used as the source name instead of the
+parameter value.
+
+                                        *current-module-path-for-load*
+(current-module-path-for-load) ~
+ -> (or/c #f module-path?
+          (and/c syntax?
+                 (lambda (stx)
+                   (module-path? (syntax->datum s)))))
+(current-module-path-for-load path) -> void?
+  path : (or/c #f module-path? ~
+               (and/c syntax?
+                      (lambda (stx)
+                        (module-path? (syntax->datum s)))))
+
+A parameter that determines a module path used for
+exn:fail:syntax:missing-module and exn:fail:filesystem:missing-module
+exceptions as raised by the default load handler.  The parameter is
+normally set by a module name resolver.
+
+2. Compiled Modules and References
+
+While expanding a module declaration, the expander resolves module paths
+for imports to load module declarations as necessary and to determine
+imported bindings, but the compiled form of a module declaration
+preserves the original module path. Consequently, a compiled module can
+be moved to another filesystem, where the module name resolver can
+resolve inter-module references among compiled code.
+
+When a module reference is extracted from compiled form (see
+module-compiled-imports) or from syntax objects in macro expansion (see
+[missing]), the module reference is reported in the form of a module
+path index. A module path index is a semi-interned (multiple references
+to the same relative module tend to use the same module path index
+value, but not always) opaque value that encodes a module path (see
+module-path?) and either a resolved module path or another module path
+index to which it is relative.
+
+A module path index that uses both #f for its path and base module path
+index represents “self”—i.e., the module declaration that was the source
+of the module path index—and such a module path index can be used as the
+root for a chain of module path indexes at compile time. For example,
+when extracting information about an identifier’s binding within a
+module, if the identifier is bound by a definition within the same
+module, the identifier’s source module is reported using the “self”
+module path index. If the identifier is instead defined in a module that
+is imported via a module path (as opposed to a literal module name),
+then the identifier’s source module will be reported using a module path
+index that contains the required module path and the “self” module path
+index. A “self” module path index has a submodule path when the module
+that it refers to is a submodule.
+
+A module path index has state. When it is resolved to a resolved module
+path, then the resolved module path is stored with the module path
+index. In particular, when a module is loaded, its root module path
+index is resolved to match the module’s declaration-time name. This
+resolved path is forgotten, however, in identifiers that the module
+contributes to the compiled and marshaled form of other modules. The
+transient nature of resolved names allows the module code to be loaded
+with a different resolved name than the name when it was compiled.
+
+Two module path index values are equal? when they have equal? path and
+base values (even if they have different resolved values).
+
+                                        *module-path-index?*
+(module-path-index? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a module path index, #f otherwise.
+
+                                        *module-path-index-resolve*
+(module-path-index-resolve mpi) -> resolved-module-path? ~
+  mpi : module-path-index? ~
+
+Returns a resolved module path for the resolved module name, computing
+the resolved name (and storing it in mpi) if it has not been computed
+before.
+
+Resolving a module path index uses the current module name resolver (see
+current-module-name-resolver). Depending on the kind of module paths
+encapsulated by mpi, the computed resolved name can depend on the value
+of current-load-relative-directory or current-directory.
+
+                                        *module-path-index-split*
+(module-path-index-split mpi) ~
+ -> (or/c module-path? #f)
+    (or/c module-path-index? resolved-module-path? #f)
+  mpi : module-path-index? ~
+
+Returns two values: a module path, and a base path—either a module path
+index, resolved module path, or #f—to which the first path is relative.
+
+A #f second result means that the path is relative to an unspecified
+directory (i.e., its resolution depends on the value of
+current-load-relative-directory and/or current-directory).
+
+A #f for the first result implies a #f for the second result, and means
+that mpi represents “self” (see above). Such a module path index may
+have a non-#f submodule path as reported by module-path-index-submodule.
+
+                                        *module-path-index-submodule*
+(module-path-index-submodule mpi) ~
+ -> (or/c #f (non-empty-listof symbol?))
+  mpi : module-path-index? ~
+
+Returns a non-empty list of symbols if mpi is a “self” (see above)
+module path index that refers to a submodule. The result is always #f if
+either result of (module-path-index-split mpi) is non-#f.
+
+                                        *module-path-index-join*
+(module-path-index-join path base [submod]) -> module-path-index? ~
+  path : (or/c module-path? #f) ~
+  base : (or/c module-path-index? resolved-module-path? #f) ~
+  submod : (or/c #f (non-empty-listof symbol?)) = #f ~
+
+Combines path, base, and submod to create a new module path index. The
+path argument can #f only if base is also #f. The submod argument can be
+a list only when path and base are both #f.
+
+                                        *compiled-module-expression?*
+(compiled-module-expression? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a compiled module declaration, #f otherwise. See also
+current-compile.
+
+                                        *module-compiled-name*
+(module-compiled-name compiled-module-code) ~
+ -> (or/c symbol? (cons/c symbol? (non-empty-listof symbol?)))
+  compiled-module-code : compiled-module-expression? ~
+(module-compiled-name compiled-module-code 
+                      name)                
+ -> compiled-module-expression?
+  compiled-module-code : compiled-module-expression? ~
+  name : (or/c symbol? (cons/c symbol? (non-empty-listof symbol?))) ~
+
+Takes a module declaration in compiled form and either gets the module’s
+declared name (when name is not provided) or returns a revised module
+declaration with the given name.
+
+The name is a symbol for a top-level module, and it list of symbols for
+a submodule, where a list reflects the submodule path to the module
+starting with the top-level module’s declared name.
+
+                                        *module-compiled-submodules*
+(module-compiled-submodules compiled-module-code  ~
+                            non-star?)           
+ -> (listof compiled-module-expression?)
+  compiled-module-code : compiled-module-expression? ~
+  non-star? : any/c ~
+(module-compiled-submodules compiled-module-code 
+                            non-star?            
+                            submodules)          
+ -> compiled-module-expression?
+  compiled-module-code : compiled-module-expression? ~
+  non-star? : any/c ~
+  submodules : (listof compiled-module-expression?) ~
+
+Takes a module declaration in compiled form and either gets the module’s
+submodules (when submodules is not provided) or returns a revised module
+declaration with the given submodules. The pre-module? argument
+determines whether the result or new submodule list corresponds to
+module declarations (when non-star? is true) or module* declarations
+(when non-star? is #f).
+
+                                        *module-compiled-imports*
+(module-compiled-imports compiled-module-code) ~
+ -> (listof (cons/c (or/c exact-integer? #f)
+                    (listof module-path-index?)))
+  compiled-module-code : compiled-module-expression? ~
+
+Takes a module declaration in compiled form and returns an association
+list mapping phase level shifts (where #f corresponds to a shift into
+the label phase level) to module references for the module’s explicit
+imports.
+
+                                        *module-compiled-exports*
+(module-compiled-exports compiled-module-code) ~
+ -> (listof (cons/c (or/c exact-integer? #f) list?))
+    (listof (cons/c (or/c exact-integer? #f) list?))
+  compiled-module-code : compiled-module-expression? ~
+
+Returns two association lists mapping phase level values (where #f
+corresponds to the label phase level) to exports at the corresponding
+phase. The first association list is for exported variables, and the
+second is for exported syntax. Beware however, that value bindings
+re-exported though a rename transformer are in the syntax list instead
+of the value list.
+
+Each associated list, which is represented by list? in the result
+contracts above, more precisely matches the contract
+
+  (listof (list/c symbol?
+                  (listof
+                   (or/c module-path-index?
+                         (list/c module-path-index?
+                                 (or/c exact-integer? #f)
+                                 symbol?
+                                 (or/c exact-integer? #f))))))
+
+For each element of the list, the leading symbol is the name of the
+export.
+
+The second part—the list of module path index values, etc.—describes the
+origin of the exported identifier. If the origin list is null, then the
+exported identifier is defined in the module. If the exported identifier
+is re-exported, instead, then the origin list provides information on
+the import that was re-exported. The origin list has more than one
+element if the binding was imported multiple times from (possibly)
+different sources.
+
+For each origin, a module path index by itself means that the binding
+was imported with a phase level shift of 0 (i.e., a plain require
+without for-meta, for-syntax, etc.), and imported identifier has the
+same name as the re-exported name. An origin represented with a list
+indicates explicitly the import, the import phase level shift (where #f
+corresponds to a for-label import), the import name of the re-exported
+binding, and the phase level of the import.}
+
+                                        *module-compiled-language-info*
+(module-compiled-language-info compiled-module-code) ~
+ -> (or/c #f (vector/c module-path? symbol? any/c))
+  compiled-module-code : compiled-module-expression? ~
+
++See also [missing] in [missing].
+
+Returns information intended to reflect the “language” of the module’s
+implementation as originally attached to the syntax of the module’s
+declaration though the 'module-language syntax property. See also
+module.
+
+If no information is available for the module, the result is #f.
+Otherwise, the result is (vector mp name val) such that
+((dynamic-require mp name) val) should return function that takes two
+arguments. The function’s arguments are a key for reflected information
+and a default value.  Acceptable keys and the interpretation of results
+is up to external tools, such as DrRacket.  If no information is
+available for a given key, the result should be the given default value.
+
+See also module->language-info and racket/language-info.
+
+                                        *module-compiled-cross-phase-persistent?*
+(module-compiled-cross-phase-persistent? compiled-module-code) ~
+ -> boolean?
+  compiled-module-code : compiled-module-expression? ~
+
+Return #t if compiled-module-code represents a cross-phase persistent
+module, #f otherwise.
+
+3. Dynamic Module Access
+
+                                        *dynamic-require*
+(dynamic-require mod provided [fail-thunk]) -> (or/c void? any/c) ~
+  mod : (or/c module-path? ~
+              resolved-module-path?
+              module-path-index?)
+  provided : (or/c symbol? #f 0 void?) ~
+  fail-thunk : (-> any) = (lambda () ....) ~
+
+Dynamically instantiates the module specified by mod in the current
+namespace’s registry at the namespace’s base phase, if it is not yet
+instantiated. The current module name resolver may load a module
+declaration to resolve mod (see current-module-name-resolver); the path
+is resolved relative to current-load-relative-directory and/or
+current-directory.
+
+If provided is #f, then the result is #<void>, and the module is not
+visited (see [missing]) or even made available (for on-demand visits) in
+phases above the base phase.
+
+Examples:
+  > (module a racket/base (displayln "hello"))
+
+  > (dynamic-require ''a #f)
+  hello
+
+
+When provided is a symbol, the value of the module’s export with the
+given name is returned, and still the module is not visited or made
+available in higher phases.
+
+Examples:
+  > (module b racket/base
+      (provide dessert)
+      (define dessert "gulab jamun"))
+
+  > (dynamic-require ''b 'dessert)
+  "gulab jamun"
+
+If the module exports provided as syntax, then a use of the binding is
+expanded and evaluated in a fresh namespace to which the module is
+attached, which means that the module is visited in the fresh namespace.
+The expanded syntax must return a single value.
+
+Examples:
+  > (module c racket/base
+      (require (for-syntax racket/base))
+      (provide dessert2)
+      (define dessert "nanaimo bar")
+      (define-syntax dessert2
+        (make-rename-transformer #'dessert)))
+
+  > (dynamic-require ''c 'dessert2)
+  "nanaimo bar"
+
+If the module has no such exported variable or syntax, then fail-thunk
+is called; the default fail-thunk raises exn:fail:contract. If the
+variable named by provided is exported protected (see [missing]), then
+the exn:fail:contract exception is raised.
+
+If provided is 0, then the module is instantiated but not visited, the
+same as when provided is #f. With 0, however, the module is made
+available in higher phases.
+
+If provided is #<void>, then the module is visited but not instantiated
+(see [missing]), and the result is #<void>.
+
+                                        *dynamic-require-for-syntax*
+(dynamic-require-for-syntax  mod               ~
+                             provided         
+                            [fail-thunk]) -> any
+  mod : module-path? ~
+  provided : (or/c symbol? #f) ~
+  fail-thunk : (-> any) = (lambda () ....) ~
+
+Like dynamic-require, but in a phase that is 1 more than the namespace’s
+base phase.
+
+                                        *module-declared?*
+(module-declared? mod [load?]) -> boolean? ~
+  mod : (or/c module-path? module-path-index? ~
+              resolved-module-path?)
+  load? : any/c = #f ~
+
+Returns #t if the module indicated by mod is declared (but not
+necessarily instantiated or visited) in the current namespace, #f
+otherwise.
+
+If load? is #t and mod is not a resolved module path, the module is
+loaded in the process of resolving mod (as for dynamic-require and other
+functions). Checking for the declaration of a submodule does not trigger
+an exception if the submodule cannot be loaded because it does not
+exist, either within a root module that does exist or because the root
+module does not exist.
+
+                                        *module->language-info*
+(module->language-info mod [load?]) ~
+ -> (or/c #f (vector/c module-path? symbol? any/c))
+  mod : (or/c module-path? module-path-index? ~
+              resolved-module-path?)
+  load? : any/c = #f ~
+
+Returns information intended to reflect the “language” of the
+implementation of mod. If mod is a resolved module path or load? is #f,
+the module named by mod must be declared (but not necessarily
+instantiated or visited) in the current namespace; otherwise, mod may be
+loaded (as for dynamic-require and other functions). The information
+returned by module->language-info is the same as would have been
+returned by module-compiled-language-info applied to the module’s
+implementation as compiled code.
+
+                                        *module->imports*
+(module->imports mod) ~
+ -> (listof (cons/c (or/c exact-integer? #f)
+                    (listof module-path-index?)))
+  mod : (or/c module-path? module-path-index? ~
+              resolved-module-path?)
+
+Like module-compiled-imports, but produces the imports of mod, which
+must be declared (but not necessarily instantiated or visited) in the
+current namespace.
+
+                                        *module->exports*
+(module->exports mod) ~
+ -> (listof (cons/c (or/c exact-integer? #f) list?))
+    (listof (cons/c (or/c exact-integer? #f) list?))
+  mod : (or/c module-path? resolved-module-path?) ~
+
+Like module-compiled-exports, but produces the exports of mod, which
+must be declared (but not necessarily instantiated or visited) in the
+current namespace.
+
+                                        *module-predefined?*
+(module-predefined? mod) -> boolean? ~
+  mod : (or/c module-path? resolved-module-path?) ~
+
+Reports whether mod refers to a module that is predefined for the
+running Racket instance. Predefined modules always have a symbolic
+resolved module path, and they may be predefined always or specifically
+within a particular executable (such as one created by raco exe or
+create-embedding-executable).

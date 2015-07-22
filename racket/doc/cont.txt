@@ -1,0 +1,567 @@
+Continuations
+
++[missing] in [missing] introduces continuations.
+
+See [missing] and [missing] for general information about continuations.
+Racket’s support for prompts and composable continuations most closely
+resembles Dorai Sitaram’s % and fcontrol operator [Sitaram93].
+
+Racket installs a continuation barrier around evaluation in the
+following contexts, preventing full-continuation jumps into the
+evaluation context protected by the barrier:
+
+* applying an exception handler, an error escape handler, or an error
+  display handler (see [missing]);
+
+* applying a macro transformer (see [missing]), evaluating a
+  compile-time expression, or applying a module name resolver (see
+  [missing]);
+
+* applying a custom-port procedure (see [missing]), an event guard
+  procedure (see [missing]), or a parameter guard procedure (see
+  [missing]);
+
+* applying a security-guard procedure (see [missing]);
+
+* applying a will procedure (see [missing]); or
+
+* evaluating or loading code from the stand-alone Racket command line
+  (see [missing]).
+
+In addition, extensions of Racket may install barriers in additional
+contexts. Finally, call-with-continuation-barrier applies a thunk
+barrier between the application and the current continuation.
+
+                                        *call-with-continuation-prompt*
+(call-with-continuation-prompt  proc            ~
+                               [prompt-tag     
+                                handler]       
+                                arg ...)   -> any
+  proc : procedure? ~
+  prompt-tag : continuation-prompt-tag? ~
+             = (default-continuation-prompt-tag)
+  handler : (or/c procedure? #f) = #f ~
+  arg : any/c ~
+
+Applies proc to the given args with the current continuation extended by
+a prompt. The prompt is tagged by prompt-tag, which must be a result
+from either default-continuation-prompt-tag (the default) or
+make-continuation-prompt-tag. The result of proc is the result of the
+call-with-continuation-prompt call.
+
+The handler argument specifies a handler procedure to be called in tail
+position with respect to the call-with-continuation-prompt call when the
+installed prompt is the target of an abort-current-continuation call
+with prompt-tag; the remaining arguments of abort-current-continuation
+are supplied to the handler procedure. If handler is #f, the default
+handler accepts a single abort-thunk argument and calls
+(call-with-continuation-prompt abort-thunk prompt-tag #f); that is, the
+default handler re-installs the prompt and continues with a given thunk.
+
+                                        *abort-current-continuation*
+(abort-current-continuation prompt-tag      ~
+                            v ...)     -> any
+  prompt-tag : any/c ~
+  v : any/c ~
+
+Resets the current continuation to that of the nearest prompt tagged by
+prompt-tag in the current continuation; if no such prompt exists, the
+exn:fail:contract:continuation exception is raised. The vs are delivered
+as arguments to the target prompt’s handler procedure.
+
+The protocol for vs supplied to an abort is specific to the prompt-tag.
+When abort-current-continuation is used with
+(default-continuation-prompt-tag), generally, a single thunk should be
+supplied that is suitable for use with the default prompt handler.
+Similarly, when call-with-continuation-prompt is used with
+(default-continuation-prompt-tag), the associated handler should
+generally accept a single thunk argument.
+
+Each thread’s continuation starts with a prompt for
+(default-continuation-prompt-tag) that uses the default handler, which
+accepts a single thunk to apply (with the prompt intact).
+
+                                        *make-continuation-prompt-tag*
+(make-continuation-prompt-tag) -> continuation-prompt-tag? ~
+(make-continuation-prompt-tag sym) -> continuation-prompt-tag?
+  sym : symbol? ~
+
+Creates a prompt tag that is not equal? to the result of any other value
+(including prior or future results from make-continuation-prompt-tag).
+The optional sym argument, if supplied, is used when printing the prompt
+tag.
+
+                                        *default-continuation-prompt-tag*
+(default-continuation-prompt-tag) -> continuation-prompt-tag? ~
+
+Returns a constant prompt tag for which a prompt is installed at the
+start of every thread’s continuation; the handler for each thread’s
+initial prompt accepts any number of values and returns. The result of
+default-continuation-prompt-tag is the default tag for any procedure
+that accepts a prompt tag.
+
+                                        *call-with-current-continuation*
+(call-with-current-continuation  proc              ~
+                                [prompt-tag]) -> any
+  proc : (continuation? . -> . any) ~
+  prompt-tag : continuation-prompt-tag? ~
+             = (default-continuation-prompt-tag)
+
+Captures the current continuation up to the nearest prompt tagged by
+prompt-tag; if no such prompt exists, the exn:fail:contract:continuation
+exception is raised. The truncated continuation includes only
+continuation marks and dynamic-wind frames installed since the prompt.
+
+The capture continuation is delivered to proc, which is called in tail
+position with respect to the call-with-current-continuation call.
+
+If the continuation argument to proc is ever applied, then it removes
+the portion of the current continuation up to the nearest prompt tagged
+by prompt-tag (not including the prompt; if no such prompt exists, the
+exn:fail:contract:continuation exception is raised), or up to the
+nearest continuation frame (if any) shared by the current and captured
+continuations—whichever is first. While removing continuation frames,
+dynamic-wind post-thunks are executed. Finally, the (unshared portion of
+the) captured continuation is appended to the remaining continuation,
+applying dynamic-wind pre-thunks.
+
+The arguments supplied to an applied procedure become the result values
+for the restored continuation. In particular, if multiple arguments are
+supplied, then the continuation receives multiple results.
+
+If, at application time, a continuation barrier would be introduced by
+replacing the current continuation with the applied one, then the
+exn:fail:contract:continuation exception is raised.
+
+A continuation can be invoked from the thread (see [missing]) other than
+the one where it was captured.
+
+                                        *call/cc*
+(call/cc proc [prompt-tag]) -> any ~
+  proc : (continuation? . -> . any) ~
+  prompt-tag : continuation-prompt-tag? ~
+             = (default-continuation-prompt-tag)
+
+The call/cc binding is an alias for call-with-current-continuation.
+
+                                        *call-with-composable-continuation*
+(call-with-composable-continuation  proc              ~
+                                   [prompt-tag]) -> any
+  proc : (continuation? . -> . any) ~
+  prompt-tag : continuation-prompt-tag? ~
+             = (default-continuation-prompt-tag)
+
+Similar to call-with-current-continuation, but applying the resulting
+continuation procedure does not remove any portion of the current
+continuation. Instead, application always extends the current
+continuation with the captured continuation (without installing any
+prompts other than those captured in the continuation).
+
+When call-with-composable-continuation is called, if a continuation
+barrier appears in the continuation before the closest prompt tagged by
+prompt-tag, the exn:fail:contract:continuation exception is raised
+(because attempting to apply the continuation would always fail).
+
+                                        *call-with-escape-continuation*
+(call-with-escape-continuation proc) -> any ~
+  proc : (continuation? . -> . any) ~
+
+Like call-with-current-continuation, but proc is not called in tail
+position, and the continuation procedure supplied to proc can only be
+called during the dynamic extent of the call-with-escape-continuation
+call.
+
+Due to the limited applicability of its continuation,
+call-with-escape-continuation can be implemented more efficiently than
+call-with-current-continuation.
+
+A continuation obtained from call-with-escape-continuation is actually a
+kind of prompt. Escape continuations are provided mainly for backwards
+compatibility, since they pre-date general prompts in Racket, and
+because call/ec is often an easy replacement for call/cc to improve
+performance.
+
+                                        *call/ec*
+(call/ec proc) -> any ~
+  proc : (continuation? . -> . any) ~
+
+The call/ec binding is an alias for call-with-escape-continuation.
+
+                                        *let/cc*
+(let/cc k body ...+) ~
+
+Equivalent to (call/cc (lambda (k) body ...)).
+
+                                        *let/ec*
+(let/ec k body ...+) ~
+
+Equivalent to (call/ec (lambda (k) body ...)).
+
+                                        *call-with-continuation-barrier*
+(call-with-continuation-barrier thunk) -> any ~
+  thunk : (-> any) ~
+
+Applies thunk with a continuation barrier between the application and
+the current continuation. The results of thunk are the results of the
+call-with-continuation-barrier call.
+
+                                        *continuation-prompt-available?*
+(continuation-prompt-available?  prompt-tag      ~
+                                [cont])     -> any
+  prompt-tag : continuation-prompt-tag? ~
+  cont : continuation? = (call/cc values) ~
+
+Returns #t if cont, which must be a continuation, includes a prompt
+tagged by prompt-tag, #f otherwise.
+
+                                        *continuation?*
+(continuation? v) -> boolean? ~
+  v : any/c ~
+
+Return #t if v is a continuation as produced by
+call-with-current-continuation, call-with-composable-continuation, or
+call-with-escape-continuation, #f otherwise.
+
+                                        *continuation-prompt-tag?*
+(continuation-prompt-tag? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a continuation prompt tag as produced by
+default-continuation-prompt-tag or make-continuation-prompt-tag.
+
+                                        *dynamic-wind*
+(dynamic-wind pre-thunk        ~
+              value-thunk     
+              post-thunk) -> any
+  pre-thunk : (-> any) ~
+  value-thunk : (-> any) ~
+  post-thunk : (-> any) ~
+
+Applies its three thunk arguments in order.  The value of a dynamic-wind
+expression is the value returned by value-thunk. The pre-thunk procedure
+is invoked before calling value-thunk and post-thunk is invoked after
+value-thunk returns. The special properties of dynamic-wind are manifest
+when control jumps into or out of the value-thunk application (either
+due to a prompt abort or a continuation invocation): every time control
+jumps into the value-thunk application, pre-thunk is invoked, and every
+time control jumps out of value-thunk, post-thunk is invoked. (No
+special handling is performed for jumps into or out of the pre-thunk and
+post-thunk applications.)
+
+When dynamic-wind calls pre-thunk for normal evaluation of value-thunk,
+the continuation of the pre-thunk application calls value-thunk (with
+dynamic-wind’s special jump handling) and then post-thunk.  Similarly,
+the continuation of the post-thunk application returns the value of the
+preceding value-thunk application to the continuation of the entire
+dynamic-wind application.
+
+When pre-thunk is called due to a continuation jump, the continuation of
+pre-thunk
+
+* jumps to a more deeply nested pre-thunk, if any, or jumps to the
+  destination continuation; then
+
+* continues with the context of the pre-thunk’s dynamic-wind call.
+
+Normally, the second part of this continuation is never reached, due to
+a jump in the first part. However, the second part is relevant because
+it enables jumps to escape continuations that are contained in the
+context of the dynamic-wind call. Furthermore, it means that the
+continuation marks (see [missing]) and parameterization (see [missing])
+for pre-thunk correspond to those of the dynamic-wind call that
+installed pre-thunk. The pre-thunk call, however, is
+parameterize-breaked to disable breaks (see also [missing]).
+
+Similarly, when post-thunk is called due to a continuation jump, the
+continuation of post-thunk jumps to a less deeply nested post-thunk, if
+any, or jumps to a pre-thunk protecting the destination, if any, or
+jumps to the destination continuation, then continues from the
+post-thunk’s dynamic-wind application. As for pre-thunk, the
+parameterization of the original dynamic-wind call is restored for the
+call, and the call is parameterize-breaked to disable breaks.
+
+In both cases, the target for a jump is recomputed after each pre-thunk
+or post-thunk completes. When a prompt-delimited continuation (see
+[missing]) is captured in a post-thunk, it might be delimited and
+instantiated in such a way that the target of a jump turns out to be
+different when the continuation is applied than when the continuation
+was captured. There may even be no appropriate target, if a relevant
+prompt or escape continuation is not in the continuation after the
+restore; in that case, the first step in a pre-thunk or post-thunk’s
+continuation can raise an exception.
+
+Examples:
+  > (let ([v (let/ec out
+               (dynamic-wind
+                (lambda () (display "in "))
+                (lambda ()
+                  (display "pre ")
+                  (display (call/cc out))
+                  #f)
+                (lambda () (display "out "))))])
+      (when v (v "post ")))
+  in pre out in post out
+
+  > (let/ec k0
+      (let/ec k1
+        (dynamic-wind
+         void
+         (lambda () (k0 'cancel))
+         (lambda () (k1 'cancel-canceled)))))
+  'cancel-canceled
+  > (let* ([x (make-parameter 0)]
+           [l null]
+           [add (lambda (a b)
+                  (set! l (append l (list (cons a b)))))])
+      (let ([k (parameterize ([x 5])
+                 (dynamic-wind
+                     (lambda () (add 1 (x)))
+                     (lambda () (parameterize ([x 6])
+                                  (let ([k+e (let/cc k (cons k void))])
+                                    (add 2 (x))
+                                    ((cdr k+e))
+                                    (car k+e))))
+                     (lambda () (add 3 (x)))))])
+        (parameterize ([x 7])
+          (let/cc esc
+            (k (cons void esc)))))
+      l)
+  '((1 . 5) (2 . 6) (3 . 5) (1 . 5) (2 . 6) (3 . 5))
+
+1. Additional Control Operators
+
+ (require racket/control) package: base ~
+
+The bindings documented in this section are provided by the
+racket/control library, not racket/base or racket.
+
+The racket/control library provides various control operators from the
+research literature on higher-order control operators, plus a few extra
+convenience forms. These control operators are implemented in terms of
+call-with-continuation-prompt, call-with-composable-continuation, etc.,
+and they generally work sensibly together. Many are redundant; for
+example, reset and prompt are aliases.
+
+                                        *call/prompt*
+(call/prompt proc [prompt-tag handler] arg ...) -> any ~
+  proc : procedure? ~
+  prompt-tag : continuation-prompt-tag? ~
+             = (default-continuation-prompt-tag)
+  handler : (or/c procedure? #f) = #f ~
+  arg : any/c ~
+
+The call/prompt binding is an alias for call-with-continuation-prompt.
+
+                                        *abort/cc*
+(abort/cc prompt-tag v ...) -> any ~
+  prompt-tag : any/c ~
+  v : any/c ~
+
+The abort/cc binding is an alias for abort-current-continuation.
+
+                                        *call/comp*
+(call/comp proc [prompt-tag]) -> any ~
+  proc : (continuation? . -> . any) ~
+  prompt-tag : continuation-prompt-tag? ~
+             = (default-continuation-prompt-tag)
+
+The call/comp binding is an alias for call-with-composable-continuation.
+
+                                        *abort*
+(abort v ...) -> any ~
+  v : any/c ~
+
+Returns the vs to a prompt using the default continuation prompt tag and
+the default abort handler.
+
+That is, (abort v ...) is equivalent to
+
+  (abort-current-continuation
+   (default-continuation-prompt-tag)
+   (lambda () (values v ...)))
+
+Example:
+  > (prompt
+      (printf "start here\n")
+      (printf "answer is ~a\n" (+ 2 (abort 3))))
+  start here
+  3
+
+                                        *%*
+(% expr)
+(% expr handler-expr)
+(% expr handler-expr #:tag tag-expr) ~
+(fcontrol v #:tag prompt-tag) -> any ~
+  v : any/c ~
+  prompt-tag : (default-continuation-prompt-tag) ~
+
+Sitaram’s operators [Sitaram93].
+
+The essential reduction rules are:
+
+  (% val proc) => val
+  (% E[(fcontrol val)] proc) => (proc val (lambda (x) E[x]))
+    ; where E has no %
+
+When handler-expr is omitted, % is the same as prompt. If prompt-tag is
+provided, % uses specific prompt tags like prompt-at.
+
+Examples:
+  > (% (+ 2 (fcontrol 5))
+       (lambda (v k)
+         (k v)))
+  7
+  > (% (+ 2 (fcontrol 5))
+       (lambda (v k)
+         v))
+  5
+
+                                        *prompt*
+(prompt expr ...+) ~
+(control id expr ...+)
+
+Among the earliest operators for higher-order control [Felleisen88a,
+Felleisen88, Sitaram90].
+
+The essential reduction rules are:
+
+  (prompt val) => val
+  (prompt E[(control k expr)]) => (prompt ((lambda (k) expr)
+                                           (lambda (v) E[v])))
+    ; where E has no prompt
+
+Examples:
+  > (prompt
+      (+ 2 (control k (k 5))))
+  7
+  > (prompt
+      (+ 2 (control k 5)))
+  5
+  > (prompt
+      (+ 2 (control k (+ 1 (control k1 (k1 6))))))
+  7
+  > (prompt
+      (+ 2 (control k (+ 1 (control k1 (k 6))))))
+  8
+  > (prompt
+      (+ 2 (control k (control k1 (control k2 (k2 6))))))
+  6
+
+                                        *prompt-at*
+(prompt-at prompt-tag-expr expr ...+) ~
+(control-at prompt-tag-expr id expr ...+)
+
+Like prompt and control, but using specific prompt tags:
+
+  (prompt-at tag val) => val
+  (prompt-at tag E[(control-at tag k expr)]) => (prompt-at tag
+                                                 ((lambda (k) expr)
+                                                  (lambda (v) E[v])))
+    ; where E has no prompt-at for tag
+
+                                        *reset*
+(reset expr ...+) ~
+(shift id expr ...+)
+
+Danvy and Filinski’s operators [Danvy90].
+
+The essential reduction rules are:
+
+  (reset val) => val
+  (reset E[(shift k expr)]) => (reset ((lambda (k) expr)
+                                       (lambda (v) (reset E[v]))))
+    ; where E has no reset
+
+The reset and prompt forms are interchangeable.
+
+                                        *reset-at*
+(reset-at prompt-tag-expr expr ...+) ~
+(shift-at prompt-tag-expr identifier expr ...+)
+
+Like reset and shift, but using the specified prompt tags.
+
+                                        *prompt*
+(prompt0 expr ...+) ~
+(reset0 expr ...+)
+(control0 id expr ...+)
+(shift0 id expr ...+)
+
+Generalizations of prompt, etc. [Shan04].
+
+The essential reduction rules are:
+
+  (prompt0 val) => val
+  (prompt0 E[(control0 k expr)]) => ((lambda (k) expr)
+                                     (lambda (v) E[v]))
+  (reset0 val) => val
+  (reset0 E[(shift0 k expr)]) => ((lambda (k) expr)
+                                  (lambda (v) (reset0 E[v])))
+
+The reset0 and prompt0 forms are interchangeable. Furthermore, the
+following reductions apply:
+
+  (prompt E[(control0 k expr)]) => (prompt ((lambda (k) expr)
+                                            (lambda (v) E[v])))
+  (reset E[(shift0 k expr)]) => (reset ((lambda (k) expr)
+                                        (lambda (v) (reset0 E[v]))))
+  (prompt0 E[(control k expr)]) => (prompt0 ((lambda (k) expr)
+                                             (lambda (v) E[v])))
+  (reset0 E[(shift k expr)]) => (reset0 ((lambda (k) expr)
+                                         (lambda (v) (reset E[v]))))
+
+That is, both the prompt/reset and control/shift sites must agree for
+0-like behavior, otherwise the non-0 behavior applies.
+
+                                        *prompt*
+(prompt0-at prompt-tag-expr expr ...+) ~
+(reset0-at prompt-tag-expr expr ...+)
+(control0-at prompt-tag-expr id expr ...+)
+(shift0-at prompt-tag-expr id expr ...+)
+
+Variants of prompt0, etc., that accept a prompt tag.
+
+                                        *spawn*
+(spawn proc) -> any ~
+  proc : ((any/c . -> . any) . -> . any) ~
+
+The operators of Hieb and Dybvig [Hieb90].
+
+The essential reduction rules are:
+
+  (prompt-at tag obj) => obj
+  (spawn proc) => (prompt tag (proc (lambda (x) (abort tag x))))
+  (prompt-at tag E[(abort tag proc)])
+    => (proc (lambda (x) (prompt-at tag E[x])))
+    ; where E has no prompt-at for tag
+
+                                        *splitter*
+(splitter proc) -> any ~
+  proc : (((-> any) . -> . any) ~
+          ((continuation? . -> . any) . -> . any)
+          . -> . any)
+
+The operator of Queinnec and Serpette [Queinnec91].
+
+The essential reduction rules are:
+
+  (splitter proc) => (prompt-at tag
+                      (proc (lambda (thunk)
+                                (abort tag thunk))
+                              (lambda (proc)
+                                (control0-at tag k (proc k)))))
+  (prompt-at tag E[(abort tag thunk)]) => (thunk)
+    ; where E has no prompt-at for tag
+  (prompt-at tag E[(control0-at tag k expr)]) => ((lambda (k) expr)
+                                                  (lambda (x) E[x]))
+    ; where E has no prompt-at for tag
+
+                                        *new-prompt*
+(new-prompt) -> any ~
+(set prompt-expr expr ...+)
+(cupto prompt-expr id expr ...+)
+
+The operators of Gunter et al. [Gunter95].
+
+In this library, new-prompt is an alias for
+make-continuation-prompt-tag, set is an alias for prompt0-at, and cupto
+is an alias for control0-at.

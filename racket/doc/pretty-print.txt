@@ -1,0 +1,403 @@
+Pretty Printing
+
+ (require racket/pretty) package: base ~
+
+The bindings documented in this section are provided by the
+racket/pretty and racket libraries, but not racket/base.
+
+                                        *pretty-print*
+(pretty-print v [port quote-depth]) -> void? ~
+  v : any/c ~
+  port : output-port? = (current-output-port) ~
+  quote-depth : (or/c 0 1) = 0 ~
+
+Pretty-prints the value v using the same printed form as the default
+print mode, but with newlines and whitespace inserted to avoid lines
+longer than (pretty-print-columns), as controlled by
+(pretty-print-current-style-table). The printed form ends in a newline,
+unless the pretty-print-columns parameter is set to 'infinity. When port
+has line counting enabled (see [missing]), then printing is sensitive to
+the column when printing starts—both for determining an initial line
+break and indenting subsequent lines.
+
+In addition to the parameters defined in this section, pretty-print
+conforms to the print-graph, print-struct, print-hash-table,
+print-vector-length, print-box, and print-as-expression parameters.
+
+The pretty printer detects structures that have the prop:custom-write
+property and calls the corresponding custom-write procedure. The
+custom-write procedure can check the parameter pretty-printing to
+cooperate with the pretty-printer. Recursive printing to the port
+automatically uses pretty printing, but if the structure has multiple
+recursively printed sub-expressions, a custom-write procedure may need
+to cooperate more to insert explicit newlines. Use port-next-location to
+determine the current output column, use pretty-print-columns to
+determine the target printing width, and use pretty-print-newline to
+insert a newline (so that the function in the pretty-print-print-line
+parameter can be called appropriately). Use
+make-tentative-pretty-print-output-port to obtain a port for tentative
+recursive prints (e.g., to check the length of the output).
+
+                                        *pretty-write*
+(pretty-write v [port]) -> void? ~
+  v : any/c ~
+  port : output-port? = (current-output-port) ~
+
+Same as pretty-print, but v is printed like write instead of like print.
+
+                                        *pretty-display*
+(pretty-display v [port]) -> void? ~
+  v : any/c ~
+  port : output-port? = (current-output-port) ~
+
+Same as pretty-print, but v is printed like display instead of like
+print.
+
+                                        *pretty-format*
+(pretty-format v [columns]) -> string? ~
+  v : any/c ~
+  columns : exact-nonnegative-integer? = (pretty-print-columns) ~
+
+Like pretty-print, except that it returns a string containing the
+pretty-printed value, rather than sending the output to a port.
+
+The optional argument columns argument is used to parameterize
+pretty-print-columns.
+
+                                        *pretty-print-handler*
+(pretty-print-handler v) -> void? ~
+  v : any/c ~
+
+Pretty-prints v if v is not #<void>, or prints nothing if v is #<void>.
+Pass this procedure to current-print to install the pretty printer into
+the REPL run by read-eval-print-loop.
+
+1. Basic Pretty-Print Options
+
+                                        *pretty-print-columns*
+(pretty-print-columns) ~
+ -> (or/c exact-positive-integer? 'infinity)
+(pretty-print-columns width) -> void?
+  width : (or/c exact-positive-integer? 'infinity) ~
+
+A parameter that determines the default width for pretty printing.
+
+If the display width is 'infinity, then pretty-printed output is never
+broken into lines, and a newline is not added to the end of the output.
+
+                                        *pretty-print-depth*
+(pretty-print-depth) -> (or/c exact-nonnegative-integer? #f) ~
+(pretty-print-depth depth) -> void?
+  depth : (or/c exact-nonnegative-integer? #f) ~
+
+Parameter that controls the default depth for recursive pretty printing.
+Printing to depth means that elements nested more deeply than depth are
+replaced with “...”; in particular, a depth of 0 indicates that only
+simple values are printed. A depth of #f (the default) allows printing
+to arbitrary depths.
+
+                                        *pretty-print-exact-as-decimal*
+(pretty-print-exact-as-decimal) -> boolean? ~
+(pretty-print-exact-as-decimal as-decimal?) -> void?
+  as-decimal? : any/c ~
+
+A parameter that determines how exact non-integers are printed.  If the
+parameter’s value is #t, then an exact non-integer with a decimal
+representation is printed as a decimal number instead of a fraction. The
+initial value is #f.
+
+                                        *pretty-print-.-symbol-without-bars*
+(pretty-print-.-symbol-without-bars) -> boolean? ~
+(pretty-print-.-symbol-without-bars on?) -> void?
+  on? : any/c ~
+
+A parameter that controls the printing of the symbol whose print name is
+just a period. If set to a true value, then such a symbol is printed as
+only the period.  If set to a false value, it is printed as a period
+with vertical bars surrounding it.
+
+                                        *pretty-print-show-inexactness*
+(pretty-print-show-inexactness) -> boolean? ~
+(pretty-print-show-inexactness show?) -> void?
+  show? : any/c ~
+
+A parameter that determines how inexact numbers are printed.  If the
+parameter’s value is #t, then inexact numbers are always printed with a
+leading #i. The initial value is #f.
+
+2. Per-Symbol Special Printing
+
+                                        *pretty-print-abbreviate-read-macros*
+(pretty-print-abbreviate-read-macros) -> boolean? ~
+(pretty-print-abbreviate-read-macros abbrev?) -> void?
+  abbrev? : any/c ~
+
+A parameter that controls whether or not quote, unquote,
+unquote-splicing, etc., are abbreviated with ', ,, ,@, etc. By default,
+the abbreviations are enabled.
+
+See also pretty-print-remap-stylable.
+
+                                        *pretty-print-style-table?*
+(pretty-print-style-table? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a style table for use with
+pretty-print-current-style-table, #f otherwise.
+
+                                        *pretty-print-current-style-table*
+(pretty-print-current-style-table) -> pretty-print-style-table? ~
+(pretty-print-current-style-table style-table) -> void?
+  style-table : pretty-print-style-table? ~
+
+A parameter that holds a table of style mappings. See
+pretty-print-extend-style-table.
+
+                                        *pretty-print-extend-style-table*
+(pretty-print-extend-style-table style-table        ~
+                                 symbol-list       
+                                 like-symbol-list) 
+ -> pretty-print-style-table?
+  style-table : pretty-print-style-table? ~
+  symbol-list : (listof symbol?) ~
+  like-symbol-list : (listof symbol?) ~
+
+Creates a new style table by extending an existing style-table, so that
+the style mapping for each symbol of like-symbol-list in the original
+table is used for the corresponding symbol of symbol-list in the new
+table. The symbol-list and like-symbol-list lists must have the same
+length. The style-table argument can be #f, in which case the default
+mappings are used from the original table (see below).
+
+The style mapping for a symbol controls the way that whitespace is
+inserted when printing a list that starts with the symbol. In the
+absence of any mapping, when a list is broken across multiple lines,
+each element of the list is printed on its own line, each with the same
+indentation.
+
+The default style mapping includes mappings for the following symbols,
+so that the output follows popular code-formatting rules:
+
+  'lambda 'case-lambda
+  'define 'define-macro 'define-syntax
+  'let 'letrec 'let*
+  'let-syntax 'letrec-syntax
+  'let-values 'letrec-values 'let*-values
+  'let-syntaxes 'letrec-syntaxes
+  'begin 'begin0 'do
+  'if 'set! 'set!-values
+  'unless 'when
+  'cond 'case 'and 'or
+  'module
+  'syntax-rules 'syntax-case 'letrec-syntaxes+values
+  'import 'export 'link
+  'require 'require-for-syntax 'require-for-template 'provide
+  'public 'private 'override 'rename 'inherit 'field 'init
+  'shared 'send 'class 'instantiate 'make-object
+
+                                        *pretty-print-remap-stylable*
+(pretty-print-remap-stylable) ~
+ -> (any/c . -> . (or/c symbol? #f))
+(pretty-print-remap-stylable proc) -> void?
+  proc : (any/c . -> . (or/c symbol? #f)) ~
+
+A parameter that controls remapping for styles and for the determination
+of the reader shorthands.
+
+This procedure is called with each sub-expression that appears as the
+first element in a sequence. If it returns a symbol, the style table is
+used, as if that symbol were at the head of the sequence. If it returns
+#f, the style table is treated normally. Similarly, when determining
+whether to abbreviate reader macros, this parameter is consulted.
+
+3. Line-Output Hook
+
+                                        *pretty-print-newline*
+(pretty-print-newline port width) -> void? ~
+  port : output-port? ~
+  width : exact-nonnegative-integer? ~
+
+Calls the procedure associated with the pretty-print-print-line
+parameter to print a newline to port, if port is the output port that is
+redirected to the original output port for printing, otherwise a plain
+newline is printed to port. The width argument should be the target
+column width, typically obtained from pretty-print-columns.
+
+                                        *pretty-print-print-line*
+(pretty-print-print-line) ~
+ -> ((or/c exact-nonnegative-integer? #f)
+     output-port?
+     exact-nonnegative-integer?
+     (or/c exact-nonnegative-integer? 'infinity)
+     . -> .
+     exact-nonnegative-integer?)
+(pretty-print-print-line proc) -> void?
+  proc : ((or/c exact-nonnegative-integer? #f) ~
+          output-port?
+          exact-nonnegative-integer?
+          (or/c exact-nonnegative-integer? 'infinity)
+          . -> .
+          exact-nonnegative-integer?)
+
+A parameter that determines a procedure for printing the newline
+separator between lines of a pretty-printed value. The procedure is
+called with four arguments: a new line number, an output port, the old
+line’s length, and the number of destination columns. The return value
+from proc is the number of extra characters it printed at the beginning
+of the new line.
+
+The proc procedure is called before any characters are printed with 0 as
+the line number and 0 as the old line length; proc is called after the
+last character of a value has been printed with #f as the line number
+and with the length of the last line. Whenever the pretty-printer starts
+a new line, proc is called with the new line’s number (where the first
+new line is numbered 1) and the just-finished line’s length. The
+destination-columns argument to proc is always the total width of the
+destination printing area, or 'infinity if pretty-printed values are not
+broken into lines.
+
+The default proc procedure prints a newline whenever the line number is
+not 0 and the column count is not 'infinity, always returning 0. A
+custom proc procedure can be used to print extra text before each line
+of pretty-printed output; the number of characters printed before each
+line should be returned by proc so that the next line break can be
+chosen correctly.
+
+The destination port supplied to proc is generally not the port supplied
+to pretty-print or pretty-display (or the current output port), but
+output to this port is ultimately redirected to the port supplied to
+pretty-print or pretty-display.
+
+4. Value Output Hook
+
+                                        *pretty-print-size-hook*
+(pretty-print-size-hook) ~
+ -> (any/c boolean? output-port?
+     . -> .
+     (or/c #f exact-nonnegative-integer?))
+(pretty-print-size-hook proc) -> void?
+  proc : (any/c boolean? output-port? ~
+          . -> .
+          (or/c #f exact-nonnegative-integer?))
+
+A parameter that determines a sizing hook for pretty-printing.
+
+The sizing hook is applied to each value to be printed. If the hook
+returns #f, then printing is handled internally by the pretty-printer.
+Otherwise, the value should be an integer specifying the length of the
+printed value in characters; the print hook will be called to actually
+print the value (see pretty-print-print-hook).
+
+The sizing hook receives three arguments. The first argument is the
+value to print.  The second argument is a boolean: #t for printing like
+display and #f for printing like write. The third argument is the
+destination port; the port is the one supplied to pretty-print or
+pretty-display (or the current output port).  The sizing hook may be
+applied to a single value multiple times during pretty-printing.
+
+                                        *pretty-print-print-hook*
+(pretty-print-print-hook) ~
+ -> (any/c boolean? output-port? . -> . void?)
+(pretty-print-print-hook proc) -> void?
+  proc : (any/c boolean? output-port? . -> . void?) ~
+
+A parameter that determines a print hook for pretty-printing.  The
+print-hook procedure is applied to a value for printing when the sizing
+hook (see pretty-print-size-hook) returns an integer size for the value.
+
+The print hook receives three arguments. The first argument is the value
+to print.  The second argument is a boolean: #t for printing like
+display and #f for printing like write. The third argument is the
+destination port; this port is generally not the port supplied to
+pretty-print or pretty-display (or the current output port), but output
+to this port is ultimately redirected to the port supplied to
+pretty-print or pretty-display.
+
+                                        *pretty-print-pre-print-hook*
+(pretty-print-pre-print-hook) ~
+ -> (any/c output-port? . -> . void)
+(pretty-print-pre-print-hook proc) -> void?
+  proc : (any/c output-port? . -> . void) ~
+
+A parameter that determines a hook procedure to be called just before an
+object is printed. The hook receives two arguments: the object and the
+output port. The port is the one supplied to pretty-print or
+pretty-display (or the current output port).
+
+                                        *pretty-print-post-print-hook*
+(pretty-print-post-print-hook) ~
+ -> (any/c output-port? . -> . void)
+(pretty-print-post-print-hook proc) -> void?
+  proc : (any/c output-port? . -> . void) ~
+
+A parameter that determines a hook procedure to be called just after an
+object is printed. The hook receives two arguments: the object and the
+output port. The port is the one supplied to pretty-print or
+pretty-display (or the current output port).
+
+5. Additional Custom-Output Support
+
+                                        *pretty-printing*
+(pretty-printing) -> boolean? ~
+(pretty-printing on?) -> void?
+  on? : any/c ~
+
+A parameter that is set to #t when the pretty printer calls a
+custom-write procedure (see prop:custom-write) for output in a mode that
+supports line breaks.  When pretty printer calls a custom-write
+procedure merely to detect cycles or to try to print on a single line,
+it sets this parameter to #f.
+
+                                        *make-tentative-pretty-print-output-port*
+(make-tentative-pretty-print-output-port out              ~
+                                         width           
+                                         overflow-thunk) 
+ -> output-port?
+  out : output-port? ~
+  width : exact-nonnegative-integer? ~
+  overflow-thunk : (-> any) ~
+
+Produces an output port that is suitable for recursive pretty printing
+without actually producing output. Use such a port to tentatively print
+when proper output depends on the size of recursive prints. After
+printing, determine the size of the tentative output using
+file-position.
+
+The out argument should be a pretty-printing port, such as the one
+supplied to a custom-write procedure when pretty-printing is set to
+true, or another tentative output port. The width argument should be a
+target column width, usually obtained from pretty-print-columns,
+possibly decremented to leave room for a terminator. The overflow-thunk
+procedure is called if more than width items are printed to the port or
+if a newline is printed to the port via pretty-print-newline; it can
+escape from the recursive print through a continuation as a shortcut,
+but overflow-thunk can also return, in which case it is called every
+time afterward that additional output is written to the port.
+
+After tentative printing, either accept the result with
+tentative-pretty-print-port-transfer or reject it with
+tentative-pretty-print-port-cancel. Failure to accept or cancel properly
+interferes with graph-structure printing, calls to hook procedures, etc.
+Explicitly cancel the tentative print even when overflow-thunk escapes
+from a recursive print.
+
+                                        *tentative-pretty-print-port-transfer*
+(tentative-pretty-print-port-transfer tentative-out      ~
+                                      orig-out)     -> void?
+  tentative-out : output-port? ~
+  orig-out : output-port? ~
+
+Causes the data written to tentative-out to be transferred as if written
+to orig-out. The tentative-out argument should be a port produced by
+make-tentative-pretty-print-output-port, and orig-out should be either a
+pretty-printing port (provided to a custom-write procedure) or another
+tentative output port.
+
+                                        *tentative-pretty-print-port-cancel*
+(tentative-pretty-print-port-cancel tentative-out) -> void? ~
+  tentative-out : output-port? ~
+
+Cancels the content of tentative-out, which was produced by
+make-tentative-pretty-print-output-port. The main effect of canceling is
+that graph-reference definitions are undone, so that a future print of a
+graph-referenced object includes the defining #>n<=.

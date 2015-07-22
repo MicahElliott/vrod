@@ -1,0 +1,1193 @@
+Running Racket
+
+    1 Running Racket or GRacket
+      1.1 Initialization
+      1.2 Exit Status
+      1.3 Init Libraries
+      1.4 Command Line
+      1.5 Language Run-Time Configuration
+
+    2 Libraries and Collections
+      2.1 Collection Search Configuration
+      2.2 Collection Links
+      2.3 Collection Paths and Parameters
+
+    3 Interactive Help
+
+    4 Interactive Module Loading
+      4.1 Entering Modules
+      4.2 Loading and Reloading Modules
+
+    5 Debugging
+      5.1 Tracing
+
+    6 Kernel Forms and Functions
+
+1. Running Racket or GRacket
+
+The core Racket run-time system is available in two main variants:
+
+* Racket, which provides the primitives libraries on which racket/base
+  is implemented. On Unix and Mac OS X, the executable is called racket.
+  On Windows, the executable is called Racket.exe.
+
+* GRacket, which is a GUI variant of racket to the degree that the
+  system distinguishes them. On Unix, the executable is called gracket,
+  and single-instance flags and X11-related flags are handled and
+  communicated specially to the racket/gui/base library. On Windows, the
+  executable is called GRacket.exe, and it is a GUI application (as
+  opposed to a console application) that implements single-instance
+  support. On Mac OS X, the gracket script launches GRacket.app.
+
+1.1. Initialization
+
+On start-up, the top-level environment contains no bindings—not even
+#%app for function application. Primitive modules with names that start
+with #% are defined, but they are not meant for direct use, and the set
+of such modules can change.  For example, the '#%kernel module is
+eventually used to bootstrap the implementation of racket/base.
+
+The first action of Racket or GRacket is to initialize
+current-library-collection-paths to the result of
+(find-library-collection-paths pre-extras extras), where pre-extras is
+normally null and extras are extra directory paths provided in order in
+the command line with -S/--search. An executable created from the Racket
+or GRacket executable can embed paths used as pre-extras.
+
+Racket and GRacket next require racket/init and racket/gui/init,
+respectively, but only if the command line does not specify a require
+flag (-t/--require, -l/--lib, or -u/--require-script) before any eval,
+load, or read-eval-print-loop flag (-e/--eval, -f/--load, -r/--script,
+-m/--main, or -i/--repl). The initialization library can be changed with
+the -I configuration option. The configure-runtime submodule of the
+initialization library or the 'configure-runtime property of the
+initialization library’s language is used before the library is
+instantiated; see Language Run-Time Configuration.
+
+After potentially loading the initialization module, expression evals,
+files loads, and module requires are executed in the order that they are
+provided on the command line. If any raises an uncaught exception, then
+the remaining evals, loads, and requires are skipped. If the first
+require precedes any eval or load so that the initialization library is
+skipped, then the configure-runtime submodule of the required module or
+the 'configure-runtime property of the required module’s library
+language is used before the module is instantiated; see Language
+Run-Time Configuration.
+
+After running all command-line expressions, files, and modules, Racket
+or GRacket then starts a read-eval-print loop for interactive evaluation
+if no command line flags are provided other than configuration options.
+If any command-line argument is provided that is not a configuration
+option, then the read-eval-print-loop is not started, unless the
+-i/--repl flag is provided on the command line to specifically re-enable
+it. In addition, just before the command line is started, Racket loads
+the file (find-system-path 'init-file) and GRacket loads the file
+(find-graphical-system-path 'init-file) is loaded, unless the
+-q/--no-init-file flag is specified on the command line.
+
+Finally, before Racket or GRacket exits, it calls the procedure that is
+the current value of executable-yield-handler in the main thread, unless
+the -V/--no-yield command-line flag is specified. Requiring
+racket/gui/base sets this parameter call (racket 'yield).
+
+1.2. Exit Status
+
+The default exit status for a Racket or GRacket process is non-zero if
+an error occurs during a command-line eval (via -e, etc.), load (via -f,
+-r, etc.), or require (via --l, -t, etc.), but only when no
+read-eval-print loop is started. Otherwise, the default exit status is
+0.
+
+In all cases, a call to exit (when the default exit handler is in place)
+can end the process with a specific status value.
+
+1.3. Init Libraries
+
+ (require racket/init) package: base ~
+
+The racket/init library is the default start-up library for Racket. It
+re-exports the racket, racket/enter and racket/help libraries, and it
+sets current-print to use pretty-print.
+
+ (require racket/gui/init) package: gui-lib ~
+
+The racket/gui/init library is the default start-up library for GRacket.
+It re-exports the racket/init and racket/gui/base libraries, and it sets
+current-load to use text-editor-load-handler.
+
+ (require racket/language-info) package: base ~
+
+The racket/language-info library provides a get-info function that takes
+any value and returns another function; the returned function takes a
+key value and a default value, and it returns '(#(racket/runtime-config
+configure #f)) if the key is 'configure-runtime or the default value
+otherwise.
+
++See also [missing] in [missing].
+
+The vector '#(racket/language-info get-info #f) is suitable for
+attaching to a module as its language info to get the same language
+information as the racket/base language.
+
+ (require racket/runtime-config) package: base ~
+
+The racket/runtime-config library provides a configure function that
+takes any value and sets print-as-expression to #t.
+
+The vector #(racket/runtime-config configure #f) is suitable as a member
+of a list of runtime-configuration specification (as returned by a
+module’s language-information function for the key 'configure-runtime)
+to obtain the same runtime configuration as for the racket/base
+language.
+
+1.4. Command Line
+
+The Racket and GRacket executables recognize the following command-line
+flags:
+
+* File and expression options:
+
+  * -e >expr< or --eval >expr< : evals >expr<. The results of the
+    evaluation are printed via current-print.
+
+  * -f >file< or --load >file< : loads >file<; if >file< is "-", then
+    expressions are read and evaluated from standard input.
+
+  * -t >file< or --require >file< : requires >file<, and then requires
+    (submod (file ">file<") main) if available.
+
+  * -l >path< or --lib >path< : requires (lib ">path<"), and then
+    requires (submod (lib ">path<") main) if available.
+
+  * -p >package< : requires (planet ">package<"), and then  requires
+    (submod (planet ">package<") main) if available.
+
+  * -r >file< or --script  >file< : loads >file< Despite its name,
+    --script is not usually used for Unix scripts. See [missing] for
+    more information on scripts.  as a script. This flag is like -t
+    >file< plus  -N >file< to set the program name and --  to cause all
+    further command-line elements to be treated as  non-flag arguments.
+
+  * -u >file< or --require-script >file< : requires >file< as a script;
+    This flag is like -t >file< plus -N >file< to set the program name
+    and -- to cause all further command-line elements to be treated as
+    non-flag arguments.
+
+  * -k >n< >m< >p< : Loads code embedded in the executable from file
+    position >n< to >m< and from >m< to >p<. (On Mac OS X, >n<, >m<, and
+    >p< are relative to a __PLTSCHEME segment in the executable.) The
+    first range is loaded in every new place, and any modules declared
+    in that range are considered predefined in the sense of
+    module-predefined?. This option is normally embedded in a
+    stand-alone binary that also embeds Racket code.
+
+  * -m or --main : Evaluates a call to main as bound in the top-level
+    environment. All of the command-line arguments that are not
+    processed as options (i.e., the arguments put into
+    current-command-line-arguments) are passed as arguments to main. The
+    results of the call are printed via current-print.
+
+    The call to main is constructed as an expression (main arg-str ...)
+    where the lexical context of the expression gives #%app and #%datum
+    bindings as #%plain-app and #%datum, but the lexical context of main
+    is the top-level environment.
+
+* Interaction options:
+
+  * -i or --repl : Runs an interactive read-eval-print loop, using
+    either read-eval-print-loop (Racket) or
+    graphical-read-eval-print-loop (GRacket) after showing (banner) and
+    loading (find-system-path 'init-file). In the case of Racket,
+    (read-eval-print-loop) is followed by (newline). For GRacket, supply
+    the -z/--text-repl configuration option to use read-eval-print-loop
+    (and newline) instead of graphical-read-eval-print-loop.
+
+  * -n or --no-lib : Skips requiring the initialization library (i.e.,
+    racket/init or racket/gui/init, unless it is changed with the -I
+    flag) when not otherwise disabled.
+
+  * -v or --version : Shows (banner).
+
+  * -K or --back : GRacket, Mac OS X only; leave application in the
+    background.
+
+  * -V --no-yield : Skips final executable-yield-handler action, which
+    normally waits until all frames are closed, etc. in the main
+    eventspace before exiting for programs that use racket/gui/base.
+
+* Configuration options:
+
+  * -c or --no-compiled : Disables loading of compiled byte-code ".zo"
+    files, by initializing current-compiled-file-paths to null. Use
+    judiciously: this effectively ignores the content of all "compiled"
+    subdirectories, so that any used modules are compiled on the
+    fly—even racket/base and its dependencies—which leads to
+    prohibitively expensive run times.
+
+  * -q or --no-init-file : Skips loading (find-system-path 'init-file)
+    for -i/--repl.
+
+  * -z or --text-repl : GRacket only; changes -i/--repl to use
+    textual-read-eval-print-loop instead of
+    graphical-read-eval-print-loop.
+
+  * -I >path< : Sets (lib ">path<") as the path to require to initialize
+    the namespace, unless namespace initialization is disabled. Using
+    this flag can effectively set the language for the read-eval-print
+    loop and other top-level evaluation.
+
+  * -X >dir< or --collects >dir< : Sets >dir< as the path to the main
+    collection of libraries by making (find-system-path 'collects-dir)
+    produce >dir<. If >dir< is an empty string, then (find-system-path
+    'collects-dir) returns ".", but current-library-collection-paths is
+    initialized to the empty list, and use-collection-link-paths is
+    initialized to #f.
+
+  * -S >dir< or --search >dir< : Adds >dir< to the default library
+    collection search path after the main collection directory. If the
+    -S/--dir flag is supplied multiple times, the search order is as
+    supplied.
+
+  * -R >paths< or --compiled >paths< : Sets the initial value of the
+    current-compiled-file-roots parameter, overriding any
+    PLTCOMPILEDROOTS setting. The >paths< argument is parsed in the same
+    way as PLTCOMPILEDROOTS (see current-compiled-file-roots).
+
+  * -G >dir< or --config >dir< : Sets the directory that is returned by
+    (find-system-path 'config-dir).
+
+  * -A >dir< or --addon >dir< : Sets the directory that is returned by
+    (find-system-path 'addon-dir).
+
+  * -U or --no-user-path : Omits user-specific paths in the search for
+    collections, C libraries, etc. by initializing the
+    use-user-specific-search-paths parameter to #f.
+
+  * -N >file< or --name >file< : sets the name of the executable as
+    reported by (find-system-path 'run-file) to >file<.
+
+  * -J >name< or --wm-class >name< : GRacket, Unix only; sets the
+    WM_CLASS program class to >name< (while the WM_CLASS program name is
+    derived from the executable name or a -N/--name argument).
+
+  * -j or --no-jit : Disables the native-code just-in-time compiler by
+    setting the eval-jit-enabled parameter to #f.
+
+  * -d or --no-delay : Disables on-demand parsing of compiled code and
+    syntax objects by setting the read-on-demand-source parameter to #f.
+
+  * -b or --binary : Requests binary mode, instead of text mode, for the
+    process’s input, out, and error ports. This flag currently has no
+    effect, because binary mode is always used.
+
+  * -W >levels< or --warn >levels< : Sets the logging level for writing
+    events to the original error port. The possible >level< values are
+    the same as for the PLTSTDERR environment variable. See [missing]
+    for more information.
+
+  * -L >levels< or --syslog >levels< : Sets the logging level for
+    writing events to the system log. The possible >level< values are
+    the same as for the PLTSYSLOG environment variable. See [missing]
+    for more information.
+
+* Meta options:
+
+  * -- : No argument following this flag is itself used as a flag.
+
+  * -h or --help : Shows information about the command-line flags and
+    start-up process and exits, ignoring all other flags.
+
+If at least one command-line argument is provided, and if the first one
+after any configuration option is not a flag, then a -u/--require-script
+flag is implicitly added before the first non-flag argument.
+
+If no command-line arguments are supplied other than configuration
+options, then the -i/--repl flag is effectively added.
+
+For GRacket on Unix, the follow flags are recognized when they appear at
+the beginning of the command line, and they count as configuration
+options (i.e., they do not disable the read-eval-print loop or prevent
+the insertion of -u/--require-script):
+
+* -display >display< : Sets the X11 display to use.
+
+* -geometry >arg<, -bg >arg<, -background >arg<, -fg >arg<, -foreground
+  >arg<, -fn >arg<, -font >arg<, -iconic, -name >arg<, -rv, -reverse,
+  +rv, -selectionTimeout >arg<, -synchronous, -title >arg<, -xnllanguage
+  >arg<, or -xrm >arg< : Standard X11 arguments that are mostly ignored
+  but accepted for compatibility with other X11 programs. The
+  -synchronous flag behaves in the usual way.
+
+* -singleInstance : If an existing GRacket is already running on the
+  same X11 display, if it was started on a machine with the same
+  hostname, and if it was started with the same name as reported by
+  (find-system-path 'run-file)—possibly set with the -N/--name
+  command-line argument—then all non-option command-line arguments are
+  treated as filenames and sent to the existing GRacket instance via the
+  application file handler (see application-file-handler).
+
+Similarly, on Mac OS X, a leading switch starting with -psn_ is treated
+as a special configuration option. It indicates that Finder started the
+application, so the current input, output, and error output are
+redirected to a GUI window.
+
+Multiple single-letter switches (the ones preceded by a single -) can be
+collapsed into a single switch by concatenating the letters, as long as
+the first switch is not --. The arguments for each switch are placed
+after the collapsed switches (in the order of the switches). For
+example,
+
+  -ifve >file< >expr<
+
+and
+
+  -i -f >file< -v -e >expr<
+
+are equivalent. If a collapsed -- appears before other collapsed
+switches in the same collapsed set, it is implicitly moved to the end of
+the collapsed set.
+
+Extra arguments following the last option are available from the
+current-command-line-arguments parameter.
+
+1.5. Language Run-Time Configuration
+
++See also [missing] in [missing].
+
+A module can have a configure-runtime submodule that is dynamic-required
+before the module itself when a module is the main module of a program.
+Normally, a configure-runtime submodule is added to a module by the
+module’s language (i.e., by the #%module-begin form among a module’s
+initial bindings).
+
+Alternatively or in addition, an older protocol is in place. When a
+module is implemented using #lang, the language after #lang can specify
+configuration actions to perform when a module using the language is the
+main module of a program. The language specifies run-time configuration
+by
+
+* attaching a 'module-language syntax property to the module as read
+  from its source (see module and module-compiled-language-info);
+
+* having the function indicated by the 'module-language syntax property
+  recognize the 'configure-runtime key, for which it returns a list of
+  vectors; each vector must have the form (vector mp name val) where mp
+  is a module path, name is a symbol, and val is an arbitrary value; and
+
+* having each function called as ((dynamic-require mp name) val)
+  configure the run-time environment, typically by setting parameters
+  such as current-print.
+
+A 'configure-runtime query returns a list of vectors, instead of
+directly configuring the environment, so that the indicated modules to
+be bundled with a program when creating a stand-alone executable; see
+[missing] in [missing].
+
+For information on defining a new #lang language, see
+syntax/module-reader.
+
+2. Libraries and Collections
+
+A library is module declaration for use by multiple programs. Racket
+further groups libraries into collections. Typically, collections are
+added via packages (see [missing]); the package manager works outside of
+the Racket core, but it configures the core run-time system through
+collection links files.
+
+Libraries in collections are referenced through lib paths (see require)
+or symbolic shorthands. For example, the following module uses the
+"getinfo.rkt" library module from the "setup" collection, and the
+"cards.rkt" library module from the "games" collection’s "cards"
+subcollection:
+
+  #lang racket
+  (require (lib "setup/getinfo.rkt")
+           (lib "games/cards/cards.rkt"))
+  ....
+
+This example is more compactly and more commonly written using symbolic
+shorthands:
+
+  #lang racket
+  (require setup/getinfo
+           games/cards/cards)
+  ....
+
+When an identifier id is used in a require form, it is converted to (lib
+rel-string) where rel-string is the string form of id.
+
+A rel-string in (lib rel-string) consists of one or more path elements
+that name collections, and then a final path element that names a
+library file; the path elements are separated by /. If rel-string
+contains no /s, then /main.rkt is implicitly appended to the path. If
+rel-string contains / but does not end with a file suffix, then .rkt is
+implicitly appended to the path.
+
+Libraries also can be distributed via PLaneT packages. Such libraries
+are referenced through a planet module path (see require) and are
+downloaded by Racket on demand, instead of referenced through
+collections.
+
+The translation of a planet or lib path to a module declaration is
+determined by the module name resolver, as specified by the
+current-module-name-resolver parameter.
+
+2.1. Collection Search Configuration
+
+For the default module name resolver, the search path for collections is
+determined by the current-library-collection-links parameter and the
+current-library-collection-paths parameter:
+
+* The most primitive collection-based modules are located in "collects"
+  directory relative to the Racket executable. Libraries for a
+  collection are grouped within a directory whose name matches the
+  collection name. The path to the "collects" directory is normally
+  included in current-library-collection-paths.
+
+* Collection-based libraries also can be installed other directories,
+  perhaps user-specific, that are structured like the "collects"
+  directory. Those additional directories can be included in the
+  current-library-collection-paths parameter either dynamically, through
+  command-line arguments to racket, or by setting the PLTCOLLECTS
+  environment variable; see find-library-collection-paths.
+
+* Collection links files provide a mapping from top-level collection
+  names to directories, plus additional "collects"-like directories
+  (that have subdirectories with names that match collection names).
+  Each collection links file to be searched is referenced by the
+  current-library-collection-links parameter; the parameter references
+  the file, and not the file’s content, so that changes to the file can
+  be detected and affect later module resolution. See also
+  find-library-collection-links.
+
+* The current-library-collection-links parameter’s value can also
+  include hash tables that provide the same content as collection links
+  files: a mapping from collection names in symbol form to a list of
+  paths for the collection, or from #f to a list of "collects"-like
+  paths.
+
+* Finally, the current-library-collection-links parameter’s value
+  includes #f to indicate the point in the search process at which the
+  module-name resolver should check current-library-collection-paths
+  relative to the files and hash tables in
+  current-library-collection-links.
+
+To resolve a module reference rel-string, the default module name
+resolver searches collection links in current-library-collection-links
+from first to last to locate the first directory that contains
+rel-string, splicing a search through in
+current-library-collection-paths where in
+current-library-collection-links contains #f.  The filesystem tree for
+each element in the link table and search path is effectively spliced
+together with the filesystem trees of other path elements that
+correspond to the same collection. Some Racket tools rely on unique
+resolution of module path names, so an installation and configuration
+should not allow multiple files to match the same collection and file
+combination.
+
+The value of the current-library-collection-links parameter is
+initialized by the racket executable to the result of
+(find-library-collection-links), and the value of the
+current-library-collection-paths parameter is initialized to the result
+of (find-library-collection-paths).
+
+2.2. Collection Links
+
+Collection links files are used by collection-file-path,
+collection-path, and the default module name resolver to locate
+collections before trying the (current-library-collection-paths) search
+path. The collection links files to use are determined by the
+current-library-collection-links parameter, which is initialized to the
+result of find-library-collection-links.
+
+A collection links file is read with default reader parameter settings
+to obtain a list. Every element of the list must be a link specification
+with one of the forms (list string path), (list string path regexp),
+(list 'root path), (list 'root path regexp), (list 'static-root path),
+(list 'static-root path regexp). A string names a top-level collection,
+in which case path is a path that can be used as the collection’s path
+(directly, as opposed to a subdirectory of path named by string). A
+'root entry, in contrast, acts like an path in
+(current-library-collection-paths).  A 'static-root entry is like a
+'root entry, but where the immediate content of the directory is assumed
+not to change unless the collection links file changes. If path is a
+relative path, it is relative to the directory containing the collection
+links file. If regexp is specified in a link, then the link is used only
+if (regexp-match? regexp (version)) produces a true result.
+
+A single top-level collection can have multiple links in a collection
+links file, and any number of 'root entries can appear. The
+corresponding paths are effectively spliced together, since the paths
+are tried in order to locate a file or sub-collection.
+
+The raco link command-link tool can display, install, and remove links
+in a collection links file. See [missing] in [missing] for more
+information.
+
+2.3. Collection Paths and Parameters
+
+                                        *find-library-collection-paths*
+(find-library-collection-paths [pre-extras         ~
+                                post-extras]) -> (listof path?)
+  pre-extras : (listof path-string?) = null ~
+  post-extras : (listof path-string?) = null ~
+
+Produces a list of paths, which is normally used to initialize
+current-library-collection-paths, as follows:
+
+* The path produced by (build-path (find-system-path 'addon-dir)
+  (get-installation-name) "collects") is the first element of the
+  default collection path list, unless the value of the
+  use-user-specific-search-paths parameter is #f.
+
+* Extra directories provided in pre-extras are included next to the
+  default collection path list, converted to complete paths relative to
+  the executable.
+
+* If the directory specified by (find-system-path 'collects-dir) is
+  absolute, or if it is relative (to the executable) and it exists, then
+  it is added to the end of the default collection path list.
+
+* Extra directories provided in post-extras are included last in the
+  default collection path list, converted to complete paths relative to
+  the executable.
+
+* If the PLTCOLLECTS environment variable is defined, it is combined
+  with the default list using path-list-string->path-list, as long as
+  the value of use-user-specific-search-paths is true. If it is not
+  defined or if the value use-user-specific-search-paths is #f, the
+  default collection path list (as constructed by the first three
+  bullets above) is used directly.
+
+  Note that on Unix and Mac OS X, paths are separated by :, and on
+  Windows by ;.  Also, path-list-string->path-list splices the default
+  paths at an empty path, for example, with many Unix shells you can set
+  PLTCOLLECTS to ":‘pwd‘", "‘pwd‘:", or "‘pwd‘" to specify search the
+  current directory after, before, or instead of the default paths,
+  respectively.
+
+                                        *find-library-collection-links*
+(find-library-collection-links) ~
+ -> (listof (or/c #f (and/c path? complete-path?)))
+
+Produces a list of paths and #f, which is normally used to initialized
+current-library-collection-links, as follows:
+
+* The list starts with #f, which causes the default module name
+  resolver, collection-file-path, and collection-path to try paths in
+  current-library-collection-paths before collection links files.
+
+* As long as the values of use-user-specific-search-paths and
+  use-collection-link-paths are true, the second element in the result
+  list is the path of the user–specific collection links file, which is
+  (build-path (find-system-path 'addon-dir) (get-installation-name)
+  "links.rktd").
+
+* As long as the value of use-collection-link-paths is true, the rest of
+  the list contains the result of get-links-search-files. Typically,
+  that function produces a list with a single path, (build-path
+  (find-config-dir) "links.rktd").
+
+                                        *collection-file-path*
+(collection-file-path  file                                 ~
+                       collection ...+                     
+                      [#:check-compiled? check-compiled?])  ~
+ -> path?
+  file : path-string? ~
+  collection : path-string? ~
+  check-compiled? : any/c = (regexp-match? #rx"[.]rkt$" file) ~
+(collection-file-path  file                                    
+                       collection ...+                         
+                       #:fail fail-proc                         ~
+                      [#:check-compiled? check-compiled?]) -> any ~
+  file : path-string? ~
+  collection : path-string? ~
+  fail-proc : (string? . -> . any) ~
+  check-compiled? : any/c = (regexp-match? #rx"[.]rkt$" file) ~
+
+Returns the path to the file indicated by file in the collection
+specified by the collections, where the second collection (if any) names
+a sub-collection, and so on.  The search uses the values of
+current-library-collection-links and current-library-collection-paths.
+
+If file is not found, but file ends in ".rkt" and a file with the suffix
+".ss" exists, then the directory of the ".ss" file is used. If file is
+not found and the ".rkt"/".ss" conversion does not apply, but a
+directory corresponding to the collections is found, then a path using
+the first such directory is returned.
+
+If check-compiled? is true, then the search also depends on
+use-compiled-file-paths and current-compiled-file-roots; if file is not
+found, then a compiled form of file with the suffix ".zo" is checked in
+the same way as the default compiled-load handler.  If a compiled file
+is found, the result from collection-file-path reports the location that
+file itself would occupy (if it existed) for the found compiled file.
+
+Finally, if the collection is not found, and if fail-proc is provided,
+then fail-proc is applied to an error message (that does not start
+"collection-file-path:" or otherwise claim a source), and its result is
+the result of collection-file-path.  If fail-proc is not provided and
+the collection is not found, then the exn:fail:filesystem exception is
+raised.
+
+Changed in version 6.0.1.12: Added the check-compiled? argument.
+
+                                        *collection-path*
+(collection-path collection ...+) -> path? ~
+  collection : path-string? ~
+(collection-path collection            
+                 ...+                  
+                 #:fail fail-proc) -> any ~
+  collection : path-string? ~
+  fail-proc : (string? . -> . any) ~
+
+  NOTE: This function is deprecated; use collection-file-path, instead.
+  Collection splicing implies that a given collection can have multiple
+  paths, such as when multiple packages provide modules for a
+  collection.
+
+Like collection-file-path, but without a specified file name, so that a
+directory indicated by collections is returned.
+
+When multiple directories correspond to the collection, the first one
+found in the search sequence (see Collection Search Configuration) is
+returned.
+
+                                        *current-library-collection-paths*
+(current-library-collection-paths) ~
+ -> (listof (and/c path? complete-path?))
+(current-library-collection-paths paths) -> void?
+  paths : (listof (and/c path-string? complete-path?)) ~
+
+Parameter that determines a list of complete directory paths for finding
+libraries (as referenced in require, for example) through the default
+module name resolver and for finding paths through collection-path and
+collection-file-path. See Collection Search Configuration for more
+information.
+
+                                        *current-library-collection-links*
+(current-library-collection-links) ~
+ -> (listof (or/c #f
+                  (and/c path? complete-path?)
+                  (hash/c (or/c (and/c symbol? module-path?) #f)
+                          (listof (and/c path? complete-path?)))))
+(current-library-collection-links paths) -> void?
+  paths : (listof (or/c #f ~
+                        (and/c path-string? complete-path?)
+                        (hash/c (or/c (and/c symbol? module-path?) #f)
+                                (listof (and/c path-string? complete-path?)))))
+
+Parameter that determines collection links files, additional paths, and
+the relative search order of current-library-collection-paths for
+finding libraries (as referenced in require, for example) through the
+default module name resolver and for finding paths through
+collection-path and collection-file-path. See Collection Search
+Configuration for more information.
+
+                                        *use-user-specific-search-paths*
+(use-user-specific-search-paths) -> boolean? ~
+(use-user-specific-search-paths on?) -> void?
+  on? : any/c ~
+
+Parameter that determines whether user-specific paths, which are in the
+directory produced by (find-system-path 'addon-dir), are included in
+search paths for collections and other files. For example, the initial
+value of find-library-collection-paths omits the user-specific
+collection directory when this parameter’s value is #f.
+
+If -U or --no-user-path argument to racket, then
+use-user-specific-search-paths is initialized to #f.
+
+                                        *use-collection-link-paths*
+(use-collection-link-paths) -> boolean? ~
+(use-collection-link-paths on?) -> void?
+  on? : any/c ~
+
+Parameter that determines whether collection links files are included in
+the result of find-library-collection-links.
+
+If this parameter’s value is #f on start-up, then collection links files
+are effectively disabled permanently for the Racket process. In
+particular, if an empty string is provided as the -X or --collects
+argument to racket, then not only is current-library-collection-paths
+initialized to the empty list, but use-collection-link-paths is
+initialized to #f.
+
+3. Interactive Help
+
+ (require racket/help) package: base ~
+
+The bindings documented in this section are provided by the racket/help
+and racket/init libraries, which means that they are available when  the
+Racket executable is started with no command-line arguments. They are
+not provided by racket/base or racket.
+
+help
+(help string ...)
+(help id)
+(help id #:from module-path) ~
+(help #:search datum ...) ~
+
+For general help, see the main documentation page.
+
+The help form searches the documentation and opens a web browser (using
+the user’s selected browser) to display the results.
+
+See net/sendurl for information on how the user’s browser is launched to
+display help information.
+
+A simple help or (help) form opens the main documentation page.
+
+The (help string ...) form—using literal strings, as opposed to
+expressions that produce strings—performs a string-matching search. For
+example,
+
+  (help "web browser" "firefox")
+
+searches the documentation index for references that include the phrase
+“web browser” or “firefox.”
+
+A (help id) form looks for documentation specific to the current binding
+of id. For example,
+
+  (require net/url)
+  (help url->string)
+
+opens a web browser to show the documentation for url->string from the
+net/url library.
+
+For the purposes of help, a for-label require introduces a binding
+without actually executing the net/url library—for cases when you want
+to check documentation, but cannot or do not want to run the providing
+module.
+
+  (require racket/gui) ; does not work in racket
+  (require (for-label racket/gui)) ; ok in racket
+  (help frame%)
+
+If id has no for-label and normal binding, then help lists all libraries
+that are known to export a binding for id.
+
+The (help id #:from module-path) variant is similar to (help id), but
+using only the exports of module-path. (The module-path module is
+required for-label in a temporary namespace.)
+
+  (help frame% #:from racket/gui) ; equivalent to the above ~
+
+The (help #:search datum ...) form is similar to (help string ...),
+where any non-string form of datum is converted to a string using
+display. No datum is evaluated as an expression.
+
+For example,
+
+  (help #:search "web browser" firefox) ~
+
+also searches the documentation index for references that include the
+phrase “web browser” or “firefox.”
+
+4. Interactive Module Loading
+
+The racket/rerequire and racket/enter libraries provide support for
+loading, reloading, and using modules.
+
+4.1. Entering Modules
+
+ (require racket/enter) package: base ~
+
+The bindings documented in this section are provided by the racket/enter
+and racket/init libraries, which means that they are available when  the
+Racket executable is started with no command-line arguments. They are
+not provided by racket/base or racket.
+
+                                        *enter!*
+(enter! module-path) ~
+(enter! #f)
+(enter! module-path flag ...+)
+ 
+flag = #:quiet ~
+     | #:verbose-reload ~
+     | #:verbose ~
+     | #:dont-re-require-enter ~
+
+Intended for use in a REPL, such as when racket is started in
+interactive mode. When a module-path is provided (in the same sense as
+for require), the corresponding module is loaded or invoked via
+dynamic-rerequire, and the current namespace is changed to the body of
+the module via module->namespace. When #f is provided, then the current
+namespace is restored to the original one.
+
+Additional flags can customize aspects of enter!:
+
+* The #:verbose, #:verbose-reload, and #:quiet flags correspond to 'all,
+  'reload, and 'none verbosity for dynamic-rerequire. The default
+  corresponds to #:verbose-reload.
+
+* After switching namespaces to the designated module, enter!
+  automatically requires racket/enter into the namespace, so that enter!
+  can be used to switch namespaces again.  In some cases, requiring
+  racket/enter might not be desirable (e.g., in a tool that uses
+  racket/enter); use the #:dont-re-require-enter flag to disable the
+  require.
+
+                                        *dynamic-enter!*
+(dynamic-enter!  mod                                          ~
+                [#:verbosity verbosity                        ~
+                 #:re-require-enter? re-require-enter?]) -> void? ~
+  mod : (or/c module-path? #f) ~
+  verbosity : (or/c 'all 'reload 'none) = 'reload ~
+  re-require-enter? : any/c = #t ~
+
+Procedure variant of enter!, where verbosity is passed along to
+dynamic-rerequire and re-require-enter?  determines whether
+dynamic-enter! requires racket/enter in a newly entered namespace.
+
+Added in version 6.0.0.1 of package base.
+
+4.2. Loading and Reloading Modules
+
+ (require racket/rerequire) package: base ~
+
+The bindings documented in this section are provided by the
+racket/rerequire library, not racket/base or racket.
+
+                                        *dynamic-rerequire*
+(dynamic-rerequire  module-path                  ~
+                   [#:verbosity verbosity]) -> (listof path?) ~
+  module-path : module-path? ~
+  verbosity : (or/c 'all 'reload 'none) = 'reload ~
+
+Like (dynamic-require module-path 0), but with reloading support. The
+dynamic-rerequire function is intended for use in an interactive
+environment, especially via enter!.
+
+If invoking module-path requires loading any files, then modification
+dates of the files are recorded. If the file is modified, then a later
+dynamic-rerequire re-loads the module from source; see also [missing].
+Similarly if a later dynamic-rerequire transitively requires a modified
+module, then the required module is re-loaded. Re-loading support works
+only for modules that are first loaded (either directly or indirectly
+through transitive requires) via dynamic-rerequire.
+
+The returned list contains the absolute paths to the modules that were
+reloaded on this call to dynamic-rerequire. If the returned list is
+empty, no modules were changed or loaded.
+
+When enter! loads or re-loads a module from a file, it can print a
+message to (current-error-port), depending on verbosity: 'all prints a
+message for all loads and re-loads, 'reload prints a message only for
+re-loaded modules, and 'none disables printouts.
+
+5. Debugging
+
+Racket’s built-in debugging support is limited to context (i.e., “stack
+trace”) information that is printed with an exception. In some cases,
+disabling the JIT compiler can affect context information. The
+errortrace library supports more consistent (independent of the JIT
+compiler) and precise context information.  The racket/trace library
+provides simple tracing support. Finally, the DrRacket programming
+environment provides much more debugging support.
+
+5.1. Tracing
+
+ (require racket/trace) package: base ~
+
+The bindings documented in this section are provided by the racket/trace
+library, not racket/base or racket.
+
+The racket/trace library mimics the tracing facility available in Chez
+Scheme.
+
+                                        *trace*
+(trace id ...) ~
+
+Each id must be bound to a procedure in the environment of the trace
+expression.  Each id is set!ed to a new procedure that traces procedure
+calls and returns by printing the arguments and results of the call via
+current-trace-notify.  If multiple values are returned, each value is
+displayed starting on a separate line.
+
+When traced procedures invoke each other, nested invocations are shown
+by printing a nesting prefix. If the nesting depth grows to ten and
+beyond, a number is printed to show the actual nesting depth.
+
+The trace form can be used on an identifier that is already traced.  In
+this case, assuming that the variable’s value has not been changed,
+trace has no effect.  If the variable has been changed to a different
+procedure, then a new trace is installed.
+
+Tracing respects tail calls to preserve loops, but its effect may be
+visible through continuation marks. When a call to a traced procedure
+occurs in tail position with respect to a previous traced call, then the
+tailness of the call is preserved (and the result of the call is not
+printed for the tail call, because the same result will be printed for
+an enclosing call). Otherwise, however, the body of a traced procedure
+is not evaluated in tail position with respect to a call to the
+procedure.
+
+The result of a trace expression is #<void>.
+
+Examples:
+  > (define (f x) (if (zero? x) 0 (add1 (f (sub1 x)))))
+
+  > (trace f)
+
+  > (f 10)
+  >(f 10)
+  > (f 9)
+  > >(f 8)
+  > > (f 7)
+  > > >(f 6)
+  > > > (f 5)
+  > > > >(f 4)
+  > > > > (f 3)
+  > > > > >(f 2)
+  > > > > > (f 1)
+  > > > >[10] (f 0)
+  < < < <[10] 0
+  < < < < < 1
+  < < < < <2
+  < < < < 3
+  < < < <4
+  < < < 5
+  < < <6
+  < < 7
+  < <8
+  < 9
+  <10
+  10
+
+                                        *trace-define*
+(trace-define id expr) ~
+(trace-define (head args) body ...+)
+
+The trace-define form is short-hand for first defining a function then
+tracing it. This form supports all define forms.
+
+Examples:
+  > (trace-define (f x) (if (zero? x) 0 (add1 (f (sub1 x)))))
+
+  > (f 5)
+  >(f 5)
+  > (f 4)
+  > >(f 3)
+  > > (f 2)
+  > > >(f 1)
+  > > > (f 0)
+  < < < 0
+  < < <1
+  < < 2
+  < <3
+  < 4
+  <5
+  5
+
+Examples:
+  > (trace-define ((+n n) x) (+ n x))
+
+  > (map (+n 5) (list 1 3 4))
+  >(+n 5)
+  <#<procedure>
+  '(6 8 9)
+
+                                        *trace-define-syntax*
+(trace-define-syntax id expr) ~
+(trace-define-syntax (head args) body ...+)
+
+The trace-define-syntax form is short-hand for first defining a macro
+then tracing it. This form supports all define-syntax forms.
+
+For example:
+
+Examples:
+  > (trace-define-syntax fact
+      (syntax-rules ()
+        [(_ x) 120]))
+
+  > (fact 5)
+  >(fact #<syntax:11:0 (fact 5)>)
+  <#<syntax:11:0 120>
+  120
+
+By default, trace prints out syntax objects when tracing a macro. This
+can result in too much output if you do not need to see, e.g., source
+information. To get more readable output, try this:
+
+Examples:
+  > (require (for-syntax racket/trace))
+
+  > (begin-for-syntax
+      (current-trace-print-args
+        (let ([ctpa (current-trace-print-args)])
+          (lambda (s l kw l2 n)
+            (ctpa s (map syntax->datum l) kw l2 n))))
+      (current-trace-print-results
+        (let ([ctpr (current-trace-print-results)])
+          (lambda (s l n)
+           (ctpr s (map syntax->datum l) n)))))
+
+  > (trace-define-syntax fact
+    (syntax-rules ()
+      [(_ x) #'120]))
+
+  > (fact 5)
+  >(fact '(fact 5))
+  <'#'120
+  #<syntax:14:0 120>
+
+                                        *trace-lambda*
+(trace-lambda [#:name id] args expr) ~ ~
+
+The trace-lambda form enables tracing an anonymous function. This form
+will attempt to infer a name using syntax-local-infer-name, or a name
+can be specified using the optional #:name argument.  A syntax error is
+raised if a name is not given and a name cannot be inferred.
+
+Example:
+  > ((trace-lambda (x) 120) 5)
+  >(eval:16:0 5)
+  <120
+  120
+
+                                        *trace-let*
+(trace-let id ([arg expr] ...+) body ...+) ~
+
+The trace-let form enables tracing a named let.
+
+Example:
+  > (trace-let f ([x 5])
+      (if (zero? x)
+          1
+          (* x (f (sub1 x)))))
+  >(f 5)
+  > (f 4)
+  > >(f 3)
+  > > (f 2)
+  > > >(f 1)
+  > > > (f 0)
+  < < < 1
+  < < <1
+  < < 2
+  < <6
+  < 24
+  <120
+  120
+
+                                        *untrace*
+(untrace id ...) ~
+
+Undoes the effects of the trace form for each id, set!ing each id back
+to the untraced procedure, but only if the current value of id is a
+traced procedure.  If the current value of a id is not a procedure
+installed by trace, then the variable is not changed.
+
+The result of an untrace expression is #<void>.
+
+                                        *current-trace-notify*
+(current-trace-notify) -> (string? . -> . any) ~
+(current-trace-notify proc) -> void?
+  proc : (string? . -> . any) ~
+
+A parameter that determines the way that trace output is displayed. The
+string given to proc is a trace; it does not end with a newline, but it
+may contain internal newlines. Each call or result is converted into a
+string using pretty-print.  The parameter’s default value prints the
+given string followed by a newline to (current-output-port).
+
+                                        *trace-call*
+(trace-call id proc #:<kw> kw-arg ...) -> any/c ~ ~
+  id : symbol? ~
+  proc : procedure? ~
+  kw-arg : any/c ~
+
+Calls proc with the arguments supplied in args, and possibly using
+keyword arguments. Also prints out the trace information during the
+call, as described above in the docs for trace, using id as the name of
+proc.
+
+                                        *current-trace-print-args*
+(current-trace-print-args) -> (-> symbol? ~
+                                  list?
+                                  (listof keyword?)
+                                  list?
+                                  number?
+                                  void?)
+(current-trace-print-args trace-print-args) -> void?
+  trace-print-args : (-> symbol? ~
+                         list?
+                         (listof keyword?)
+                         list?
+                         number?
+                         void?)
+
+The value of this parameter is invoked to print out the arguments of a
+traced call. It receives the name of the function, the function’s
+ordinary arguments, its keywords, the values of the keywords, and a
+number indicating the depth of the call.
+
+                                        *current-trace-print-results*
+(current-trace-print-results) -> (-> symbol? ~
+                                     list?
+                                     number?
+                                     any)
+(current-trace-print-results trace-print-results) -> void?
+  trace-print-results : (-> symbol? ~
+                            list?
+                            number?
+                            any)
+
+The value of this parameter is invoked to print out the results of a
+traced call. It receives the name of the function, the function’s
+results, and a number indicating the depth of the call.
+
+                                        *current-prefix-in*
+(current-prefix-in) -> string? ~
+(current-prefix-in prefix) -> void?
+  prefix : string? ~
+
+This string is used by the default value of current-trace-print-args
+indicating that the current line is showing the a call to a traced
+function.
+
+It defaults to ">".
+
+                                        *current-prefix-out*
+(current-prefix-out) -> string? ~
+(current-prefix-out prefix) -> void?
+  prefix : string? ~
+
+This string is used by the default value of current-trace-print-results
+indicating that the current line is showing the result of a traced call.
+
+It defaults to "<".
+
+6. Kernel Forms and Functions
+
+ #lang racket/kernel package: base ~
+
+The racket/kernel library is a cross-phase persistent module that
+provides a minimal set of syntactic forms and functions.
+
+“Minimal” means that racket/kernel includes only forms that are built
+into the Racket compiler and only functions that are built into the
+run-time system. Currently, the set of bindings is not especially small,
+nor is it particularly well-defined, since the set of built-in functions
+can change frequently. Use racket/kernel with care, and beware that its
+use can create compatibility problems.
+
+The racket/kernel module exports all of the bindings in the grammar of
+fully expanded programs (see [missing]), but it provides #%plain-lambda
+as lambda and λ, #%plain-app as #%app, and #%plain-module-begin as
+#%module-begin. Aside from #%datum (which expands to quote),
+racket/kernel provides no other syntactic bindings.
+
+The racket/kernel module also exports many of the function bindings from
+racket/base, and it exports a few other functions that are not exported
+by racket/base because racket/base exports improved variants. The exact
+set of function bindings exported by racket/kernel is unspecified and
+subject to change across versions.
+
+ (require racket/kernel/init) package: base ~
+
+The racket/kernel/init library re-provides all of racket/kernel. It also
+provides #%top-interaction, which makes racket/kernel/init useful with
+the -I command-line flag for racket.

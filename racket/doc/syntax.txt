@@ -1,0 +1,3833 @@
+Syntactic Forms
+
+This section describes the core syntax forms that appear in a fully
+expanded expression, plus many closely related non-core forms. See
+[missing] for the core grammar.
+
+    1 Modules: module, module*, ... ~
+
+    2 Importing and Exporting: require and provide ~
+      2.1 Additional require Forms
+      2.2 Additional provide Forms
+
+    3 Literals: quote and #%datum ~
+
+    4 Expression Wrapper: #%expression ~
+
+    5 Variable References and #%top
+
+    6 Locations: #%variable-reference ~
+
+    7 Procedure Applications and #%app
+
+    8 Procedure Expressions: lambda and case-lambda ~
+
+    9 Local Binding: let, let*, letrec, ... ~
+
+    10 Local Definitions: local ~
+
+    11 Constructing Graphs: shared ~
+
+    12 Conditionals: if, cond, and, and or ~
+
+    13 Dispatch: case ~
+
+    14 Definitions: define, define-syntax, ... ~
+      14.1 require Macros
+      14.2 provide Macros
+
+    15 Sequencing: begin, begin0, and begin-for-syntax ~
+
+    16 Guarded Evaluation: when and unless ~
+
+    17 Assignment: set! and set!-values ~
+
+    18 Iterations and Comprehensions: for, for/list, ... ~
+      18.1 Iteration and Comprehension Forms
+      18.2 Deriving New Iteration Forms
+      18.3 Do Loops
+
+    19 Continuation Marks: with-continuation-mark ~
+
+    20 Quasiquoting: quasiquote, unquote, and unquote-splicing ~
+
+    21 Syntax Quoting: quote-syntax ~
+
+    22 Interaction Wrapper: #%top-interaction ~
+
+    23 Blocks: block ~
+
+    24 Internal-Definition Limiting: #%stratified-body ~
+
+    25 Performance Hints: begin-encourage-inline ~
+
+    26 Importing Modules Lazily: lazy-require ~
+
+Notation
+
+Each syntactic form is described by a BNF-like notation that describes a
+combination of (syntax-wrapped) pairs, symbols, and other data (not a
+sequence of characters). These grammatical specifications are shown as
+in the following specification of a something form:
+
+                                        *something*
+(something id thing-expr ...) ~
+ 
+  thing-expr : number? ~
+
+Within such specifications,
+
+* ... indicates zero or more repetitions of the preceding datum; more
+  generally, N consecutive ...s a row indicate a consecutive repetition
+  of the preceding N datums.
+
+* ...+ indicates one or more repetitions of the preceding datum.
+
+* Italic meta-identifiers play the role of non-terminals. Some
+  meta-identifier names imply syntactic constraints:
+
+  * A meta-identifier that ends in id stands for an identifier.
+
+  * A meta-identifier that ends in keyword stands for a keyword.
+
+  * A meta-identifier that ends with expr (such as thing-expr) stands
+    for a sub-form that is expanded as an expression.
+
+  * A meta-identifier that ends with body stands for a sub-form that is
+    expanded in an internal-definition context (see [missing]).
+
+* Contracts indicate constraints on sub-expression results. For example,
+  thing-expr : number? indicates that the expression thing-expr must
+  produce a number.
+
+1. Modules: module, module*, ...
+
++[missing] in [missing] introduces module.
+
+                                        *module*
+(module id module-path form ...) ~
+
+Declares a top-level module or a submodule. For a top-level module, if
+the current-module-declare-name parameter is set, the parameter value is
+used for the module name and id is ignored, otherwise (quote id) is the
+name of the declared module. For a submodule, id is the name of the
+submodule to be used as an element within a submod module path.
+
++For a module-like form that works in definitions context other than the
+top level or a module body, see define-package.
+
+The module-path form must be as for require, and it supplies the initial
+bindings for the body forms. That is, it is treated like a (require
+module-path) prefix before the forms, except that the bindings
+introduced by module-path can be shadowed by definitions and requires in
+the module body forms.
+
+If a single form is provided, then it is partially expanded in a
+module-begin context. If the expansion leads to #%plain-module-begin,
+then the body of the #%plain-module-begin is the body of the module. If
+partial expansion leads to any other primitive form, then the form is
+wrapped with #%module-begin using the lexical context of the module
+body; this identifier must be bound by the initial module-path import,
+and its expansion must produce a #%plain-module-begin to supply the
+module body. Finally, if multiple forms are provided, they are wrapped
+with #%module-begin, as in the case where a single form does not expand
+to #%plain-module-begin.
+
+After such wrapping, if any, and before any expansion, an
+'enclosing-module-name property is attached to the #%module-begin syntax
+object (see [missing]); the property’s value is a symbol corresponding
+to id.
+
+Each form is partially expanded (see [missing]) in a module context.
+Further action depends on the shape of the form:
+
+* If it is a begin form, the sub-forms are flattened out into the
+  module’s body and immediately processed in place of the begin.
+
+* If it is a define-syntaxes form, then the right-hand side is evaluated
+  (in phase 1), and the binding is immediately installed for further
+  partial expansion within the module. Evaluation of the right-hand side
+  is parameterized to set current-namespace as in let-syntax.
+
+* If it is a begin-for-syntax form, then the body is expanded (in phase
+  1) and evaluated. Expansion within a begin-for-syntax form proceeds
+  with the same partial-expansion process as for a module body, but in a
+  higher phase, and saving all #%provide forms for all phases until the
+  end of the module’s expansion. Evaluation of the body is parameterized
+  to set current-namespace as in let-syntax.
+
+* If the form is a #%require form, bindings are introduced immediately,
+  and the imported modules are instantiated or visited as appropriate.
+
+* If the form is a #%provide form, then it is recorded for processing
+  after the rest of the body.
+
+* If the form is a define-values form, then the binding is installed
+  immediately, but the right-hand expression is not expanded further.
+
+* If the form is a module form, then it is immediately expanded and
+  declared for the extent of the current top-level enclosing module’s
+  expansion.
+
+* If the form is a module* form, then it is not expanded further.
+
+* Similarly, if the form is an expression, it is not expanded further.
+
+After all forms have been partially expanded this way, then the
+remaining expression forms (including those on the right-hand side of a
+definition) are expanded in an expression context. After all expression
+forms, #%provide forms are processed in the order in which they appear
+(independent of phase) in the expanded module. Finally, all module*
+forms are expanded in order, so that each becomes available for use by
+subsequent module* forms; the enclosing module itself is also available
+for use by module* submodules.
+
+The scope of all imported identifiers covers the entire module body,
+except for nested module and module* forms (assuming a non-#f
+module-path in the latter case). The scope of any identifier defined
+within the module body similarly covers the entire module body except
+for such nested module and module* forms. The ordering of syntax
+definitions does not affect the scope of the syntax names; a transformer
+for A can produce expressions containing B, while the transformer for B
+produces expressions containing A, regardless of the order of
+declarations for A and B. However, a syntactic form that produces syntax
+definitions must be defined before it is used.
+
+No identifier can be imported or defined more than once at any phase
+level within a single module, except that a definition via define-values
+or define-syntaxes can shadow a preceding import via #%require; unless
+the shadowed import is from the module’s initial module-path, a warning
+is logged to the initial logger. Every exported identifier must be
+imported or defined. No expression can refer to a top-level variable. A
+module* form in which the enclosing module’s bindings are visible (i.e.,
+a nested module* with #f instead of a module-path) can define or import
+bindings that shadow the enclosing module’s bindings.
+
+The evaluation of a module form does not evaluate the expressions in the
+body of the module. Evaluation merely declares a module, whose full name
+depends both on id or (current-module-declare-name).
+
+A module body is executed only when the module is explicitly
+instantiated via require or dynamic-require. On invocation, imported
+modules are instantiated in the order in which they are required into
+the module (although earlier instantiations or transitive requires can
+trigger the instantiation of a module before its order within a given
+module). Then, expressions and definitions are evaluated in order as
+they appear within the module. Each evaluation of an expression or
+definition is wrapped with a continuation prompt (see
+call-with-continuation-prompt) for the default prompt tag and using a
+prompt handler that re-aborts and propagates its argument to the next
+enclosing prompt. Each evaluation of a definition is followed, outside
+of the prompt, by a check that each of the definition’s variables has a
+value; if the portion of the prompt-delimited continuation that installs
+values is skipped, then the exn:fail:contract:variable? exception is
+raised.
+
+Accessing a module-level variable before it is defined signals a
+run-time error, just like accessing an undefined global variable. If a
+module (in its fully expanded form) does not contain a set!  for an
+identifier that defined within the module, then the identifier is a
+constant after it is defined; its value cannot be changed afterward, not
+even through reflective mechanisms. The compile-enforce-module-constants
+parameter, however, can be used to disable enforcement of constants.
+
+When a syntax object representing a module form has a 'module-language
+syntax property attached, and when the property value is a vector of
+three elements where the first is a module path (in the sense of
+module-path?) and the second is a symbol, then the property value is
+preserved in the corresponding compiled and/or declared module. The
+third component of the vector should be printable and readable, so that
+it can be preserved in marshaled bytecode. The racket/base and racket
+languages attach '#(racket/language-info get-info #f) to a module form.
+See also module-compiled-language-info, module->language-info, and
+racket/language-info.
+
+See also [missing] and [missing].
+
+Example:
+  > (module duck racket/base
+      (provide num-eggs quack)
+      (define num-eggs 2)
+      (define (quack n)
+        (unless (zero? n)
+          (printf "quack\n")
+          (quack (sub1 n)))))
+
+
+Changed in version 6.2.0.4: Changed define-syntaxes and define-values to
+shadow any preceding import. Changed in version 6.3: Dropped the use of
+'submodule syntax property values on nested module or module* forms.
+
+                                        *module**
+(module* id module-path form ...) ~
+(module* id #f form ...)
+
++[missing] in [missing] introduces module*.
+
+Like module, but only for declaring a submodule within a module, and for
+submodules that may require the enclosing module.
+
+Instead of a module-path after id, #f indicates that all bindings from
+the enclosing module are visible in the submodule. In that case,
+begin-for-syntax forms that wrap the module* form shift the phase level
+of the enclosing module’s bindings relative to the submodule. The macro
+expander handles such nesting by shifting the phase level of the module*
+form so that it’s body starts at phase level 0, expanding, and then
+reverting the phase level shift; beware that this process can leave
+syntax objects as 'origin syntax property values out-of-sync with the
+expanded module.
+
+When a module* form has a module-path, the submodule expansion starts by
+removing the scopes of the enclosing module, the same as the module
+form. No shifting compensates for any begin-for-syntax forms that may
+wrap the submodule.
+
+                                        *module+*
+(module+ id form ...) ~
+
++[missing] in [missing] introduces module+.
+
+Declares and/or adds to a submodule named id.
+
+Each addition for id is combined in order to form the entire submodule
+using (module* id #f ....) at the end of the enclosing module. If there
+is only one module+ for a given id, then (module+ id form ...) is
+equivalent to (module* id #f form ...), but still moved to the end of
+the enclosing module.
+
+When a module contains multiple submodules declared with module+, then
+the relative order of the initial module+ declarations for each
+submodule determines the relative order of the module* declarations at
+the end of the enclosing module.
+
+A submodule must not be defined using module+ and module or module*.
+That is, if a submodule is made of module+ pieces, then it must be made
+only of module+ pieces.
+
+(#%module-begin form ...)
+
+Legal only in a module begin context, and handled by the module and
+module* forms.
+
+The #%module-begin form of racket/base wraps every top-level expression
+to print non-#<void> results using current-print.
+
+The #%module-begin form of racket/base also declares a configure-runtime
+submodule (before any other form), unless some form is either an
+immediate module or module* form with the name configure-runtime. If a
+configure-runtime submodule is added, the submodule calls the configure
+function of racket/runtime-config.
+
+(#%printing-module-begin form ...)
+
+Legal only in a module begin context.
+
+Like #%module-begin, but without adding a configure-runtime submodule.
+
+(#%plain-module-begin form ...)
+
+Legal only in a module begin context, and handled by the module and
+module* forms.
+
+(#%declare declaration-keyword ...)
+ 
+declaration-keyword = #:cross-phase-persistent ~
+                    | #:empty-namespace ~
+
+Declarations that affect run-time or reflective properties of the
+module:
+
+* #:cross-phase-persistent — declares the module as cross-phase
+  persistent, and reports a syntax error if the module does not meet the
+  import or syntactic constraints of a cross-phase persistent module.
+
+* #:empty-namespace — declares that  module->namespace for this module
+  should produce a  namespace with no bindings; limiting namespace
+  support in this  way can reduce the lexical information that
+  otherwise must be preserved for the module.
+
+A #%declare form must appear in a module context or a module-begin
+context. Each declaration-keyword can be declared at most once within a
+module body.
+
+Changed in version 6.3: Added #:empty-namespace.
+
+2. Importing and Exporting: require and provide
+
++[missing] in [missing] introduces require.
+
+                                        *require*
+(require require-spec ...) ~
+ 
+       require-spec = module-path
+                    | (only-in require-spec id-maybe-renamed ...)
+                    | (except-in require-spec id ...)
+                    | (prefix-in prefix-id require-spec)
+                    | (rename-in require-spec [orig-id bind-id] ...)
+                    | (combine-in require-spec ...)
+                    | (relative-in module-path require-spec ...)
+                    | (only-meta-in phase-level require-spec ...)
+                    | (for-syntax require-spec ...)
+                    | (for-template require-spec ...)
+                    | (for-label require-spec ...)
+                    | (for-meta phase-level require-spec ...)
+                    | derived-require-spec
+                       
+        module-path = root-module-path
+                    | (submod root-module-path submod-path-element ...)
+                    | (submod "." submod-path-element ...)
+                    | (submod ".." submod-path-element ...)
+                       
+   root-module-path = (quote id)
+                    | rel-string
+                    | (lib rel-string ...+)
+                    | id
+                    | (file string)
+                    | (planet id)
+                    | (planet string)
+                    | (planet rel-string
+                              (user-string pkg-string vers)
+                              rel-string ...)
+                       
+submod-path-element = id
+                    | ".."
+                       
+   id-maybe-renamed = id
+                    | [orig-id bind-id]
+                       
+        phase-level = exact-integer
+                    | #f
+                       
+               vers = 
+                    | nat
+                    | nat minor-vers
+                       
+         minor-vers = nat
+                    | (nat nat)
+                    | (= nat)
+                    | (+ nat)
+                    | (- nat)
+
+In a top-level context, require instantiates modules (see [missing]). In
+a top-level context or module context, expansion of require visits
+modules (see [missing]). In both contexts and both evaluation and
+expansion, require introduces bindings into a namespace or a module (see
+[missing]).  A require form in a expression context or
+internal-definition context is a syntax error.
+
+A require-spec designates a particular set of identifiers to be bound in
+the importing context. Each identifier is mapped to a particular export
+of a particular module; the identifier to bind may be different from the
+symbolic name of the originally exported identifier. Each identifier
+also binds at a particular phase level.
+
+No identifier can be bound multiple times in a given phase level by an
+import, unless all of the bindings refer to the same original definition
+in the same module.  In a module context, an identifier can be either
+imported or defined for a given phase level, but not both.
+
+The syntax of require-spec can be extended via define-require-syntax,
+and when multiple require-specs are specified in a require, the bindings
+of each require-spec are visible for expanding later require-specs. The
+pre-defined forms (as exported by racket/base) are as follows:
+
+module-path
+Imports all exported bindings from the named module, using the export
+identifiers as the local identifiers. (See below for information on
+module-path.) The lexical context of the module-path form determines the
+context of the introduced identifiers.
+
+                                        *only-in*
+(only-in require-spec id-maybe-renamed ...) ~
+
+Like require-spec, but constrained to those exports for which the
+identifiers to bind match id-maybe-renamed: as id or as orig-id in
+[orig-id bind-id]. If the id or orig-id of any id-maybe-renamed is not
+in the set that require-spec describes, a syntax error is reported.
+Examples:
+  > (require (only-in racket/tcp
+                      tcp-listen
+                      [tcp-accept my-accept]))
+
+  > tcp-listen
+  #<procedure:tcp-listen>
+  > my-accept
+  #<procedure:tcp-accept>
+  > tcp-accept
+  tcp-accept: undefined;
+   cannot reference undefined identifier
+
+                                        *except-in*
+(except-in require-spec id ...) ~
+
+Like require-spec, but omitting those imports for which ids are the
+identifiers to bind; if any id is not in the set that require-spec
+describes, a syntax error is reported.
+Examples:
+  > (require (except-in racket/tcp
+                        tcp-listen))
+
+  > tcp-accept
+  #<procedure:tcp-accept>
+  > tcp-listen
+  tcp-listen: undefined;
+   cannot reference undefined identifier
+
+                                        *prefix-in*
+(prefix-in prefix-id require-spec) ~
+
+Like require-spec, but adjusting each identifier to be bound by
+prefixing it with prefix-id. The lexical context of the prefix-id is
+ignored, and instead preserved from the identifiers before prefixing.
+Examples:
+  > (require (prefix-in tcp: racket/tcp)) ~
+
+  > tcp:tcp-accept
+  #<procedure:tcp-accept>
+  > tcp:tcp-listen
+  #<procedure:tcp-listen>
+
+                                        *rename-in*
+(rename-in require-spec [orig-id bind-id] ...) ~
+
+Like require-spec, but replacing the identifier to bind orig-id with
+bind-id; if any orig-id is not in the set that require-spec describes, a
+syntax error is reported.
+Examples:
+  > (require (rename-in racket/tcp
+                        (tcp-accept accept)
+                        (tcp-listen listen)))
+
+  > accept
+  #<procedure:tcp-accept>
+  > listen
+  #<procedure:tcp-listen>
+
+                                        *combine-in*
+(combine-in require-spec ...) ~
+
+The union of the require-specs. If two or more imports from the
+require-specs have the same identifier name but they do not refer to the
+same original binding, a syntax error is reported.
+Examples:
+  > (require (combine-in (only-in racket/tcp tcp-accept)
+                         (only-in racket/tcp tcp-listen)))
+
+  > tcp-accept
+  #<procedure:tcp-accept>
+  > tcp-listen
+  #<procedure:tcp-listen>
+
+                                        *relative-in*
+(relative-in module-path require-spec ...) ~
+
+Like the union of the require-specs, but each relative module path in a
+require-spec is treated as relative to module-path instead of the
+enclosing context.
+The require transformer that implements relative-in sets
+current-require-module-path to adjust module paths in the require-specs.
+
+                                        *only-meta-in*
+(only-meta-in phase-level require-spec ...) ~
+
+Like the combination of require-specs, but removing any binding that is
+not for phase-level, where #f for phase-level corresponds to the label
+phase level.
+The following example imports bindings only at phase level 1, the
+transform phase:
+  > (module nest racket
+      (provide (for-syntax meta-eggs)
+               (for-meta 1 meta-chicks)
+               num-eggs)
+      (define-for-syntax meta-eggs 2)
+      (define-for-syntax meta-chicks 3)
+      (define num-eggs 2))
+
+  > (require (only-meta-in 1 'nest))
+
+  > (define-syntax (desc stx)
+      (printf "~s ~s\n" meta-eggs meta-chicks)
+      #'(void))
+
+  > (desc)
+  2 3
+
+  > num-eggs
+  num-eggs: undefined;
+   cannot reference undefined identifier
+The following example imports only bindings at phase level 0, the normal
+phase.
+  > (require (only-meta-in 0 'nest))
+
+  > num-eggs
+  2
+
+                                        *for-meta*
+(for-meta phase-level require-spec ...) ~
+Like the combination of require-specs, but the binding specified by each
+require-spec is shifted by phase-level. The label phase level
+corresponds to #f, and a shifting combination that involves #f produces
+#f.
+Examples:
+  > (module nest racket
+      (provide num-eggs)
+      (define num-eggs 2))
+
+  > (require (for-meta 0 'nest))
+
+  > num-eggs
+  2
+  > (require (for-meta 1 'nest))
+
+  > (define-syntax (roost stx)
+      (datum->syntax stx num-eggs))
+
+  > (roost)
+  2
+
+                                        *for-syntax*
+(for-syntax require-spec ...) ~
+Same as (for-meta 1 require-spec ...).
+
+                                        *for-template*
+(for-template require-spec ...) ~
+Same as (for-meta -1 require-spec ...).
+
+                                        *for-label*
+(for-label require-spec ...) ~
+Same as (for-meta #f require-spec ...). If an identifier in any of the
+require-specs is bound at more than one phase level, a syntax error is
+reported.
+
+derived-require-spec
+See define-require-syntax for information on expanding the set of
+require-spec forms.
+
++[missing] in [missing] introduces module paths.
+
+A module-path identifies a module, either a root module or a submodule
+that is declared lexically within another module. A root module is
+identified either through a concrete name in the form of an identifier,
+or through an indirect name that can trigger automatic loading of the
+module declaration. Except for the (quote id) case below, the actual
+resolution of a root module path is up to the current module name
+resolver (see current-module-name-resolver), and the description below
+corresponds to the default module name resolver.
+
+                                        *quote*
+(quote id) ~
+Refers to a submodule previously declared with the name id or a module
+previously declared interactively with the name id. When id refers to a
+submodule, (quote id) is equivalent to (submod "." id).
+Examples:
+  ; a module declared interactively as test: ~
+  > (require 'test)
+
+
+rel-string
+A path relative to the containing source (as determined by
+current-load-relative-directory or current-directory).  Regardless of
+the current platform, rel-string is always parsed as a Unix-format
+relative path: / is the path delimiter (multiple adjacent /s are treated
+as a single delimiter), .. accesses the parent directory, and . accesses
+the current directory. The path cannot be empty or contain a leading or
+trailing slash, path elements before than the last one cannot include a
+file suffix (i.e., a . in an element other than . or ..), and the only
+allowed characters are ASCII letters, ASCII digits, -, +, _, ., /, and
+%. Furthermore, a % is allowed only when followed by two lowercase
+hexadecimal digits, and the digits must form a number that is not the
+ASCII value of a letter, digit, -, +, or _.
+The % provision is intended to support a one-to-one encoding of
+arbitrary strings as path elements (after UTF-8 encoding). Such
+encodings are not decoded to arrive at a filename, but instead preserved
+in the file access.
+If rel-string ends with a ".ss" suffix, it is converted to a ".rkt"
+suffix. The compiled-load handler may reverse that conversion if a
+".rkt" file does not exist and a ".ss" exists.
+Examples:
+  ; a module named "x.rkt" in the same
+  ; directory as the enclosing module's file: ~
+  > (require "x.rkt")
+
+  ; a module named "x.rkt" in the parent directory
+  ; of the enclosing module file's directory: ~
+  > (require "../x.rkt")
+
+
+                                        *lib*
+(lib rel-string ...+) ~
+
+A path to a module installed into a collection (see [missing]). The
+rel-strings in lib are constrained similar to the plain rel-string case,
+with the additional constraint that a rel-string cannot contain . or ..
+directory indicators.
+The specific interpretation of the path depends on the number and shape
+of the rel-strings:
+* If a single rel-string is provided, and if it consists of a single
+  element (i.e., no /) with no file suffix (i.e., no .), then rel-string
+  names a collection, and "main.rkt" is the library file name.
+
+  Examples:
+    ; the main swindle library: ~
+    > (require (lib "swindle"))
+
+    ; the same: ~
+    > (require (lib "swindle/main.rkt"))
+
+
+* If a single rel-string is provided, and if it consists of multiple
+  /-separated elements, then each element up to the last names a
+  collection, subcollection, etc., and the last element names a file. If
+  the last element has no file suffix, ".rkt" is added, while a ".ss"
+  suffix is converted to ".rkt".
+
+  Examples:
+    ; "turbo.rkt" from the "swindle" collection: ~
+    > (require (lib "swindle/turbo"))
+
+    ; the same: ~
+    > (require (lib "swindle/turbo.rkt"))
+
+    ; the same: ~
+    > (require (lib "swindle/turbo.ss"))
+
+
+* If a single rel-string is provided, and if it consists of a single
+  element with a file suffix (i.e, with a .), then rel-string names a
+  file within the "mzlib" collection. A ".ss" suffix is converted to
+  ".rkt". (This convention is for compatibility with older version of
+  Racket.)
+
+  Examples:
+    ; "tar.rkt" module from the "mzlib" collection: ~
+    > (require (lib "tar.ss"))
+
+
+* Otherwise, when multiple rel-strings are provided, the first
+  rel-string is effectively moved after the others, and all rel-strings
+  are appended with / separators. The resulting path names a collection,
+  then subcollection, etc., ending with a file name. No suffix is added
+  automatically, but a ".ss" suffix is converted to ".rkt". (This
+  convention is for compatibility with older version of Racket.)
+
+  Examples:
+    ; "tar.rkt" module from the "mzlib" collection: ~
+    > (require (lib "tar.ss" "mzlib"))
+
+
+id
+A shorthand for a lib form with a single rel-string whose characters are
+the same as in the symbolic form of id. In addition to the constraints
+of a lib rel-string, id must not contain ..
+Example:
+  > (require racket/tcp)
+
+
+                                        *file*
+(file string) ~
+
+Similar to the plain rel-string case, but string is a path—possibly
+absolute—using the current platform’s path conventions and
+expand-user-path. A ".ss" suffix is converted to ".rkt".
+Example:
+  > (require (file "~/tmp/x.rkt"))
+
+
+                                        *planet*
+(planet id) ~
+(planet string)
+(planet rel-string (user-string pkg-string vers)
+        rel-string ...)
+
+Specifies a library available via the PLaneT server.
+The first form is a shorthand for the last one, where the id’s character
+sequence must match the following >spec< grammar:
+ >spec<    ::= >owner< / >pkg< >lib< ~
+ >owner<   ::= >elem< ~
+ >pkg<     ::= >elem<  |  >elem< : >version< ~
+ >version< ::= >int<  |  >int< : >minor< ~
+ >minor<   ::= >int<  |  <= >int<  |  >= >int<  |  = >int< ~
+            |  >int< - >int<
+ >lib<     ::= >empty<  |  / >path< ~
+ >path<    ::= >elem<  |  >elem< / >path< ~
+and where an >elem< is a non-empty sequence of characters that are ASCII
+letters, ASCII digits, -, +, _, or % followed by lowercase hexadecimal
+digits (that do not encode one of the other allowed characters), and an
+>int< is a non-empty sequence of ASCII digits. As this shorthand is
+expended, a ".plt" extension is added to >pkg<, and a ".rkt" extension
+is added to >path<; if no >path< is included, "main.rkt" is used in the
+expansion.
+A (planet string) form is like a (planet id) form with the identifier
+converted to a string, except that the string can optionally end with a
+file extension (i.e., a .) for a >path<. A ".ss" file extension is
+converted to ".rkt".
+In the more general last form of a planet module path, the rel-strings
+are similar to the lib form, except that the (user-string pkg-string
+vers) names a PLaneT-based package instead of a collection. A version
+specification can include an optional major and minor version, where the
+minor version can be a specific number or a constraint: (nat nat)
+specifies an inclusive range, (= nat) specifies an exact match, (+ nat)
+specifies a minimum version and is equivalent to just nat, and (- nat)
+specifies a maximum version. The =, +, and - identifiers in a
+minor-version constraint are recognized symbolically.
+Examples:
+  ; "main.rkt" in package "farm" by "mcdonald": ~
+  > (require (planet mcdonald/farm))
+
+  ; "main.rkt" in version >= 2.0 of "farm" by "mcdonald": ~
+  > (require (planet mcdonald/farm:2)) ~
+
+  ; "main.rkt" in version >= 2.5 of "farm" by "mcdonald": ~
+  > (require (planet mcdonald/farm:2:5)) ~
+
+  ; "duck.rkt" in version >= 2.5 of "farm" by "mcdonald": ~
+  > (require (planet mcdonald/farm:2:5/duck)) ~
+
+
+                                        *submod*
+(submod root-module submod-path-element ...) ~
+(submod "." submod-path-element ...)
+(submod ".." submod-path-element ...)
+
+Identifies a submodule within the module specified by root-module or
+relative to the current module in the case of (submod "." ....), where
+(submod ".." submod-path-element ...) is equivalent to (submod "." ".."
+submod-path-element ...). Submodules have symbolic names, and a sequence
+of identifiers as submod-path-elements determine a path of successively
+nested submodules with the given names. A ".." as a submod-path-element
+names the enclosing module of a submodule, and it’s intended for use in
+(submod "." ....) and (submod ".." ....) forms.
+
+As require prepares to handle a sequence of require-specs, it logs a
+“prefetch” message to the current logger at the 'info level, using the
+name 'module-prefetch, and including message data that is a list of two
+elements: a list of module paths that appear to be imported, and a
+directory path to use for relative module paths. The logged list of
+module paths may be incomplete, but a compilation manager can use
+approximate prefetch information to start on compilations in parallel.
+
+Changed in version 6.0.1.10: Added prefetch logging.
+
+                                        *local-require*
+(local-require require-spec ...) ~
+
+Like require, but for use in a internal-definition context to import
+just into the local context. Only bindings from phase level 0 are
+imported.
+
+Examples:
+  > (let ()
+      (local-require racket/control)
+      fcontrol)
+  #<procedure:fcontrol>
+  > fcontrol
+  fcontrol: undefined;
+   cannot reference undefined identifier
+
++[missing] in [missing] introduces provide.
+
+                                        *provide*
+(provide provide-spec ...) ~
+ 
+provide-spec = id
+             | (all-defined-out)
+             | (all-from-out module-path ...)
+             | (rename-out [orig-id export-id] ...)
+             | (except-out provide-spec provide-spec ...)
+             | (prefix-out prefix-id provide-spec)
+             | (struct-out id)
+             | (combine-out provide-spec ...)
+             | (protect-out provide-spec ...)
+             | (for-meta phase-level provide-spec ...)
+             | (for-syntax provide-spec ...)
+             | (for-template provide-spec ...)
+             | (for-label provide-spec ...)
+             | derived-provide-spec
+                
+ phase-level = exact-integer
+             | #f
+
+Declares exports from a module. A provide form must appear in a module
+context or a module-begin context.
+
+A provide-spec indicates one or more bindings to provide. For each
+exported binding, the external name is a symbol that can be different
+from the symbolic form of the identifier that is bound within the
+module. Also, each export is drawn from a particular phase level and
+exported at the same phase level; by default, the relevant phase level
+is the number of begin-for-syntax forms that enclose the provide form.
+
+The syntax of provide-spec can be extended by bindings to provide
+transformers or provide pre-transformers, such as via
+define-provide-syntax, but the pre-defined forms are as follows.
+
+id
+Exports id, which must be bound within the module (i.e., either defined
+or imported) at the relevant phase level. The symbolic form of id is
+used as the external name, and the symbolic form of the defined or
+imported identifier must match (otherwise, the external name could be
+ambiguous).
+Examples:
+  > (module nest racket
+      (provide num-eggs)
+      (define num-eggs 2))
+
+  > (require 'nest)
+
+  > num-eggs
+  2
+If id has a transformer binding to a rename transformer, then the
+transformer affects the exported binding. See make-rename-transformer
+for more information.
+
+                                        *all-defined-out*
+(all-defined-out) ~
+
+Exports all identifiers that are defined at the relevant phase level
+within the exporting module, and that have the same lexical context as
+the (all-defined-out) form, excluding bindings to rename transformers
+where the target identifier has the 'not-provide-all-defined syntax
+property. The external name for each identifier is the symbolic form of
+the identifier. Only identifiers accessible from the lexical context of
+the (all-defined-out) form are included; that is, macro-introduced
+imports are not re-exported, unless the (all-defined-out) form was
+introduced at the same time.
+Examples:
+  > (module nest racket
+      (provide (all-defined-out))
+      (define num-eggs 2))
+
+  > (require 'nest)
+
+  > num-eggs
+  2
+
+                                        *all-from-out*
+(all-from-out module-path ...) ~
+
+Exports all identifiers that are imported into the exporting module
+using a require-spec built on each module-path (see Importing and
+Exporting: require and provide) with no phase-level shift.  The symbolic
+name for export is derived from the name that is bound within the
+module, as opposed to the symbolic name of the export from each
+module-path. Only identifiers accessible from the lexical context of the
+module-path are included; that is, macro-introduced imports are not
+re-exported, unless the module-path was introduced at the same time.
+Examples:
+  > (module nest racket
+      (provide num-eggs)
+      (define num-eggs 2))
+
+  > (module hen-house racket
+      (require 'nest)
+      (provide (all-from-out 'nest)))
+
+  > (require 'hen-house)
+
+  > num-eggs
+  2
+
+                                        *rename-out*
+(rename-out [orig-id export-id] ...) ~
+
+Exports each orig-id, which must be bound within the module at the
+relevant phase level.  The symbolic name for each export is export-id
+instead orig-d.
+Examples:
+  > (module nest racket
+      (provide (rename-out [count num-eggs]))
+      (define count 2))
+
+  > (require 'nest)
+
+  > num-eggs
+  2
+  > count
+  count: undefined;
+   cannot reference undefined identifier
+
+                                        *except-out*
+(except-out provide-spec provide-spec ...) ~
+
+Like the first provide-spec, but omitting the bindings listed in each
+subsequent provide-spec. If one of the latter bindings is not included
+in the initial provide-spec, a syntax error is reported. The symbolic
+export name information in the latter provide-specs is ignored; only the
+bindings are used.
+Examples:
+  > (module nest racket
+      (provide (except-out (all-defined-out)
+                           num-chicks))
+      (define num-eggs 2)
+      (define num-chicks 3))
+
+  > (require 'nest)
+
+  > num-eggs
+  2
+  > num-chicks
+  num-chicks: undefined;
+   cannot reference undefined identifier
+
+                                        *prefix-out*
+(prefix-out prefix-id provide-spec) ~
+
+Like provide-spec, but with each symbolic export name from provide-spec
+prefixed with prefix-id.
+Examples:
+  > (module nest racket
+      (provide (prefix-out chicken: num-eggs)) ~
+      (define num-eggs 2))
+
+  > (require 'nest)
+
+  > chicken:num-eggs
+  2
+
+                                        *struct-out*
+(struct-out id) ~
+
+Exports the bindings associated with a structure type id. Typically, id
+is bound with (struct id ....); more generally, id must have a
+transformer binding of structure-type information at the relevant phase
+level; see [missing].  Furthermore, for each identifier mentioned in the
+structure-type information, the enclosing module must define or import
+one identifier that is free-identifier=?. If the structure-type
+information includes a super-type identifier, and if the identifier has
+a transformer binding of structure-type information, the accessor and
+mutator bindings of the super-type are not included by struct-out for
+export.
+Examples:
+  > (module nest racket
+      (provide (struct-out egg))
+      (struct egg (color wt)))
+
+  > (require 'nest)
+
+  > (egg-color (egg 'blue 10))
+  'blue
+
+                                        *combine-out*
+(combine-out provide-spec ...) ~
+
+The union of the provide-specs.
+Examples:
+  > (module nest racket
+      (provide (combine-out num-eggs num-chicks))
+      (define num-eggs 2)
+      (define num-chicks 1))
+
+  > (require 'nest)
+
+  > num-eggs
+  2
+  > num-chicks
+  1
+
+                                        *protect-out*
+(protect-out provide-spec ...) ~
+
+Like the union of the provide-specs, except that the exports are
+protected; requiring modules may refer to these bindings, but may not
+extract these bindings from macro expansions or access them via eval
+without access privileges. For more details, see [missing]. The
+provide-spec must specify only bindings that are defined within the
+exporting module.
+Examples:
+  > (module nest racket
+      (provide num-eggs (protect-out num-chicks))
+      (define num-eggs 2)
+      (define num-chicks 3))
+
+  > (define weak-inspector (make-inspector (current-code-inspector)))
+
+  > (define (weak-eval x)
+      (parameterize ([current-code-inspector weak-inspector])
+        (define weak-ns (make-base-namespace))
+        (namespace-attach-module (current-namespace)
+                                 ''nest
+                                 weak-ns)
+        (parameterize ([current-namespace weak-ns])
+          (namespace-require ''nest)
+          (eval x))))
+
+  > (require 'nest)
+
+  > (list num-eggs num-chicks)
+  '(2 3)
+  > (weak-eval 'num-eggs)
+  2
+  > (weak-eval 'num-chicks)
+  num-chicks: access disallowed by code inspector to protected
+  variable from module: 'nest
+    in: num-chicks ~
+
+                                        *for-meta*
+(for-meta phase-level provide-spec ...) ~
+Like the union of the provide-specs, but adjusted to apply to the phase
+level specified by phase-level relative to the current phase level
+(where #f corresponds to the label phase level). In particular, an id or
+rename-out form as a provide-spec refers to a binding at phase-level
+relative to the current level, an all-defined-out exports only
+definitions at phase-level relative to the current phase level, and an
+all-from-out exports bindings imported with a shift by phase-level.
+Examples:
+  > (module nest racket
+      (begin-for-syntax
+       (define eggs 2))
+      (define chickens 3)
+      (provide (for-syntax eggs)
+               chickens))
+
+  > (require 'nest)
+
+  > (define-syntax (test-eggs stx)
+      (printf "Eggs are ~a\n" eggs)
+      #'0)
+
+  > (test-eggs)
+  Eggs are 2
+  0
+  > chickens
+  3
+  > (module broken-nest racket
+      (define eggs 2)
+      (define chickens 3)
+      (provide (for-syntax eggs)
+               chickens))
+  eval:7:0: module: provided identifier not defined or
+  imported for phase 1
+    at: eggs ~
+    in: (#%module-begin (do-wrapping-module-begin print-result ~
+  (module configure-runtime (quote #%kernel) (#%require
+  racket/runtime-config) (configure #f)))
+  (do-wrapping-module-begin print-result (define eggs 2))
+  (do-wrapping-module-begin print-result (define c...
+  > (module nest2 racket
+      (begin-for-syntax
+       (define eggs 2))
+      (provide (for-syntax eggs)))
+
+  > (require (for-meta 2 racket/base)
+             (for-syntax 'nest2))
+
+  > (define-syntax (test stx)
+      (define-syntax (show-eggs stx)
+        (printf "Eggs are ~a\n" eggs)
+        #'0)
+      (begin
+        (show-eggs)
+        #'0))
+  Eggs are 2
+
+  > (test)
+  0
+
+                                        *for-syntax*
+(for-syntax provide-spec ...) ~
+Same as (for-meta 1 provide-spec ...).
+
+                                        *for-template*
+(for-template provide-spec ...) ~
+Same as (for-meta -1 provide-spec ...).
+
+                                        *for-label*
+(for-label provide-spec ...) ~
+Same as (for-meta #f provide-spec ...).
+
+derived-provide-spec
+See define-provide-syntax for information on expanding the set of
+provide-spec forms.
+
+Each export specified within a module must have a distinct symbolic
+export name, though the same binding can be specified with the multiple
+symbolic names.
+
+                                        *for-meta*
+(for-meta phase-level require-spec ...) ~
+
+See require and provide.
+
+                                        *for-syntax*
+(for-syntax require-spec ...) ~
+
+See require and provide.
+
+                                        *for-template*
+(for-template require-spec ...) ~
+
+See require and provide.
+
+                                        *for-label*
+(for-label require-spec ...) ~
+
+See require and provide.
+
+(#%require raw-require-spec ...)
+ 
+    raw-require-spec = phaseless-spec
+                     | (for-meta phase-level phaseless-spec ...)
+                     | (for-syntax phaseless-spec ...)
+                     | (for-template phaseless-spec ...)
+                     | (for-label phaseless-spec ...)
+                     | (just-meta phase-level raw-require-spec ...)
+                        
+         phase-level = exact-integer
+                     | #f
+                        
+      phaseless-spec = raw-module-path
+                     | (only raw-module-path id ...)
+                     | (prefix prefix-id raw-module-path)
+                     | (all-except raw-module-path id ...)
+                     | (prefix-all-except prefix-id
+                                          raw-module-path id ...)
+                     | (rename raw-module-path local-id exported-id)
+                        
+     raw-module-path = raw-root-module-path
+                     | (submod raw-root-module-path id ...+)
+                     | (submod "." id ...+)
+                        
+raw-root-module-path = (quote id)
+                     | rel-string
+                     | (lib rel-string ...)
+                     | id
+                     | (file string)
+                     | (planet rel-string
+                               (user-string pkg-string vers ...))
+                     | literal-path
+
+The primitive import form, to which require expands. A raw-require-spec
+is similar to a require-spec in a require form, except that the syntax
+is more constrained, not composable, and not extensible. Also, sub-form
+names like for-syntax and lib are recognized symbolically, instead of
+via bindings. Although not formalized in the grammar above, a just-meta
+form cannot appear within a just-meta form.
+
+Each raw-require-spec corresponds to the obvious require-spec, but the
+rename sub-form has the identifiers in reverse order compared to
+rename-in.
+
+For most raw-require-specs, the lexical context of the raw-require-spec
+determines the context of introduced identifiers. The exception is the
+rename sub-form, where the lexical context of the local-id is preserved.
+
+A literal-path as a raw-root-module-path corresponds to a path in the
+sense of path?. Since path values are never produced by read-syntax,
+they appear only in programmatically constructed expressions. They also
+appear naturally as arguments to functions such as namespace-require,
+with otherwise take a quoted raw-module-spec.
+
+(#%provide raw-provide-spec ...)
+ 
+raw-provide-spec = phaseless-spec
+                 | (for-meta phase-level phaseless-spec)
+                 | (for-syntax phaseless-spec)
+                 | (for-label phaseless-spec)
+                 | (protect raw-provide-spec)
+                    
+     phase-level = exact-integer
+                 | #f
+                    
+  phaseless-spec = id
+                 | (rename local-id export-id)
+                 | (struct struct-id (field-id ...))
+                 | (all-from raw-module-path)
+                 | (all-from-except raw-module-path id ...)
+                 | (all-defined)
+                 | (all-defined-except id ...)
+                 | (prefix-all-defined prefix-id)
+                 | (prefix-all-defined-except prefix-id id ...)
+                 | (protect phaseless-spec ...)
+                 | (expand (id . datum))
+
+The primitive export form, to which provide expands.  A raw-module-path
+is as for #%require. A protect sub-form cannot appear within a protect
+sub-form.
+
+Like #%require, the sub-form keywords for #%provide are recognized
+symbolically, and nearly every raw-provide-spec has an obvious
+equivalent provide-spec via provide, with the exception of the struct
+and expand sub-forms.
+
+A (struct struct-id (field-id ...)) sub-form expands to struct-id,
+make-struct-id, struct:struct-id, struct-id?, struct-id-field-id for
+each field-id, and set-struct-id-field-id! for each field-id. The
+lexical context of the struct-id is used for all generated identifiers.
+
+Unlike #%require, the #%provide form is macro-extensible via an explicit
+expand sub-form; the (id . datum) part is locally expanded as an
+expression (even though it is not actually an expression), stopping when
+a begin form is produced; if the expansion result is (begin
+raw-provide-spec ...), it is spliced in place of the expand form,
+otherwise a syntax error is reported. The expand sub-form is not
+normally used directly; it provides a hook for implementing provide and
+provide transformers.
+
+The all-from and all-from-except forms re-export only identifiers that
+are accessible in lexical context of the all-from or all-from-except
+form itself. That is, macro-introduced imports are not re-exported,
+unless the all-from or all-from-except form was introduced at the same
+time. Similarly, all-defined and its variants export only definitions
+accessible from the lexical context of the phaseless-spec form.
+
+2.1. Additional require Forms
+
+ (require racket/require) package: base ~
+
+The bindings documented in this section are provided by the
+racket/require library, not racket/base or racket.
+
+The following forms support more complex selection and manipulation of
+sets of imported identifiers.
+
+                                        *matching-identifiers-in*
+(matching-identifiers-in regexp require-spec) ~
+
+Like require-spec, but including only imports whose names  match regexp.
+The regexp must be a literal regular  expression (see [missing]).
+
+Examples:
+  > (module zoo racket/base
+      (provide tunafish swordfish blowfish
+               monkey lizard ant)
+      (define tunafish 1)
+      (define swordfish 2)
+      (define blowfish 3)
+      (define monkey 4)
+      (define lizard 5)
+      (define ant 6))
+
+  > (require racket/require)
+
+  > (require (matching-identifiers-in #rx"\\w*fish" 'zoo))
+
+  > tunafish
+  1
+  > swordfish
+  2
+  > blowfish
+  3
+  > monkey
+  monkey: undefined;
+   cannot reference undefined identifier
+
+                                        *subtract-in*
+(subtract-in require-spec subtracted-spec ...) ~
+
+Like require-spec, but omitting those imports that would be   imported
+by one of the subtracted-specs.
+
+Examples:
+  > (module earth racket
+      (provide land sea air)
+      (define land 1)
+      (define sea 2)
+      (define air 3))
+
+  > (module mars racket
+      (provide aliens)
+      (define aliens 4))
+
+  > (module solar-system racket
+      (require 'earth 'mars)
+      (provide (all-from-out 'earth)
+               (all-from-out 'mars)))
+
+  > (require racket/require)
+
+  > (require (subtract-in 'solar-system 'earth))
+
+  > land
+  land: undefined;
+   cannot reference undefined identifier
+  > aliens
+  4
+
+                                        *filtered-in*
+(filtered-in proc-expr require-spec) ~
+
+Applies an arbitrary transformation on the import names (as strings) of
+require-spec. The proc-expr must evaluate at expansion time to a
+single-argument procedure, which is applied on each of the names from
+require-spec.  For each name, the procedure must return either a string
+for the import’s new name or #f to exclude the import.
+
+For example,
+
+  (require (filtered-in
+            (lambda (name)
+              (and (regexp-match? #rx"^[a-z-]+$" name)
+                   (regexp-replace #rx"-" (string-titlecase name) "")))
+            racket/base))
+
+imports only bindings from racket/base that match the pattern
+#rx"^[a-z-]+$", and it converts the names to “camel case.”
+
+                                        *path-up*
+(path-up rel-string ...) ~
+
+Specifies paths to modules named by the rel-strings similar to using the
+rel-strings directly, except that if a required module file is not found
+relative to the enclosing source, it is searched for in the parent
+directory, and then in the grand-parent directory, etc., all the way to
+the root directory. The discovered path relative to the enclosing source
+becomes part of the expanded form.
+
+This form is useful in setting up a “project environment.”  For example,
+using the following "config.rkt" file in the root directory of your
+project:
+
+  #lang racket/base
+  (require racket/require-syntax
+           (for-syntax "utils/in-here.rkt"))
+   
+  (provide utils-in)
+  (define-require-syntax utils-in in-here-transformer)
+
+and using "utils/in-here.rkt" under the same root directory:
+
+  #lang racket/base
+  (require racket/runtime-path)
+  (provide in-here-transformer)
+  (define-runtime-path here ".")
+  (define (in-here-transformer stx)
+    (syntax-case stx ()
+      [(_ sym)
+       (identifier? #'sym)
+       (let ([path (build-path here (format "~a.rkt" (syntax-e #'sym)))])
+         (datum->syntax stx `(file ,(path->string path)) stx))]))
+
+then path-up works for any other module under the project  directory to
+find "config.rkt":
+
+  (require racket/require
+           (path-up "config.rkt")
+           (utils-in foo))
+
+Note that the order of requires in the example is important, as each of
+the first two bind the identifier used in the following.
+
+An alternative in this scenario is to use path-up directly to find the
+utility module:
+
+  (require racket/require
+           (path-up "utils/foo.rkt"))
+
+but then sub-directories that are called "utils" override the one in the
+project’s root. In other words, the previous method requires only a
+single unique name.
+
+                                        *multi-in*
+(multi-in subs ...+) ~
+ 
+    subs = sub-path
+         | (sub-path ...)
+            
+sub-path = rel-string
+         | id
+
+Specifies multiple files to be required from a hierarchy of directories
+or collections. The set of required module paths is computed as the
+Cartesian product of the subs groups, where each sub-path is combined
+with other sub-paths in order using a / separator. A sub-path as a subs
+is equivalent to (sub-path). All sub-paths in a given multi-in form must
+be either strings or identifiers.
+
+Examples:
+
+  (require (multi-in racket (dict list)))
+   is equivalent to (require racket/dict racket/list)
+ 
+  (require (multi-in "math" "matrix" "utils.rkt"))
+   is equivalent to (require "math/matrix/utils.rkt")
+ 
+  (require (multi-in "utils" ("math.rkt" "matrix.rkt")))
+   is equivalent to (require "utils/math.rkt" "utils/matrix.rkt")
+ 
+  (require (multi-in ("math" "matrix") "utils.rkt"))
+   is equivalent to (require "math/utils.rkt" "matrix/utils.rkt")
+ 
+  (require (multi-in ("math" "matrix") ("utils.rkt" "helpers.rkt")))
+   is equivalent to (require "math/utils.rkt" "math/helpers.rkt"
+                             "matrix/utils.rkt" "matrix/helpers.rkt")
+
+2.2. Additional provide Forms
+
+ (require racket/provide) package: base ~
+
+The bindings documented in this section are provided by the
+racket/provide library, not racket/base or racket.
+
+                                        *matching-identifiers-out*
+(matching-identifiers-out regexp provide-spec) ~
+
+Like provide-spec, but including only exports of bindings with an
+external name that matches regexp. The regexp must be a literal regular
+expression (see [missing]).
+
+                                        *filtered-out*
+(filtered-out proc-expr provide-spec) ~
+
+Analogous to filtered-in, but for filtering and renaming exports.
+
+For example,
+
+  (provide (filtered-out
+            (lambda (name)
+              (and (regexp-match? #rx"^[a-z-]+$" name)
+                   (regexp-replace
+                    #rx"-" (string-titlecase name) "")))
+            (all-defined-out)))
+
+exports only bindings that match the  pattern #rx"^[a-z-]+$", and it
+converts the names to “camel case.”
+
+3. Literals: quote and #%datum
+
+Many forms are implicitly quoted (via #%datum) as literals. See
+[missing] for more information.
+
++[missing] in [missing] introduces quote.
+
+                                        *quote*
+(quote datum) ~
+
+Produces a constant value corresponding to datum (i.e., the
+representation of the program fragment) without its lexical information,
+source location, etc.  Quoted pairs, vectors, and boxes are immutable.
+
+Examples:
+  > (quote x)
+  'x
+  > (quote (+ 1 2))
+  '(+ 1 2)
+  > (+ 1 2)
+  3
+
+(#%datum . datum)
+
+Expands to (quote datum), as long as datum is not a keyword. If datum is
+a keyword, a syntax error is reported.
+
+See also [missing] for information on how the expander introduces
+#%datum identifiers.
+
+Examples:
+  > (#%datum . 10)
+  10
+  > (#%datum . x)
+  'x
+  > (#%datum . #:x) ~
+  eval:6:0: #%datum: keyword used as an expression
+    in: #:x ~
+
+4. Expression Wrapper: #%expression
+
+(#%expression expr)
+
+Produces the same result as expr. Using #%expression forces the parsing
+of a form as an expression.
+
+Examples:
+  > (#%expression (+ 1 2))
+  3
+  > (#%expression (define x 10))
+  eval:8:0: define: not allowed in an expression context
+    in: (define x 10) ~
+
+The #%expression form is helpful in recursive definition contexts where
+expanding a subsequent definition can provide compile-time information
+for the current expression. For example, consider a define-sym-case
+macro that simply records some symbols at compile-time in a given
+identifier.
+
+  (define-syntax (define-sym-case stx)
+    (syntax-case stx ()
+      [(_ id sym ...)
+       (andmap identifier? (syntax->list #'(sym ...)))
+       #'(define-syntax id
+           '(sym ...))]))
+
+
+and then a variant of case that checks to make sure the symbols used in
+the expression match those given in the earlier definition:
+
+  (define-syntax (sym-case stx)
+    (syntax-case stx ()
+      [(_ id val-expr [(sym) expr] ...)
+       (let ()
+         (define expected-ids
+           (syntax-local-value
+            #'id
+            (λ ()
+              (raise-syntax-error
+               'sym-case
+               "expected an identifier bound via def-sym-case"
+               stx
+               #'id))))
+         (define actual-ids (syntax->datum #'(sym ...)))
+         (unless (equal? expected-ids actual-ids)
+           (raise-syntax-error
+            'sym-case
+            (format "expected the symbols ~s"
+                    expected-ids)
+            stx))
+         #'(case val-expr [(sym) expr] ...))]))
+
+
+If the definition follows the use like this, then the define-sym-case
+macro does not have a chance to bind id and the sym-case macro signals
+an error:
+
+  > (let ()
+      (sym-case land-creatures 'bear
+                [(bear) 1]
+                [(fox) 2])
+      (define-sym-case land-creatures bear fox))
+  eval:11:0: sym-case: expected an identifier bound via
+  def-sym-case
+    at: land-creatures ~
+    in: (sym-case land-creatures (quote bear) ((bear) 1) ~
+  ((fox) 2))
+
+But if the sym-case is wrapped in an #%expression, then the expander
+does not need to expand it to know it is an expression and it moves on
+to the define-sym-case expression.
+
+  > (let ()
+      (#%expression (sym-case sea-creatures 'whale
+                              [(whale) 1]
+                              [(squid) 2]))
+      (define-sym-case sea-creatures whale squid)
+      'more...)
+  'more...
+
+Of course, a macro like sym-case should not require its clients to add
+#%expression; instead it should check the basic shape of its arguments
+and then expand to #%expression wrapped around a helper macro that calls
+syntax-local-value and finishes the expansion.
+
+5. Variable References and #%top
+
+id
+
+Refers to a top-level, module-level, or local binding, when id is not
+bound as a transformer (see [missing]). At run-time, the reference
+evaluates to the value in the location associated with the binding.
+
+When the expander encounters an id that is not bound by a module-level
+or local binding, it converts the expression to (#%top . id) giving
+#%top the lexical context of the id; typically, that context refers to
+#%top. See also [missing].
+
+Examples:
+  > (define x 10)
+
+  > x
+  10
+  > (let ([x 5]) x)
+  5
+  > ((lambda (x) x) 2)
+  2
+
+(#%top . id)
+
+Equivalent to id when id is bound to a module-level or top-level
+variable. In a top-level context, (#%top . id) always refers to a
+top-level variable, even if id is unbound or otherwise bound.
+
+Within a module form, (#%top . id) expands to just id—with the
+obligation that id is defined within the module and has no local binding
+in its context. At phase level 0, (#%top . id) is an immediate syntax
+error if id is not bound. At phase level 1 and higher, a syntax error is
+reported if id is not defined at the corresponding phase by the end of
+module-body partial expansion.
+
+See also [missing] for information on how the expander introduces #%top
+identifiers.
+
+Examples:
+  > (define x 12)
+
+  > (let ([x 5]) (#%top . x))
+  12
+
+Changed in version 6.3: Changed the introduction of #%top in a top-level
+context to unbound identifiers only.
+
+6. Locations: #%variable-reference
+
+(#%variable-reference id)
+(#%variable-reference (#%top . id))
+(#%variable-reference)
+
+Produces an opaque variable reference value representing the location of
+id, which must be bound as a variable. If no id is supplied, the
+resulting value refers to an “anonymous” variable defined within the
+enclosing context (i.e., within the enclosing module, or at the top
+level if the form is not inside a module).
+
+A variable reference can be used with
+variable-reference->empty-namespace,
+variable-reference->resolved-module-path, and
+variable-reference->namespace, but facilities like
+define-namespace-anchor and namespace-anchor->namespace wrap those to
+provide a clearer interface. A variable reference is also useful to
+low-level extensions; see [missing].
+
+7. Procedure Applications and #%app
+
++[missing] in [missing] introduces procedure applications.
+
+                                        *proc-expr*
+(proc-expr arg ...) ~
+
+Applies a procedure, when proc-expr is not an identifier that has a
+transformer binding (see [missing]).
+
+More precisely, the expander converts this form to (#%app proc-expr arg
+...), giving #%app the lexical context that is associated with the
+original form (i.e., the pair that combines proc-expr and its
+arguments). Typically, the lexical context of the pair indicates the
+procedure-application #%app that is described next. See also [missing].
+
+Examples:
+  > (+ 1 2)
+  3
+  > ((lambda (x #:arg y) (list y x)) #:arg 2 1) ~
+  '(2 1)
+
+(#%app proc-expr arg ...)
+
+Applies a procedure. Each arg is one of the following:
+
+arg-expr
+The resulting value is a non-keyword argument.
+
+keyword arg-expr
+The resulting value is a keyword argument using keyword. Each keyword in
+the application must be distinct.
+
+The proc-expr and arg-exprs are evaluated in order, left to right. If
+the result of proc-expr is a procedure that accepts as many arguments as
+non-keyword arg-exprs, if it accepts arguments for all of the keywords
+in the application, and if all required keyword-based arguments are
+represented among the keywords in the application, then the procedure is
+called with the values of the arg-exprs. Otherwise, the
+exn:fail:contract exception is raised.
+
+The continuation of the procedure call is the same as the continuation
+of the application expression, so the results of the procedure are the
+results of the application expression.
+
+The relative order of keyword-based arguments matters only for the order
+of arg-expr evaluations; the arguments are associated with argument
+variables in the applied procedure based on the keywords, and not their
+positions. The other arg-expr values, in contrast, are associated with
+variables according to their order in the application form.
+
+See also [missing] for information on how the expander introduces #%app
+identifiers.
+
+Examples:
+  > (#%app + 1 2)
+  3
+  > (#%app (lambda (x #:arg y) (list y x)) #:arg 2 1) ~
+  '(2 1)
+  > (#%app cons)
+  cons: arity mismatch;
+   the expected number of arguments does not match the given
+  number
+    expected: 2 ~
+    given: 0 ~
+
+(#%plain-app proc-expr arg-expr ...)
+(#%plain-app)
+
+Like #%app, but without support for keyword arguments. As a special
+case, (#%plain-app) produces '().
+
+8. Procedure Expressions: lambda and case-lambda
+
++[missing] in [missing] introduces procedure expressions.
+
+                                        *lambda*
+(lambda kw-formals body ...+) ~
+(λ kw-formals body ...+)
+ 
+kw-formals = (arg ...)
+           | (arg ...+ . rest-id)
+           | rest-id
+              
+       arg = id
+           | [id default-expr]
+           | keyword id
+           | keyword [id default-expr]
+
+Produces a procedure. The kw-formals determines the number of arguments
+and which keyword arguments that the procedure accepts.
+
+Considering only the first arg case, a simple kw-formals has one of the
+following three forms:
+
+                                        *id*
+(id ...) ~
+The procedure accepts as many non-keyword argument values as the number
+of ids. Each id is associated with an argument value by position.
+
+                                        *id*
+(id ...+ . rest-id) ~
+The procedure accepts any number of non-keyword arguments greater or
+equal to the number of ids. When the procedure is applied, the ids are
+associated with argument values by position, and all leftover arguments
+are placed into a list that is associated to rest-id.
+
+rest-id
+The procedure accepts any number of non-keyword arguments. All arguments
+are placed into a list that is associated with rest-id.
+
+More generally, an arg can include a keyword and/or default value. Thus,
+the first two cases above are more completely specified as follows:
+
+                                        *arg*
+(arg ...) ~
+Each arg has the following  four forms:
+id
+Adds one to both the minimum and maximum number of non-keyword arguments
+accepted by the procedure. The id is associated with an actual argument
+by position.
+[id default-expr]
+Adds one to the maximum number of non-keyword arguments accepted by the
+procedure. The id is associated with an actual argument by position, and
+if no such argument is provided, the default-expr is evaluated to
+produce a value associated with id. No arg with a default-expr can
+appear before an id without a default-expr and without a keyword.
+keyword id
+The procedure requires a keyword-based argument using keyword. The id is
+associated with a keyword-based actual argument using keyword.
+keyword [id default-expr]
+The procedure accepts a keyword-based argument using keyword. The id is
+associated with a keyword-based actual argument using keyword, if
+supplied in an application; otherwise, the default-expr is evaluated to
+obtain a value to associate with id.
+The position of a keyword arg in kw-formals does not matter, but each
+specified keyword must be distinct.
+
+                                        *arg*
+(arg ...+ . rest-id) ~
+Like the previous case, but the procedure accepts any number of
+non-keyword arguments beyond its minimum number of arguments. When more
+arguments are provided than non-keyword arguments among the args, the
+extra arguments are placed into a list that is associated to rest-id.
+
+The kw-formals identifiers are bound in the bodys. When the procedure is
+applied, a new location is created for each identifier, and the location
+is filled with the associated argument value. The locations are created
+and filled in order, with default-exprs evaluated as needed to fill
+locations.
+
+In other words, argument bindings with default-value expressions are
+evaluated analogous to let*.
+
+If any identifier appears in the bodys that is not one of the
+identifiers in kw-formals, then it refers to the same location that it
+would if it appeared in place of the lambda expression. (In other words,
+variable reference is lexically scoped.)
+
+When multiple identifiers appear in a kw-formals, they must be distinct
+according to bound-identifier=?.
+
+If the procedure produced by lambda is applied to fewer or more
+by-position or by-keyword arguments than it accepts, to by-keyword
+arguments that it does not accept, or without required by-keyword
+arguments, then the exn:fail:contract exception is raised.
+
+The last body expression is in tail position with respect to the
+procedure body.
+
+Examples:
+  > ((lambda (x) x) 10)
+  10
+  > ((lambda (x y) (list y x)) 1 2)
+  '(2 1)
+  > ((lambda (x [y 5]) (list y x)) 1 2)
+  '(2 1)
+  > (let ([f (lambda (x #:arg y) (list y x))]) ~
+     (list (f 1 #:arg 2) ~
+           (f #:arg 2 1))) ~
+  '((2 1) (2 1))
+
+When compiling a lambda or case-lambda expression, Racket looks for a
+'method-arity-error property attached to the expression (see [missing]).
+If it is present with a true value, and if no case of the procedure
+accepts zero arguments, then the procedure is marked so that an
+exn:fail:contract:arity exception involving the procedure will hide the
+first argument, if one was provided. (Hiding the first argument is
+useful when the procedure implements a method, where the first argument
+is implicit in the original source). The property affects only the
+format of exn:fail:contract:arity exceptions, not the result of
+procedure-arity.
+
+When a keyword-accepting procedure is bound to an identifier in certain
+ways, and when the identifier is used in the function position of an
+application form, then the application form may be expanded in such a
+way that the original binding is obscured as the target of the
+application. To help expose the connection between the function
+application and function declaration, an identifier in the expansion of
+the function application is tagged with a syntax property accessible via
+syntax-procedure-alias-property if it is effectively an alias for the
+original identifier. An identifier in the expansion is tagged with a
+syntax property accessible via
+syntax-procedure-converted-arguments-property if it is like the original
+identifier except that the arguments are converted to a flattened form:
+keyword arguments, required by-position arguments, by-position optional
+arguments, and rest arguments—all as required, by-position arguments;
+the keyword arguments are sorted by keyword name, each optional keyword
+argument is followed by a boolean to indicate whether a value is
+provided, and #f is used for an optional keyword argument whose value is
+not provided; optional by-position arguments include #f for each
+non-provided argument, and then the sequence of optional-argument values
+is followed by a parallel sequence of booleans to indicate whether each
+optional-argument value was provided.
+
+                                        *case-lambda*
+(case-lambda [formals body ...+] ...) ~
+ 
+formals = (id ...)
+        | (id ...+ . rest-id)
+        | rest-id
+
+Produces a procedure. Each [formals body ...+] clause is analogous to a
+single lambda procedure; applying the case-lambda-generated procedure is
+the same as applying a procedure that corresponds to one of the
+clauses—the first procedure that accepts the given number of arguments.
+If no corresponding procedure accepts the given number of arguments, the
+exn:fail:contract exception is raised.
+
+Note that a case-lambda clause supports only formals, not the more
+general kw-formals of lambda. That is, case-lambda does not directly
+support keyword and optional arguments.
+
+Example:
+  > (let ([f (case-lambda
+              [() 10]
+              [(x) x]
+              [(x y) (list y x)]
+              [r r])])
+      (list (f)
+            (f 1)
+            (f 1 2)
+            (f 1 2 3)))
+  '(10 1 (2 1) (1 2 3))
+
+(#%plain-lambda formals body ...+)
+
+Like lambda, but without support for keyword or optional arguments.
+
+9. Local Binding: let, let*, letrec, ...
+
++[missing] in [missing] introduces local binding.
+
+                                        *let*
+(let ([id val-expr] ...) body ...+) ~
+(let proc-id ([id init-expr] ...) body ...+)
+
+The first form evaluates the val-exprs left-to-right, creates a new
+location for each id, and places the values into the locations. It then
+evaluates the bodys, in which the ids are bound. The last body
+expression is in tail position with respect to the let form. The ids
+must be distinct according to bound-identifier=?.
+
+Examples:
+  > (let ([x 5]) x)
+  5
+  > (let ([x 5])
+      (let ([x 2]
+            [y x])
+        (list y x)))
+  '(5 2)
+
+The second form evaluates the init-exprs; the resulting values become
+arguments in an application of a procedure (lambda (id ...) body ...+),
+where proc-id is bound within the bodys to the procedure itself.
+
+Example:
+  > (let fac ([n 10])
+      (if (zero? n)
+          1
+          (* n (fac (sub1 n)))))
+  3628800
+
+                                        *let**
+(let* ([id val-expr] ...) body ...+) ~
+
+Like let, but evaluates the val-exprs one by one, creating a location
+for each id as soon as the value is available. The ids are bound in the
+remaining val-exprs as well as the bodys, and the ids need not be
+distinct; later bindings shadow earlier bindings.
+
+Example:
+  > (let* ([x 1]
+           [y (+ x 1)])
+      (list y x))
+  '(2 1)
+
+                                        *letrec*
+(letrec ([id val-expr] ...) body ...+) ~
+
+Like let, including left-to-right evaluation of the val-exprs, but the
+locations for all ids are created first, all ids are bound in all
+val-exprs as well as the bodys, and each id is initialized immediately
+after the corresponding val-expr is evaluated. The ids must be distinct
+according to bound-identifier=?.
+
+Referencing or assigning to an id before its initialization raises
+exn:fail:contract:variable. If an id (i.e., the binding instance or id)
+has an 'undefined-error-name syntax property whose value is a symbol,
+the symbol is used as the name of the variable for error reporting,
+instead of the symbolic form of id.
+
+Example:
+  > (letrec ([is-even? (lambda (n)
+                         (or (zero? n)
+                             (is-odd? (sub1 n))))]
+             [is-odd? (lambda (n)
+                        (and (not (zero? n))
+                             (is-even? (sub1 n))))])
+      (is-odd? 11))
+  #t
+
+Changed in version 6.0.1.2: Changed reference or assignment of an
+uninitialized id to an error.
+
+                                        *let-values*
+(let-values ([(id ...) val-expr] ...) body ...+) ~
+
+Like let, except that each val-expr must produce as many values as
+corresponding ids, otherwise the exn:fail:contract exception is raised.
+A separate location is created for each id, all of which are bound in
+the bodys.
+
+Example:
+  > (let-values ([(x y) (quotient/remainder 10 3)])
+      (list y x))
+  '(1 3)
+
+                                        *let*-values*
+(let*-values ([(id ...) val-expr] ...) body ...+) ~
+
+Like let*, except that each val-expr must produce as many values as
+corresponding ids. A separate location is created for each id, all of
+which are bound in the later val-exprs and in the bodys.
+
+Example:
+  > (let*-values ([(x y) (quotient/remainder 10 3)]
+                  [(z) (list y x)])
+      z)
+  '(1 3)
+
+                                        *letrec-values*
+(letrec-values ([(id ...) val-expr] ...) body ...+) ~
+
+Like letrec, except that each val-expr must produce as many values as
+corresponding ids. A separate location is created for each id, all of
+which are bound in all val-exprs and in the bodys.
+
+Example:
+  > (letrec-values ([(is-even? is-odd?)
+                     (values
+                       (lambda (n)
+                         (or (zero? n)
+                             (is-odd? (sub1 n))))
+                       (lambda (n)
+                         (or (= n 1)
+                             (is-even? (sub1 n)))))])
+      (is-odd? 11))
+  #t
+
+                                        *let-syntax*
+(let-syntax ([id trans-expr] ...) body ...+) ~
+
++See also splicing-let-syntax.
+
+Creates a transformer binding (see [missing]) of each id with the value
+of trans-expr, which is an expression at phase level 1 relative to the
+surrounding context. (See [missing] for information on phase levels.)
+
+The evaluation of each trans-expr is parameterized to set
+current-namespace to a namespace that shares bindings and variables with
+the namespace being used to expand the let-syntax form, except that its
+base phase is one greater.
+
+Each id is bound in the bodys, and not in other trans-exprs.
+
+                                        *letrec-syntax*
+(letrec-syntax ([id trans-expr] ...) body ...+) ~
+
++See also splicing-letrec-syntax.
+
+Like let-syntax, except that each id is also bound within all
+trans-exprs.
+
+                                        *let-syntaxes*
+(let-syntaxes ([(id ...) trans-expr] ...) body ...+) ~
+
++See also splicing-let-syntaxes.
+
+Like let-syntax, but each trans-expr must produce as many values as
+corresponding ids, each of which is bound to the corresponding value.
+
+                                        *letrec-syntaxes*
+(letrec-syntaxes ([(id ...) trans-expr] ...) body ...+) ~
+
++See also splicing-letrec-syntaxes.
+
+Like let-syntax, except that each id is also bound within all
+trans-exprs.
+
+                                        *letrec-syntaxes+values*
+(letrec-syntaxes+values ([(trans-id ...) trans-expr] ...) ~
+                        ([(val-id ...) val-expr] ...)
+   body ...+)
+
+Combines letrec-syntaxes with a variant of letrec-values: each trans-id
+and val-id is bound in all trans-exprs and val-exprs.
+
+The letrec-syntaxes+values form is the core form for local compile-time
+bindings, since forms like letrec-syntax and internal-definition
+contexts expand to it. In a fully expanded expression (see [missing]),
+the trans-id bindings are discarded and the form reduces to a
+combination of letrec-values or let-values.
+
+For variables bound by letrec-syntaxes+values, the location-creation
+rules differ slightly from letrec-values. The [(val-id ...) val-expr]
+binding clauses are partitioned into minimal sets of clauses that
+satisfy the following rule: if a clause has a val-id binding that is
+referenced (in a full expansion) by the val-expr of an earlier clause,
+the two clauses and all in between are in the same set. If a set
+consists of a single clause whose val-expr does not refer to any of the
+clause’s val-ids, then locations for the val-ids are created after the
+val-expr is evaluated. Otherwise, locations for all val-ids in a set are
+created just before the first val-expr in the set is evaluated. For the
+purposes of forming sets, a (quote-syntax datum #:local) form counts as
+a reference to all bindings in the letrec-syntaxes+values form
+
+The end result of the location-creation rules is that scoping and
+evaluation order are the same as for letrec-values, but the compiler has
+more freedom to optimize away location creation. The rules also
+correspond to a nesting of let-values and letrec-values, which is how
+letrec-syntaxes+values for a fully-expanded expression.
+
+See also local, which supports local bindings with define,
+define-syntax, and more.
+
+10. Local Definitions: local
+
+ (require racket/local) package: base ~
+
+The bindings documented in this section are provided by the racket/local
+and racket libraries, but not racket/base.
+
+                                        *local*
+(local [definition ...] body ...+) ~
+
+Like letrec-syntaxes+values, except that the bindings are expressed in
+the same way as in the top-level or in a module body: using define,
+define-values, define-syntax, struct, etc.  Definitions are
+distinguished from non-definitions by partially expanding definition
+forms (see [missing]). As in the top-level or in a module body, a
+begin-wrapped sequence is spliced into the sequence of definitions.
+
+11. Constructing Graphs: shared
+
+ (require racket/shared) package: base ~
+
+The bindings documented in this section are provided by the
+racket/shared and racket libraries, but not racket/base.
+
+                                        *shared*
+(shared ([id expr] ...) body ...+) ~
+
+Binds ids with shared structure according to exprs and then evaluates
+the body-exprs, returning the result of the last expression.
+
+The shared form is similar to letrec, except that special forms of expr
+are recognized (after partial macro expansion) to construct
+graph-structured data, where the corresponding letrec would instead
+produce a use-before-initialization error.
+
+Each expr (after partial expansion) is matched against the following
+shared-expr grammar, where earlier variants in a production take
+precedence over later variants:
+
+        shared-expr = shell-expr
+                    | plain-expr
+                       
+         shell-expr = (cons in-immutable-expr in-immutable-expr)
+                    | (list in-immutable-expr ...)
+                    | (list* in-immutable-expr ...)
+                    | (append early-expr ... in-immutable-expr)
+                    | (vector-immutable in-immutable-expr ...)
+                    | (box-immutable in-immutable-expr)
+                    | (mcons patchable-expr patchable-expr)
+                    | (vector patchable-expr ...)
+                    | (box patchable-expr)
+                    | (prefix:make-id patchable-expr ...) ~
+                       
+  in-immutable-expr = shell-id
+                    | shell-expr
+                    | early-expr
+                       
+           shell-id = id
+                       
+     patchable-expr = expr
+                       
+         early-expr = expr
+                       
+         plain-expr = expr
+
+The prefix:make-id identifier above matches three kinds of references.
+The first kind is any binding whose name has make- in the middle, and
+where prefix:id has a transformer binding to structure information with
+a full set of mutator bindings; see [missing]. The second kind is an
+identifier that itself has a transformer binding to structure
+information. The third kind is an identifier that has a 'constructor-for
+syntax property whose value is an identifier with a transformer binding
+to structure information. A shell-id, meanwhile, must be one of the ids
+bound by the shared form to a shell-expr.
+
+When the exprs of the shared form are parsed as shared-expr (taking into
+account the order of the variants for parsing precedence), the
+sub-expressions that were parsed via early-expr will be evaluated first
+when the shared form is evaluated. Among such expressions, they are
+evaluated in the order as they appear within the shared form. However,
+any reference to an id bound by shared produces a
+use-before-initialization errror, even if the binding for the id appears
+before the corresponding early-expr within the shared form.
+
+The shell-ids and shell-exprs (not counting patchable-expr and
+early-expr sub-expressions) are effectively evaluated next:
+
+* A shell-id reference produces the same value as the corresponding id
+  will produce within the bodys, assuming that id is never mutated with
+  set!.  This special handling of a shell-id reference is one way in
+  which shared supports the creation of cyclic data, including immutable
+  cyclic data.
+
+* A shell-expr of the form (mcons patchable-expr patchable-expr),
+  (vector patchable-expr ...), (box patchable-expr), or (prefix:make-id
+  patchable-expr ...) produces a mutable value whose content positions
+  are initialized to undefined. Each content position is patched (i.e.,
+  updated) after the corresponding patchable-expr expression is later
+  evaluated.
+
+Next, the plain-exprs are evaluated as for letrec, where a reference to
+an id raises exn:fail:contract:variable if it is evaluated before the
+right-hand side of the id binding.
+
+Finally, the patchable-exprs are evaluated and their values replace
+undefineds in the results of shell-exprs. At this point, all ids are
+bound, so patchable-exprs can create data cycles (but only with cycles
+that can be created via mutation).
+
+Examples:
+  > (shared ([a (cons 1 a)])
+      a)
+  #0='(1 . #0#)
+  > (shared ([a (cons 1 b)]
+             [b (cons 2 a)])
+      a)
+  #0='(1 2 . #0#)
+  > (shared ([a (cons 1 b)]
+             [b 7])
+      a)
+  '(1 . 7)
+  > (shared ([a a]) ; no indirection...
+      a)
+  a: undefined;
+   cannot use before initialization
+  > (shared ([a (cons 1 b)] ; b is early...
+             [b a])
+      a)
+  a: undefined;
+   cannot use before initialization
+  > (shared ([a (mcons 1 b)] ; b is patchable...
+             [b a])
+      a)
+  #0=(mcons 1 #0#)
+  > (shared ([a (vector b b b)]
+             [b (box 1)])
+      (set-box! b 5)
+      a)
+  '#(#&5 #&5 #&5)
+  > (shared ([a (box b)]
+             [b (vector (unbox a)   ; unbox after a is patched
+                        (unbox c))] ; unbox before c is patched
+             [c (box b)])
+      b)
+  #0='#(#0# #<undefined>)
+
+12. Conditionals: if, cond, and, and or
+
++[missing] in [missing] introduces conditionals.
+
+                                        *if*
+(if test-expr then-expr else-expr) ~
+
+Evaluates test-expr. If it produces any value other than #f, then
+then-expr is evaluated, and its results are the result for the if form.
+Otherwise, else-expr is evaluated, and its results are the result for
+the if form. The then-expr and else-expr are in tail position with
+respect to the if form.
+
+Examples:
+  > (if (positive? -5) (error "doesn't get here") 2)
+  2
+  > (if (positive? 5) 1 (error "doesn't get here"))
+  1
+  > (if 'we-have-no-bananas "yes" "no")
+  "yes"
+
+                                        *cond*
+(cond cond-clause ...) ~
+ 
+cond-clause = [test-expr then-body ...+]
+            | [else then-body ...+]
+            | [test-expr => proc-expr]
+            | [test-expr]
+
++[missing] in [missing] introduces cond.
+
+A cond-clause that starts with else must be the last cond-clause.
+
+If no cond-clauses are present, the result is #<void>.
+
+If only a [else then-body ...+] is present, then the then-bodys are
+evaluated. The results from all but the last then-body are ignored. The
+results of the last then-body, which is in tail position with respect to
+the cond form, are the results for the whole cond form.
+
+Otherwise, the first test-expr is evaluated. If it produces #f, then the
+result is the same as a cond form with the remaining cond-clauses, in
+tail position with respect to the original cond form. Otherwise,
+evaluation depends on the form of the cond-clause:
+
+[test-expr then-body ...+]
+The then-bodys are evaluated in order, and the results from all but the
+last then-body are ignored. The results of the last then-body, which is
+in tail position with respect to the cond form, provides the result for
+the whole cond form.
+
+[test-expr => proc-expr]
+The proc-expr is evaluated, and it must produce a procedure that accepts
+one argument, otherwise the exn:fail:contract exception is raised. The
+procedure is applied to the result of test-expr in tail position with
+respect to the cond expression.
+
+[test-expr]
+The result of the test-expr is returned as the result of the cond form.
+The test-expr is not in tail position.
+
+Examples:
+  > (cond)
+
+  > (cond
+      [else 5])
+  5
+  > (cond
+     [(positive? -5) (error "doesn't get here")]
+     [(zero? -5) (error "doesn't get here, either")]
+     [(positive? 5) 'here])
+  'here
+  > (cond
+     [(member 2 '(1 2 3)) => (lambda (l) (map - l))])
+  '(-2 -3)
+  > (cond
+     [(member 2 '(1 2 3))])
+  '(2 3)
+
+else
+
+Recognized specially within forms like cond. An else form as an
+expression is a syntax error.
+
+=>
+
+Recognized specially within forms like cond. A => form as an expression
+is a syntax error.
+
+                                        *and*
+(and expr ...) ~
+
++[missing] in [missing] introduces and.
+
+If no exprs are provided, then result is #t.
+
+If a single expr is provided, then it is in tail position, so the
+results of the and expression are the results of the expr.
+
+Otherwise, the first expr is evaluated. If it produces #f, the result of
+the and expression is #f. Otherwise, the result is the same as an and
+expression with the remaining exprs in tail position with respect to the
+original and form.
+
+Examples:
+  > (and)
+  #t
+  > (and 1)
+  1
+  > (and (values 1 2))
+  1
+  2
+  > (and #f (error "doesn't get here"))
+  #f
+  > (and #t 5)
+  5
+
+                                        *or*
+(or expr ...) ~
+
++[missing] in [missing] introduces or.
+
+If no exprs are provided, then result is #f.
+
+If a single expr is provided, then it is in tail position, so the
+results of the or expression are the results of the expr.
+
+Otherwise, the first expr is evaluated. If it produces a value other
+than #f, that result is the result of the or expression. Otherwise, the
+result is the same as an or expression with the remaining exprs in tail
+position with respect to the original or form.
+
+Examples:
+  > (or)
+  #f
+  > (or 1)
+  1
+  > (or (values 1 2))
+  1
+  2
+  > (or 5 (error "doesn't get here"))
+  5
+  > (or #f 5)
+  5
+
+13. Dispatch: case
+
+                                        *case*
+(case val-expr case-clause ...) ~
+ 
+case-clause = [(datum ...) then-body ...+]
+            | [else then-body ...+]
+
+Evaluates val-expr and uses the result to select a case-clause. The
+selected clause is the first one with a datum whose quoted form is
+equal? to the result of val-expr. If no such datum is present, the else
+case-clause is selected; if no else case-clause is present, either, then
+the result of the case form is #<void>.
+
+The case form of racket differs from that of [missing] or [missing] by
+being based equal? instead of eqv? (in addition to allowing internal
+definitions).
+
+For the selected case-clause, the results of the last then-body, which
+is in tail position with respect to the case form, are the results for
+the whole case form.
+
+A case-clause that starts with else must be the last case-clause.
+
+The case form can dispatch to a matching case-clause in O(log N) time
+for N datums.
+
+Examples:
+  > (case (+ 7 5)
+     [(1 2 3) 'small]
+     [(10 11 12) 'big])
+  'big
+  > (case (- 7 5)
+     [(1 2 3) 'small]
+     [(10 11 12) 'big])
+  'small
+  > (case (string-append "do" "g")
+     [("cat" "dog" "mouse") "animal"]
+     [else "mineral or vegetable"])
+  "animal"
+  > (case (list 'y 'x)
+     [((a b) (x y)) 'forwards]
+     [((b a) (y x)) 'backwards])
+  'backwards
+  > (case 'x
+     [(x) "ex"]
+     [('x) "quoted ex"])
+  "ex"
+  > (case (list 'quote 'x)
+     [(x) "ex"]
+     [('x) "quoted ex"])
+  "quoted ex"
+
+  (define (classify c)
+    (case (char-general-category c)
+     [(ll lu lt ln lo) "letter"]
+     [(nd nl no) "number"]
+     [else "other"]))
+   
+  > (classify #\A)
+  "letter"
+  > (classify #\1)
+  "number"
+  > (classify #\!)
+  "other"
+
+14. Definitions: define, define-syntax, ...
+
++[missing] in [missing] introduces definitions.
+
+                                        *define*
+(define id expr) ~
+(define (head args) body ...+)
+ 
+head = id
+     | (head args)
+        
+args = arg ...
+     | arg ... . rest-id
+        
+ arg = arg-id
+     | [arg-id default-expr]
+     | keyword arg-id
+     | keyword [arg-id default-expr]
+
+The first form binds id to the result of expr, and the second form binds
+id to a procedure. In the second case, the generated procedure is (CVT
+(head args) body ...+), using the CVT meta-function defined as follows:
+
+  (CVT (id . kw-formals) . datum)   = (lambda kw-formals . datum)
+  (CVT (head . kw-formals) . datum) = (lambda kw-formals expr)
+                                       if (CVT head . datum) = expr
+
+In an internal-definition context, a define form introduces a local
+binding; see [missing]. At the top level, the top-level binding for id
+is created after evaluating expr, if it does not exist already, and the
+top-level mapping of id (in the namespace linked with the compiled
+definition) is set to the binding at the same time.
+
+In a context that allows liberal expansion of define, id is bound as
+syntax if expr is an immediate lambda form with keyword arguments or
+args include keyword arguments.
+
+Examples:
+  (define x 10)
+
+
+  > x
+  10
+
+  (define (f x)
+    (+ x 1))
+   
+  > (f 10)
+  11
+
+  (define ((f x) [y 20])
+    (+ x y))
+   
+  > ((f 10) 30)
+  40
+  > ((f 10))
+  30
+
+                                        *define-values*
+(define-values (id ...) expr) ~
+
+Evaluates the expr, and binds the results to the ids, in order, if the
+number of results matches the number of ids; if expr produces a
+different number of results, the exn:fail:contract exception is raised.
+
+In an internal-definition context (see [missing]), a define-values form
+introduces local bindings. At the top level, the top-level binding for
+each id is created after evaluating expr, if it does not exist already,
+and the top-level mapping of each id (in the namespace linked with the
+compiled definition) is set to the binding at the same time.
+
+Examples:
+  (define-values () (values))
+
+
+  (define-values (x y z) (values 1 2 3))
+
+
+  > z
+  3
+
+If a define-values form for a function definition in a module body has a
+'compiler-hint:cross-module-inline syntax property with a true value,
+then the Racket treats the property as a performance hint.  See
+[missing] in [missing] for more information, and see also
+begin-encourage-inline.
+
+                                        *define-syntax*
+(define-syntax id expr) ~
+(define-syntax (head args) body ...+)
+
+The first form creates a transformer binding (see [missing]) of id with
+the value of expr, which is an expression at phase level 1 relative to
+the surrounding context. (See [missing] for information on phase
+levels.)  Evaluation of expr side is parameterized to set
+current-namespace as in let-syntax.
+
+The second form is a shorthand the same as for define; it expands to a
+definition of the first form where the expr is a lambda form.
+
+In an internal-definition context (see [missing]), a define-syntax form
+introduces a local binding.
+
+Examples:
+  > (define-syntax foo
+      (syntax-rules ()
+        ((_ a ...)
+         (printf "~a\n" (list a ...)))))
+
+  > (foo 1 2 3 4)
+  (1 2 3 4)
+
+  > (define-syntax (bar syntax-object)
+      (syntax-case syntax-object ()
+        ((_ a ...)
+         #'(printf "~a\n" (list a ...)))))
+
+  > (bar 1 2 3 4)
+  (1 2 3 4)
+
+
+                                        *define-syntaxes*
+(define-syntaxes (id ...) expr) ~
+
+Like define-syntax, but creates a transformer binding for each id.  The
+expr should produce as many values as ids, and each value is bound to
+the corresponding id.
+
+When expr produces zero values for a top-level define-syntaxes (i.e.,
+not in a module or internal-definition position), then the ids are
+effectively declared without binding; see [missing].
+
+In an internal-definition context (see [missing]), a define-syntaxes
+form introduces local bindings.
+
+Examples:
+  > (define-syntaxes (foo1 foo2 foo3)
+      (let ([transformer1 (lambda (syntax-object)
+                            (syntax-case syntax-object ()
+                              [(_) #'1]))]
+            [transformer2 (lambda (syntax-object)
+                            (syntax-case syntax-object ()
+                              [(_) #'2]))]
+            [transformer3 (lambda (syntax-object)
+                            (syntax-case syntax-object ()
+                              [(_) #'3]))])
+        (values transformer1
+                transformer2
+                transformer3)))
+
+  > (foo1)
+  1
+  > (foo2)
+  2
+  > (foo3)
+  3
+
+                                        *define-for-syntax*
+(define-for-syntax id expr) ~
+(define-for-syntax (head args) body ...+)
+
+Like define, except that the binding is at phase level 1 instead of
+phase level 0 relative to its context. The expression for the binding is
+also at phase level 1. (See [missing] for information on phase levels.)
+The form is a shorthand for (begin-for-syntax (define id expr)) or
+(begin-for-syntax (define (head args) body ...+)).
+
+Within a module, bindings introduced by define-for-syntax must appear
+before their uses or in the same define-for-syntax form (i.e., the
+define-for-syntax form must be expanded before the use is expanded). In
+particular, mutually recursive functions bound by define-for-syntax must
+be defined by the same define-for-syntax form.
+
+Examples:
+  > (define-for-syntax helper 2)
+
+  > (define-syntax (make-two syntax-object)
+      (printf "helper is ~a\n" helper)
+      #'2)
+
+  > (make-two)
+  helper is 2
+  2
+  ; ‘helper' is not bound in the runtime phase
+  > helper
+  helper: undefined;
+   cannot reference undefined identifier
+  > (define-for-syntax (filter-ids ids)
+      (filter identifier? ids))
+
+  > (define-syntax (show-variables syntax-object)
+      (syntax-case syntax-object ()
+        [(_ expr ...)
+         (with-syntax ([(only-ids ...)
+                        (filter-ids (syntax->list #'(expr ...)))])
+           #'(list only-ids ...))]))
+
+  > (let ([a 1] [b 2] [c 3])
+      (show-variables a 5 2 b c))
+  '(1 2 3)
+
+                                        *define-values-for-syntax*
+(define-values-for-syntax (id ...) expr) ~
+
+Like define-for-syntax, but expr must produce as many values as supplied
+ids, and all of the ids are bound (at phase level 1).
+
+Examples:
+  > (define-values-for-syntax (foo1 foo2) (values 1 2))
+
+  > (define-syntax (bar syntax-object)
+      (printf "foo1 is ~a foo2 is ~a\n" foo1 foo2)
+      #'2)
+
+  > (bar)
+  foo1 is 1 foo2 is 2
+  2
+
+14.1. require Macros
+
+ (require racket/require-syntax) package: base ~
+
+The bindings documented in this section are provided by the
+racket/require-syntax library, not racket/base or racket.
+
+                                        *define-require-syntax*
+(define-require-syntax id proc-expr) ~
+(define-require-syntax (id args ...) body ...+)
+
+The first form is like define-syntax, but for a require sub-form. The
+proc-expr must produce a procedure that accepts and returns a syntax
+object representing a require sub-form.
+
+This form expands to define-syntax with a use of
+make-require-transformer (see [missing] for more information), and the
+syntax object passed to and from the macro transformer is adjusted via
+syntax-local-require-introduce.
+
+The second form is a shorthand the same as for define-syntax; it expands
+to a definition of the first form where the proc-expr is a lambda form.
+
+                                        *syntax-local-require-introduce*
+(syntax-local-require-introduce stx) -> syntax? ~
+  stx : syntax? ~
+
+Provided for-syntax for use only during the application of a require
+sub-form macro transformer: like syntax-local-introduce, but for require
+sub-form expansion.
+
+14.2. provide Macros
+
+ (require racket/provide-syntax) package: base ~
+
+The bindings documented in this section are provided by the
+racket/provide-syntax library, not racket/base or racket.
+
+                                        *define-provide-syntax*
+(define-provide-syntax id proc-expr) ~
+(define-provide-syntax (id args ...) body ...+)
+
+The first form is like define-syntax, but for a provide sub-form. The
+proc-expr must produce a procedure that accepts and returns a syntax
+object representing a provide sub-form.
+
+This form expands to define-syntax with a use of
+make-provide-transformer (see [missing] for more information), and the
+syntax object passed to and from the macro transformer is adjusted via
+syntax-local-provide-introduce.
+
+The second form is a shorthand the same as for define-syntax; it expands
+to a definition of the first form where the expr is a lambda form.
+
+                                        *syntax-local-provide-introduce*
+(syntax-local-provide-introduce stx) -> syntax? ~
+  stx : syntax? ~
+
+Provided for-syntax for use only during the application of a provide
+sub-form macro transformer: like syntax-local-introduce, but for provide
+sub-form expansion.
+
+15. Sequencing: begin, begin0, and begin-for-syntax
+
++[missing] in [missing] introduces begin and begin0.
+
+                                        *begin*
+(begin form ...) ~
+(begin expr ...+)
+
+The first form applies when begin appears at the top level, at module
+level, or in an internal-definition position (before any expression in
+the internal-definition sequence). In that case, the begin form is
+equivalent to splicing the forms into the enclosing context.
+
+The second form applies for begin in an expression position. In that
+case, the exprs are evaluated in order, and the results are ignored for
+all but the last expr. The last expr is in tail position with respect to
+the begin form.
+
+Examples:
+  > (begin
+      (define x 10)
+      x)
+  10
+  > (+ 1 (begin
+           (printf "hi\n")
+           2))
+  hi
+  3
+  > (let-values ([(x y) (begin
+                          (values 1 2 3)
+                          (values 1 2))])
+     (list x y))
+  '(1 2)
+
+                                        *begin*
+(begin0 expr ...+) ~
+
+Evaluates the first expr, then evaluates the other exprss in order,
+ignoring their results. The results of the first expr are the results of
+the begin0 form; the first expr is in tail position only if no other
+exprs are present.
+
+Example:
+  > (begin0
+      (values 1 2)
+      (printf "hi\n"))
+  hi
+  1
+  2
+
+                                        *begin-for-syntax*
+(begin-for-syntax form ...) ~
+
+Allowed only in a top-level context or module context, shifts the phase
+level of each form by one:
+
+* expressions reference bindings at a phase level one greater than in
+  the context of the begin-for-syntax form;
+
+* define, define-values, define-syntax, and define-syntaxes forms bind
+  at a phase level one greater than in the context of the
+  begin-for-syntax form;
+
+* in require and provide forms, the default phase level is greater,
+  which is roughly like wrapping the content of the require form with
+  for-syntax;
+
+* expression form expr: converted to (define-values-for-syntax () (begin
+  expr (values))), which effectively evaluates the expression at
+  expansion time and, in the case of a module context, preserves the
+  expression for future visits of the module.
+
+See also module for information about expansion order and partial
+expansion for begin-for-syntax within a module context. Evaluation of an
+expr within begin-for-syntax is parameterized to set current-namespace
+as in let-syntax.
+
+16. Guarded Evaluation: when and unless
+
++[missing] in [missing] introduces when and unless.
+
+                                        *when*
+(when test-expr body ...+) ~
+
+Evaluates test-expr. If the result is #f, then the result of the when
+expression is #<void>. Otherwise, the bodys are evaluated, and the last
+body is in tail position with respect to the when form.
+
+Examples:
+  > (when (positive? -5)
+      (display "hi"))
+
+  > (when (positive? 5)
+      (display "hi")
+      (display " there"))
+  hi there
+
+
+                                        *unless*
+(unless test-expr body ...+) ~
+
+Equivalent to (when (not test-expr) body ...+).
+
+Examples:
+  > (unless (positive? 5)
+      (display "hi"))
+
+  > (unless (positive? -5)
+      (display "hi")
+      (display " there"))
+  hi there
+
+
+17. Assignment: set! and set!-values
+
++[missing] in [missing] introduces set!.
+
+                                        *set!*
+(set! id expr) ~
+
+If id has a transformer binding to an assignment transformer, as
+produced by make-set!-transformer or as an instance of a structure type
+with the prop:set!-transformer property, then this form is expanded by
+calling the assignment transformer with the full expressions. If id has
+a transformer binding to a rename transformer as produced by
+make-rename-transformer or as an instance of a structure type with the
+prop:rename-transformer property, then this form is expanded by
+replacing id with the target identifier (e.g., the one provided to
+make-rename-transformer). If a transformer binding has both
+prop:set!-transformer and prop:rename-transformer properties, the latter
+takes precedence.
+
+Otherwise, evaluates expr and installs the result into the location for
+id, which must be bound as a local variable or defined as a top-level
+variable or module-level variable. If id refers to an imported binding,
+a syntax error is reported.  If id refers to a top-level variable that
+has not been defined, the exn:fail:contract exception is raised.
+
+See also compile-allow-set!-undefined.
+
+Examples:
+  (define x 12)
+
+
+  > (set! x (add1 x))
+
+  > x
+  13
+  > (let ([x 5])
+      (set! x (add1 x))
+      x)
+  6
+  > (set! i-am-not-defined 10)
+  set!: assignment disallowed;
+   cannot set undefined
+    variable: i-am-not-defined ~
+
+                                        *set!-values*
+(set!-values (id ...) expr) ~
+
+Assuming that all ids refer to variables, this form evaluates expr,
+which must produce as many values as supplied ids.  The location of each
+id is filled with the corresponding value from expr in the same way as
+for set!.
+
+Example:
+  > (let ([a 1]
+          [b 2])
+      (set!-values (a b) (values b a))
+      (list a b))
+  '(2 1)
+
+More generally, the set!-values form is expanded to
+
+  (let-values ([(tmp-id ...) expr])
+    (set! id tmp-id) ...)
+
+which triggers further expansion if any id has a transformer binding to
+an assignment transformer.
+
+18. Iterations and Comprehensions: for, for/list, ...
+
++[missing] in [missing] introduces iterations and comprehensions.
+
+The for iteration forms are based on SRFI-42 [SRFI-42].
+
+18.1. Iteration and Comprehension Forms
+
+                                        *for*
+(for (for-clause ...) body-or-break ... body) ~
+ 
+   for-clause = [id seq-expr]
+              | [(id ...) seq-expr]
+              | #:when guard-expr ~
+              | #:unless guard-expr ~
+              | break-clause
+                 
+ break-clause = #:break guard-expr ~
+              | #:final guard-expr ~
+                 
+body-or-break = body
+              | break-clause
+ 
+  seq-expr : sequence? ~
+
+Iteratively evaluates bodys. The for-clauses introduce bindings whose
+scope includes body and that determine the number of times that body is
+evaluated. A break-clause either among the for-clauses of bodys stops
+further iteration.
+
+In the simple case, each for-clause has one of its first two forms,
+where [id seq-expr] is a shorthand for [(id) seq-expr].  In this simple
+case, the seq-exprs are evaluated left-to-right, and each must produce a
+sequence value (see [missing]).
+
+The for form iterates by drawing an element from each sequence; if any
+sequence is empty, then the iteration stops, and #<void> is the result
+of the for expression. Otherwise a location is created for each id to
+hold the values of each element; the sequence produced by a seq-expr
+must return as many values for each iteration as corresponding ids.
+
+The ids are then bound in the body, which is evaluated, and whose
+results are ignored. Iteration continues with the next element in each
+sequence and with fresh locations for each id.
+
+A for form with zero for-clauses is equivalent to a single for-clause
+that binds an unreferenced id to a sequence containing a single element.
+All of the ids must be distinct according to bound-identifier=?.
+
+If any for-clause has the form #:when guard-expr, then only the
+preceding clauses (containing no #:when or #:unless) determine iteration
+as above, and the body is effectively wrapped as
+
+  (when guard-expr
+    (for (for-clause ...) body ...+))
+
+using the remaining for-clauses. A for-clause of the form #:unless
+guard-expr corresponds to the same transformation with unless in place
+of when.
+
+A #:break guard-expr clause is similar to a #:unless guard-expr clause,
+but when #:break avoids evaluation of the bodys, it also effectively
+ends all sequences within the for form.  A #:final guard-expr clause is
+similar to #:break guard-expr, but instead of immediately ending
+sequences and skipping the bodys, it allows at most one more element
+from each later sequence and at most one more evaluation of the
+following bodys. Among the bodys, besides stopping the iteration and
+preventing later body evaluations, a #:break guard-expr or #:final
+guard-expr clause starts a new internal-definition context.
+
+Examples:
+  > (for ([i '(1 2 3)]
+          [j "abc"]
+          #:when (odd? i) ~
+          [k #(#t #f)])
+      (display (list i j k)))
+  (1 a #t)(1 a #f)(3 c #t)(3 c #f)
+
+  > (for ([(i j) #hash(("a" . 1) ("b" . 20))])
+      (display (list i j)))
+  (a 1)(b 20)
+
+  > (for ([i '(1 2 3)]
+          [j "abc"]
+          #:break (not (odd? i)) ~
+          [k #(#t #f)])
+      (display (list i j k)))
+  (1 a #t)(1 a #f)
+
+  > (for ([i '(1 2 3)]
+          [j "abc"]
+          #:final (not (odd? i)) ~
+          [k #(#t #f)])
+      (display (list i j k)))
+  (1 a #t)(1 a #f)(2 b #t)
+
+  > (for ([i '(1 2 3)]
+          [j "abc"]
+          [k #(#t #f)])
+      #:break (not (or (odd? i) k)) ~
+      (display (list i j k)))
+  (1 a #t)
+
+  > (for ()
+      (display "here"))
+  here
+
+  > (for ([i '()])
+      (error "doesn't get here"))
+
+
+                                        *for/list*
+(for/list (for-clause ...) body-or-break ... body) ~
+
+Iterates like for, but that the last expression in the bodys must
+produce a single value, and the result of the for/list expression is a
+list of the results in order. When evaluation of a body is skipped due
+to a #:when or #:unless clause, the result list includes no
+corresponding element.
+
+Examples:
+  > (for/list ([i '(1 2 3)]
+               [j "abc"]
+               #:when (odd? i) ~
+               [k #(#t #f)])
+      (list i j k))
+  '((1 #\a #t) (1 #\a #f) (3 #\c #t) (3 #\c #f))
+  > (for/list ([i '(1 2 3)]
+               [j "abc"]
+               #:break (not (odd? i)) ~
+               [k #(#t #f)])
+      (list i j k))
+  '((1 #\a #t) (1 #\a #f))
+  > (for/list () 'any)
+  '(any)
+  > (for/list ([i '()])
+      (error "doesn't get here"))
+  '()
+
+                                        *for/vector*
+(for/vector maybe-length (for-clause ...) body-or-break ... body) ~
+ 
+maybe-length = 
+             | #:length length-expr ~
+             | #:length length-expr #:fill fill-expr ~
+ 
+  length-expr : exact-nonnegative-integer? ~
+
+Iterates like for/list, but results are accumulated into a vector
+instead of a list.
+
+If the optional #:length clause is specified, the result of length-expr
+determines the length of the result vector.  In that case, the iteration
+can be performed more efficiently, and it terminates when the vector is
+full or the requested number of iterations have been performed,
+whichever comes first. If length-expr specifies a length longer than the
+number of iterations, then the remaining slots of the vector are
+initialized to the value of fill-expr, which defaults to 0 (i.e., the
+default argument of make-vector).
+
+Examples:
+  > (for/vector ([i '(1 2 3)]) (number->string i))
+  '#("1" "2" "3")
+  > (for/vector #:length 2 ([i '(1 2 3)]) (number->string i)) ~
+  '#("1" "2")
+  > (for/vector #:length 4 ([i '(1 2 3)]) (number->string i)) ~
+  '#("1" "2" "3" 0)
+  > (for/vector #:length 4 #:fill "?" ([i '(1 2 3)]) (number->string i)) ~
+  '#("1" "2" "3" "?")
+
+The for/vector form may allocate a vector and mutate it after each
+iteration of body, which means that capturing a continuation during body
+and applying it multiple times may mutate a shared vector.
+
+                                        *for/hash*
+(for/hash (for-clause ...) body-or-break ... body) ~
+(for/hasheq (for-clause ...) body-or-break ... body)
+(for/hasheqv (for-clause ...) body-or-break ... body)
+
+Like for/list, but the result is an immutable hash table; for/hash
+creates a table using equal? to distinguish keys, for/hasheq produces a
+table using eq?, and for/hasheqv produces a table using eqv?. The last
+expression in the bodys must return two values: a key and a value to
+extend the hash table accumulated by the iteration.
+
+Example:
+  > (for/hash ([i '(1 2 3)])
+      (values i (number->string i)))
+  '#hash((1 . "1") (2 . "2") (3 . "3"))
+
+                                        *for/and*
+(for/and (for-clause ...) body-or-break ... body) ~
+
+Iterates like for, but when last expression of body produces #f, then
+iteration terminates, and the result of the for/and expression is #f. If
+the body is never evaluated, then the result of the for/and expression
+is #t. Otherwise, the result is the (single) result from the last
+evaluation of body.
+
+Examples:
+  > (for/and ([i '(1 2 3 "x")])
+      (i . < . 3))
+  #f
+  > (for/and ([i '(1 2 3 4)])
+      i)
+  4
+  > (for/and ([i '(1 2 3 4)])
+      #:break (= i 3) ~
+      i)
+  2
+  > (for/and ([i '()])
+      (error "doesn't get here"))
+  #t
+
+                                        *for/or*
+(for/or (for-clause ...) body-or-break ... body) ~
+
+Iterates like for, but when last expression of body produces a value
+other than #f, then iteration terminates, and the result of the for/or
+expression is the same (single) value. If the body is never evaluated,
+then the result of the for/or expression is #f. Otherwise, the result is
+#f.
+
+Examples:
+  > (for/or ([i '(1 2 3 "x")])
+      (i . < . 3))
+  #t
+  > (for/or ([i '(1 2 3 4)])
+      i)
+  1
+  > (for/or ([i '()])
+      (error "doesn't get here"))
+  #f
+
+                                        *for/sum*
+(for/sum (for-clause ...) body-or-break ... body) ~
+
+Iterates like for, but each result of the last body is accumulated into
+a result with +.
+
+Example:
+  > (for/sum ([i '(1 2 3 4)]) i)
+  10
+
+                                        *for/product*
+(for/product (for-clause ...) body-or-break ... body) ~
+
+Iterates like for, but each result of the last body is accumulated into
+a result with *.
+
+Example:
+  > (for/product ([i '(1 2 3 4)]) i)
+  24
+
+                                        *for/lists*
+(for/lists (id ...) (for-clause ...) body-or-break ... body) ~
+
+Similar to for/list, but the last body expression should produce as many
+values as given ids, and the result is as many lists as supplied ids.
+The ids are bound to the lists accumulated so far in the for-clauses and
+bodys.
+
+Examples:
+  > (for/lists (l1 l2 l3)
+               ([i '(1 2 3)]
+                [j "abc"]
+                #:when (odd? i) ~
+                [k #(#t #f)])
+      (values i j k))
+  '(1 1 3 3)
+  '(#\a #\a #\c #\c)
+  '(#t #f #t #f)
+  > (for/lists (acc)
+               ([x '(tvp tofu seitan tvp tofu)]
+                #:unless (member x acc)) ~
+      x)
+  '(tvp tofu seitan)
+
+                                        *for/first*
+(for/first (for-clause ...) body-or-break ... body) ~
+
+Iterates like for, but after body is evaluated the first time, then the
+iteration terminates, and the for/first result is the (single) result of
+body. If the body is never evaluated, then the result of the for/first
+expression is #f.
+
+Examples:
+  > (for/first ([i '(1 2 3 "x")]
+                #:when (even? i)) ~
+       (number->string i))
+  "2"
+  > (for/first ([i '()])
+      (error "doesn't get here"))
+  #f
+
+                                        *for/last*
+(for/last (for-clause ...) body-or-break ... body) ~
+
+Iterates like for, but the for/last result is the (single) result of the
+last evaluation of body. If the body is never evaluated, then the result
+of the for/last expression is #f.
+
+Examples:
+  > (for/last ([i '(1 2 3 4 5)]
+                #:when (even? i)) ~
+       (number->string i))
+  "4"
+  > (for/last ([i '()])
+      (error "doesn't get here"))
+  #f
+
+                                        *for/fold*
+(for/fold ([accum-id init-expr] ...) (for-clause ...) ~
+  body-or-break ... body)
+
+Iterates like for. Before iteration starts, the init-exprs are evaluated
+to produce initial accumulator values. At the start of each iteration, a
+location is generated for each accum-id, and the corresponding current
+accumulator value is placed into the location. The last expression in
+body must produce as many values as accum-ids, and those values become
+the current accumulator values. When iteration terminates, the results
+of the for/fold expression are the accumulator values.
+
+Example:
+  > (for/fold ([sum 0]
+               [rev-roots null])
+              ([i '(1 2 3 4)])
+      (values (+ sum i) (cons (sqrt i) rev-roots)))
+  10
+  '(2 1.7320508075688772 1.4142135623730951 1)
+
+                                        *for**
+(for* (for-clause ...) body-or-break ... body) ~
+
+Like for, but with an implicit #:when #t between each pair of
+for-clauses, so that all sequence iterations are nested.
+
+Example:
+  > (for* ([i '(1 2)]
+           [j "ab"])
+      (display (list i j)))
+  (1 a)(1 b)(2 a)(2 b)
+
+
+                                        *for*/list*
+(for*/list (for-clause ...) body-or-break ... body) ~
+(for*/lists (id ...) (for-clause ...) body-or-break ... body)
+(for*/vector maybe-length (for-clause ...) body-or-break ... body)
+(for*/hash (for-clause ...) body-or-break ... body)
+(for*/hasheq (for-clause ...) body-or-break ... body)
+(for*/hasheqv (for-clause ...) body-or-break ... body)
+(for*/and (for-clause ...) body-or-break ... body)
+(for*/or (for-clause ...) body-or-break ... body)
+(for*/sum (for-clause ...) body-or-break ... body)
+(for*/product (for-clause ...) body-or-break ... body)
+(for*/first (for-clause ...) body-or-break ... body)
+(for*/last (for-clause ...) body-or-break ... body)
+(for*/fold ([accum-id init-expr] ...) (for-clause ...)
+  body-or-break ... body)
+
+Like for/list, etc., but with the implicit nesting of for*.
+
+Example:
+  > (for*/list ([i '(1 2)]
+                [j "ab"])
+      (list i j))
+  '((1 #\a) (1 #\b) (2 #\a) (2 #\b))
+
+18.2. Deriving New Iteration Forms
+
+                                        *for/fold/derived*
+(for/fold/derived orig-datum ~
+  ([accum-id init-expr] ...) (for-clause ...)
+  body-or-break ... body)
+
+Like for/fold, but the extra orig-datum is used as the source for all
+syntax errors.
+
+Examples:
+  > (define-syntax (for/digits stx)
+      (syntax-case stx ()
+        [(_ clauses . defs+exprs)
+         (with-syntax ([original stx])
+           #'(let-values
+               ([(n k)
+                 (for/fold/derived original ([n 0] [k 1]) clauses
+                   (define d (let () . defs+exprs))
+                   (values (+ n (* d k)) (* k 10)))])
+               n))]))
+
+  ; If we misuse for/digits, we can get good error reporting
+  ; because the use of orig-datum allows for source correlation: ~
+  > (for/digits
+        [a (in-list '(1 2 3))]
+        [b (in-list '(4 5 6))]
+      (+ a b))
+  eval:3:0: for/digits: bad sequence binding clause
+    at: a ~
+    in: (for/digits (a (in-list (quote (1 2 3)))) (b (in-list ~
+  (quote (4 5 6)))) (+ a b))
+  > (for/digits
+        ([a (in-list '(1 2 3))]
+         [b (in-list '(2 4 6))])
+      (+ a b))
+  963
+  ; Another example: compute the max during iteration: ~
+  > (define-syntax (for/max stx)
+      (syntax-case stx ()
+         [(_ clauses . defs+exprs)
+          (with-syntax ([original stx])
+            #'(for/fold/derived original
+                                ([current-max -inf.0])
+                                clauses
+                (define maybe-new-max
+                  (let () . defs+exprs))
+                (if (> maybe-new-max current-max)
+                    maybe-new-max
+                    current-max)))]))
+
+  > (for/max ([n '(3.14159 2.71828 1.61803)]
+              [s '(-1      1       1)])
+      (* n s))
+  2.71828
+
+                                        *for*/fold/derived*
+(for*/fold/derived orig-datum ~
+  ([accum-id init-expr] ...) (for-clause ...)
+  body-or-break ... body)
+
+Like for*/fold, but the extra orig-datum is used as the source for all
+syntax errors.
+
+Examples:
+  > (define-syntax (for*/digits stx)
+      (syntax-case stx ()
+        [(_ clauses . defs+exprs)
+         (with-syntax ([original stx])
+           #'(let-values
+               ([(n k)
+                 (for*/fold/derived original ([n 0] [k 1]) clauses
+                   (define d (let () . defs+exprs))
+                   (values (+ n (* d k)) (* k 10)))])
+               n))]))
+
+  > (for*/digits
+        [ds (in-list '((8 3) (1 1)))]
+        [d (in-list ds)]
+      d)
+  eval:8:0: for*/digits: bad sequence binding clause
+    at: ds ~
+    in: (for*/digits (ds (in-list (quote ((8 3) (1 1))))) (d ~
+  (in-list ds)) d)
+  > (for*/digits
+        ([ds (in-list '((8 3) (1 1)))]
+         [d (in-list ds)])
+      d)
+  1138
+
+                                        *define-sequence-syntax*
+(define-sequence-syntax id ~
+  expr-transform-expr
+  clause-transform-expr)
+ 
+  expr-transform-expr : (or/c (-> identifier?) ~
+                              (syntax? . -> . syntax?))
+  clause-transform-expr : (syntax? . -> . syntax?) ~
+
+Defines id as syntax. An (id . rest) form is treated specially when used
+to generate a sequence in a for-clause of for (or one of its variants).
+In that case, the procedure result of clause-transform-expr is called to
+transform the clause.
+
+When id is used in any other expression position, the result of
+expr-transform-expr is used. If it is a procedure of zero arguments,
+then the result must be an identifier other-id, and any use of id is
+converted to a use of other-id. Otherwise,expr-transform-expr must
+produce a procedure (of one argument) that is used as a macro
+transformer.
+
+When the clause-transform-expr transformer is used, it is given a
+for-clause as an argument, where the clause’s form is normalized so that
+the left-hand side is a parenthesized sequence of identifiers. The
+right-hand side is of the form (id . rest). The result can be either #f,
+to indicate that the forms should not be treated specially (perhaps
+because the number of bound identifiers is inconsistent with the (id .
+rest) form), or a new for-clause to replace the given one. The new
+clause might use :do-in. To protect identifiers in the result of
+clause-transform-expr, use for-clause-syntax-protect instead of
+syntax-protect.
+
+Examples:
+  > (define (check-nat n)
+      (unless (exact-nonnegative-integer? n)
+        (raise-argument-error 'in-digits "exact-nonnegative-integer?" n)))
+
+  > (define-sequence-syntax in-digits
+      (lambda () #'in-digits/proc)
+      (lambda (stx)
+        (syntax-case stx ()
+          [[(d) (_ nat)]
+           #'[(d)
+              (:do-in ~
+                ([(n) nat])
+                (check-nat n)
+                ([i n])
+                (not (zero? i))
+                ([(j d) (quotient/remainder i 10)])
+                #true
+                #true
+                [j])]]
+          [_ #f])))
+
+  > (define (in-digits/proc n)
+      (for/list ([d (in-digits n)]) d))
+
+  > (for/list ([d (in-digits 1138)]) d)
+  '(8 3 1 1)
+  > (map in-digits (list 137 216))
+  '((7 3 1) (6 1 2))
+
+                                        *:do-in*
+(:do-in ([(outer-id ...) outer-expr] ...)
+        outer-check
+        ([loop-id loop-expr] ...)
+        pos-guard
+        ([(inner-id ...) inner-expr] ...)
+        pre-guard
+        post-guard
+        (loop-arg ...))
+
+A form that can only be used as a seq-expr in a for-clause of for (or
+one of its variants).
+
+Within a for, the pieces of the :do-in form are spliced into the
+iteration essentially as follows:
+
+  (let-values ([(outer-id ...) outer-expr] ...)
+    outer-check
+    (let loop ([loop-id loop-expr] ...)
+      (if pos-guard
+          (let-values ([(inner-id ...) inner-expr] ...)
+            (if pre-guard
+                (let body-bindings
+                     (if post-guard
+                         (loop loop-arg ...)
+                         done-expr))
+                done-expr))
+           done-expr)))
+
+where body-bindings and done-expr are from the context of the :do-in
+use. The identifiers bound by the for clause are typically part of the
+([(inner-id ...) inner-expr] ...) section.
+
+The actual loop binding and call has additional loop arguments to
+support iterations in parallel with the :do-in form, and the other
+pieces are similarly accompanied by pieces from parallel iterations.
+
+For an example of :do-in, see define-sequence-syntax.
+
+                                        *for-clause-syntax-protect*
+(for-clause-syntax-protect stx) -> syntax? ~
+  stx : syntax? ~
+
+Provided for-syntax: Like syntax-protect, but allows the for expander to
+disarm the result syntax object, and arms the pieces of a clause instead
+of the entire syntax object.
+
+Use this function to protect the result of a clause-transform-expr that
+is bound by define-sequence-syntax.
+
+18.3. Do Loops
+
+                                        *do*
+(do ([id init-expr step-expr-maybe] ...) ~
+    (stop?-expr finish-expr ...)
+  expr ...)
+ 
+step-expr-maybe = 
+                | step-expr
+
+Iteratively evaluates the exprs for as long as stop?-expr returns #f.
+
+To initialize the loop, the init-exprs are evaluated in order and bound
+to the corresponding ids. The ids are bound in all expressions within
+the form other than the init-exprs.
+
+After the ids have been bound, the stop?-expr is evaluated. If it
+produces #f, each expr is evaluated for its side-effect. The ids are
+then effectively updated with the values of the step-exprs, where the
+default step-expr for id is just id; more precisely, iteration continues
+with fresh locations for the ids that are initialized with the values of
+the corresponding step-exprs.
+
+When stop?-expr produces a true value, then the finish-exprs are
+evaluated in order, and the last one is evaluated in tail position to
+produce the overall value for the do form. If no finish-expr is
+provided, the value of the do form is #<void>.
+
+19. Continuation Marks: with-continuation-mark
+
+                                        *with-continuation-mark*
+(with-continuation-mark key-expr val-expr result-expr) ~
+
+The key-expr, val-expr, and result-expr expressions are evaluated in
+order. After key-expr is evaluated to obtain a key and val-expr is
+evaluated to obtain a value, the key is mapped to the value as a
+continuation mark in the current continuation’s initial continuation
+frame. If the frame already has a mark for the key, the mark is
+replaced. Finally, the result-expr is evaluated; the continuation for
+evaluating result-expr is the continuation of the with-continuation-mark
+expression (so the result of the result-expr is the result of the
+with-continuation-mark expression, and result-expr is in tail position
+for the with-continuation-mark expression).
+
++[missing] provides more information on continuation marks.
+
+20. Quasiquoting: quasiquote, unquote, and unquote-splicing
+
++[missing] in [missing] introduces quasiquote.
+
+                                        *quasiquote*
+(quasiquote datum) ~
+
+The same as 'datum if datum does not include (unquote expr) or
+(unquote-splicing expr). An (unquote expr) form escapes from the quote,
+however, and the result of the expr takes the place of the (unquote
+expr) form in the quasiquote result. An (unquote-splicing expr)
+similarly escapes, but the expr must produce a list, and its elements
+are spliced as multiple values place of the (unquote-splicing expr),
+which must appear as the car or a quoted pair, as an element of a quoted
+vector, or as an element of a quoted prefab structure; in the case of a
+pair, if the cdr of the relevant quoted pair is empty, then expr need
+not produce a list, and its result is used directly in place of the
+quoted pair (in the same way that append accepts a non-list final
+argument).  In a quoted hash table, an (unquote expr) or
+(unquote-splicing expr) expression escapes only in the second element of
+an entry pair (i.e., the value), while entry keys are always implicitly
+quoted. If unquote or unquote-splicing appears within quasiquote in any
+other way than as (unquote expr) or (unquote-splicing expr), a syntax
+error is reported.
+
+Examples:
+  > (quasiquote (0 1 2))
+  '(0 1 2)
+  > (quasiquote (0 (unquote (+ 1 2)) 4))
+  '(0 3 4)
+  > (quasiquote (0 (unquote-splicing (list 1 2)) 4))
+  '(0 1 2 4)
+  > (quasiquote (0 (unquote-splicing 1) 4))
+  unquote-splicing: contract violation
+    expected: list? ~
+    given: 1 ~
+  > (quasiquote (0 (unquote-splicing 1)))
+  '(0 . 1)
+
+A quasiquote, unquote, or unquote-splicing form is typically abbreviated
+with `, ,, or ,@, respectively. See also [missing].
+
+Examples:
+  > `(0 1 2)
+  '(0 1 2)
+  > `(1 ,(+ 1 2) 4)
+  '(1 3 4)
+  > `#s(stuff 1 ,(+ 1 2) 4)
+  '#s(stuff 1 3 4)
+  > ‘#hash(("a" . ,(+ 1 2)))
+  '#hash(("a" . 3))
+  > `#hash((,(+ 1 2) . "a"))
+  '#hash((,(+ 1 2) . "a"))
+  > `(1 ,@(list 1 2) 4)
+  '(1 1 2 4)
+  > `#(1 ,@(list 1 2) 4)
+  '#(1 1 2 4)
+
+A quasiquote form within the original datum increments the level of
+quasiquotation: within the quasiquote form, each unquote or
+unquote-splicing is preserved, but a further nested unquote or
+unquote-splicing escapes.  Multiple nestings of quasiquote require
+multiple nestings of unquote or unquote-splicing to escape.
+
+Examples:
+  > `(1 `,(+ 1 ,(+ 2 3)) 4)
+  '(1 `,(+ 1 5) 4)
+  > `(1 ```,,@,,@(list (+ 1 2)) 4)
+  '(1 ```,,@,3 4)
+
+The quasiquote form allocates only as many fresh cons cells, vectors,
+and boxes as are needed without analyzing unquote and unquote-splicing
+expressions. For example, in
+
+  `(,1 2 3)
+
+a single tail '(2 3) is used for every evaluation of the quasiquote
+expression.
+
+unquote
+
+See quasiquote, where unquote is recognized as an escape. An unquote
+form as an expression is a syntax error.
+
+unquote-splicing
+
+See quasiquote, where unquote-splicing is recognized as an escape. An
+unquote-splicing form as an expression is a syntax error.
+
+21. Syntax Quoting: quote-syntax
+
+                                        *quote-syntax*
+(quote-syntax datum) ~
+(quote-syntax datum #:local) ~
+
+Similar to quote, but produces a syntax object that preserves the
+lexical information and source-location information attached to datum at
+expansion time.
+
+When #:local is specified, than all scopes in the syntax object’s
+lexical information is preserved. When #:local is omitted, then the
+scope sets within datum are pruned to omit the scope for any binding
+form that appears between the quote-syntax form and the enclosing
+top-level context, module body, or phase level crossing, whichever is
+closer.
+
+Unlike syntax (#'), quote-syntax does not substitute pattern variables
+bound by with-syntax, syntax-parse, or syntax-case.
+
+Examples:
+  > (syntax? (quote-syntax x))
+  #t
+  > (quote-syntax (1 2 3))
+  #<syntax:72:0 (1 2 3)>
+  > (with-syntax ([a #'5])
+      (quote-syntax (a b c)))
+  #<syntax:73:0 (a b c)>
+  > (free-identifier? (let ([x 1]) (quote-syntax x))
+                      (quote-syntax x))
+  free-identifier?: undefined;
+   cannot reference undefined identifier
+  > (free-identifier? (let ([x 1]) (quote-syntax x #:local)) ~
+                      (quote-syntax x))
+  eval:75:0: quote-syntax: bad syntax;
+   has 2 parts after keyword
+    in: (quote-syntax x #:local) ~
+
+Changed in version 6.3: Added scope pruning and support for #:local.
+
+22. Interaction Wrapper: #%top-interaction
+
+(#%top-interaction . form)
+
+Expands to simply form. The #%top-interaction form is similar to #%app
+and #%module-begin, in that it provides a hook to control interactive
+evaluation through load (more precisely, the default load handler) or
+read-eval-print-loop.
+
+23. Blocks: block
+
+ (require racket/block) package: base ~
+
+The bindings documented in this section are provided by the racket/block
+library, not racket/base or racket.
+
+                                        *block*
+(block defn-or-expr ...) ~
+
+Supports a mixture of expressions and mutually recursive definitions, as
+in a module body. Unlike an internal-definition context, the last
+defn-or-expr need not be an expression.
+
+The result of the block form is the result of the last defn-or-expr if
+it is an expression, #<void> otherwise. If no defn-or-expr is provided
+(after flattening begin forms), the result is #<void>.
+
+The final defn-or-expr is executed in tail position, if it is an
+expression.
+
+Examples:
+  > (define (f x)
+      (block
+        (define y (add1 x))
+        (displayln y)
+        (define z (* 2 y))
+        (+ 3 z)))
+
+  > (f 12)
+  13
+  29
+
+24. Internal-Definition Limiting: #%stratified-body
+
+(#%stratified-body defn-or-expr ...)
+
+Like (let () defn-or-expr ...) for an internal-definition context
+sequence, except that an expression is not allowed to precede a
+definition, and all definitions are treated as referring to all other
+definitions (i.e., locations for variables are all allocated first, like
+letrec and unlike letrec-syntaxes+values).
+
+The #%stratified-body form is useful for implementing syntactic forms or
+languages that supply a more limited kind of internal-definition
+context.
+
+25. Performance Hints: begin-encourage-inline
+
+ (require racket/performance-hint) package: base ~
+
+The bindings documented in this section are provided by the
+racket/performance-hint library, not racket/base or racket.
+
+                                        *begin-encourage-inline*
+(begin-encourage-inline form ...) ~
+
+Attaches a 'compiler-hint:cross-module-inline syntax property to each
+form, which is useful when a form is a function definition. See
+define-values.
+
+The begin-encourage-inline form is also provided by the (submod
+racket/performance-hint begin-encourage-inline) module, which has fewer
+dependencies than racket/performance-hint.
+
+Changed in version 6.2 of package base: Added the (submod
+racket/performance-hint begin-encourage-inline) submodule.
+
+                                        *define-inline*
+(define-inline id expr) ~
+(define-inline (head args) body ...+)
+ 
+head = id
+     | (head args)
+        
+args = arg ...
+     | arg ... . rest-id
+        
+ arg = arg-id
+     | [arg-id default-expr]
+     | keyword arg-id
+     | keyword [arg-id default-expr]
+
+Like define, but ensures that the definition will be inlined at its call
+sites. Recursive calls are not inlined, to avoid infinite inlining.
+Higher-order uses are supported, but also not inlined.
+
+define-inline may interfere with the Racket compiler’s own inlining
+heuristics, and should only be used when other inlining attempts (such
+as begin-encourage-inline) fail.
+
+26. Importing Modules Lazily: lazy-require
+
+ (require racket/lazy-require) package: base ~
+
+The bindings documented in this section are provided by the
+racket/lazy-require library, not racket/base or racket.
+
+                                        *lazy-require*
+(lazy-require [module-path (fun-import ...)] ...) ~
+ 
+fun-import = fun-id
+           | (orig-fun-id fun-id)
+
+Defines each fun-id as a function that, when called, dynamically
+requires the export named orig-fun-id from the module specified by
+module-path and calls it with the same arguments. If orig-fun-id is not
+given, it defaults to fun-id.
+
+If the enclosing relative phase level is not 0, then module-path is also
+placed in a submodule (with a use of define-runtime-module-path-index at
+phase level 0 within the submodule). Introduced submodules have the
+names lazy-require-n-m, where n is a phase-level number and m is a
+number.
+
+When the use of a lazily-required function triggers module loading, it
+also triggers a use of register-external-module to declare an indirect
+compilation dependency (in case the function is used in the process of
+compiling a module).
+
+Examples:
+  > (lazy-require
+      [racket/list (partition)])
+
+  > (partition even? '(1 2 3 4 5))
+  '(2 4)
+  '(1 3 5)
+  > (module hello racket/base
+      (provide hello)
+      (printf "starting hello server\n")
+      (define (hello) (printf "hello!\n")))
+
+  > (lazy-require
+      ['hello ([hello greet])])
+
+  > (greet)
+  starting hello server
+  hello!
+

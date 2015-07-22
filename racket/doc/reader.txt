@@ -1,0 +1,778 @@
+The Reader
+
+Racket’s reader is a recursive-descent parser that can be configured
+through a readtable and various other parameters. This section describes
+the reader’s parsing when using the default readtable.
+
+Reading from a stream produces one datum. If the result datum is a
+compound value, then reading the datum typically requires the reader to
+call itself recursively to read the component data.
+
+The reader can be invoked in either of two modes: read mode, or
+read-syntax mode. In read-syntax mode, the result is always a syntax
+object that includes source-location and (initially empty) lexical
+information wrapped around the sort of datum that read mode would
+produce. In the case of pairs, vectors, and boxes, the content is also
+wrapped recursively as a syntax object. Unless specified otherwise, this
+section describes the reader’s behavior in read mode, and read-syntax
+mode does the same modulo wrapping of the final result.
+
+Reading is defined in terms of Unicode characters; see [missing] for
+information on how a byte stream is converted to a character stream.
+
+Symbols, keywords, strings, byte strings, regexps, characters, and
+numbers produced by the reader in read-syntax mode are interned, which
+means that such values in the result of read-syntax are always eq? when
+they are equal? (whether from the same call or different calls to
+read-syntax). Symbols and keywords are interned in both read and
+read-syntax mode. Sending an interned value across a place channel does
+not necessarily produce an interned value at the receiving place. See
+also datum-intern-literal and datum->syntax.
+
+1. Delimiters and Dispatch
+
+Along with whitespace, the following characters are delimiters:
+
+   ( ) [ ] { } " , ' ` ;
+
+A delimited sequence that starts with any other character is typically
+parsed as either a symbol, number, or extflonum, but a few non-delimiter
+characters play special roles:
+
+* # has a special meaning as an initial character in a delimited
+  sequence; its meaning depends on the characters that follow; see
+  below.
+
+* | starts a subsequence of characters to be included verbatim in the
+  delimited sequence (i.e., they are never treated as delimiters, and
+  they are not case-folded when case-insensitivity is enabled); the
+  subsequence is terminated by another |, and neither the initial nor
+  terminating | is part of the subsequence.
+
+* \ outside of a | pair causes the following character to be included
+  verbatim in a delimited sequence.
+
+More precisely, after skipping whitespace, the reader dispatches based
+on the next character or characters in the input stream as follows:
+
+                      ( starts a pair or list; see Reading Pairs and Lists
+                      [ starts a pair or list; see Reading Pairs and Lists
+                      { starts a pair or list; see Reading Pairs and Lists
+                      ) matches ( or raises exn:fail:read ~
+                      ] matches [ or raises exn:fail:read ~
+                      } matches { or raises exn:fail:read ~
+                      " starts a string; see Reading Strings
+                      ' starts a quote; see Reading Quotes
+                      ` starts a quasiquote; see Reading Quotes
+                      , starts a [splicing] unquote; see Reading Quotes
+                      ; starts a line comment; see Reading Comments
+               #t or #T true; see Reading Booleans
+               #f or #F false; see Reading Booleans
+                     #( starts a vector; see Reading Vectors
+                     #[ starts a vector; see Reading Vectors
+                     #{ starts a vector; see Reading Vectors
+                   #fl( starts a flvector; see Reading Vectors
+                   #fl[ starts a flvector; see Reading Vectors
+                   #fl{ starts a flvector; see Reading Vectors
+                   #fx( starts a fxvector; see Reading Vectors
+                   #fx[ starts a fxvector; see Reading Vectors
+                   #fx{ starts a fxvector; see Reading Vectors
+                    #s( starts a structure literal; see Reading Structures
+                    #s[ starts a structure literal; see Reading Structures
+                    #s{ starts a structure literal; see Reading Structures
+                     #\ starts a character; see Reading Characters
+                     #" starts a byte string; see Reading Strings
+                     #% starts a symbol; see Reading Symbols
+                     #: starts a keyword; see Reading Keywords ~
+                     #& starts a box; see Reading Boxes
+                     #| starts a block comment; see Reading Comments
+                     #; starts an S-expression comment; see Reading Comments
+                     #' starts a syntax quote; see Reading Quotes
+                    #!  starts a line comment; see Reading Comments
+                    #!/ starts a line comment; see Reading Comments
+                     #! may start a reader extension; see Reading via an Extension
+                     #` starts a syntax quasiquote; see Reading Quotes
+                     #, starts a syntax [splicing] unquote; see Reading Quotes
+                     #~ starts compiled code; see [missing]
+               #i or #I starts a number; see Reading Numbers
+               #e or #E starts a number; see Reading Numbers
+               #x or #X starts a number or extflonum; see Reading Numbers
+               #o or #O starts a number or extflonum; see Reading Numbers
+               #d or #D starts a number or extflonum; see Reading Numbers
+               #b or #B starts a number or extflonum; see Reading Numbers
+                    #<< starts a string; see Reading Strings
+                    #rx starts a regular expression; see Reading Regular Expressions
+                    #px starts a regular expression; see Reading Regular Expressions
+ #ci, #cI, #Ci,  or #CI switches case sensitivity; see Reading Symbols
+ #cs, #cS, #Cs,  or #CS switches case sensitivity; see Reading Symbols
+                  #hash starts a hash table; see Reading Hash Tables
+                #reader starts a reader extension use; see Reading via an Extension
+                  #lang starts a reader extension use; see Reading via an Extension
+           #>digit10<+( starts a vector; see Reading Vectors
+           #>digit10<+[ starts a vector; see Reading Vectors
+           #>digit10<+{ starts a vector; see Reading Vectors
+         #fl>digit10<+( starts a flvector; see Reading Vectors
+         #fl>digit10<+[ starts a flvector; see Reading Vectors
+         #fl>digit10<+{ starts a flvector; see Reading Vectors
+         #fx>digit10<+( starts a fxvector; see Reading Vectors
+         #fx>digit10<+[ starts a fxvector; see Reading Vectors
+         #fx>digit10<+{ starts a fxvector; see Reading Vectors
+       #>digit10<{1,8}= binds a graph tag; see Reading Graph Structure
+       #>digit10<{1,8}# uses a graph tag; see Reading Graph Structure
+              otherwise starts a symbol; see Reading Symbols
+
+2. Reading Symbols
+
++[missing] in [missing] introduces the syntax of symbols.
+
+A sequence that does not start with a delimiter or # is parsed as either
+a symbol, a number (see Reading Numbers), or a extflonum (see Reading
+Extflonums), except that . by itself is never parsed as a symbol or
+number (unless the read-accept-dot parameter is set to #f). A #% also
+starts a symbol. The resulting symbol is interned. A successful number
+or extflonum parse takes precedence over a symbol parse.
+
+When the read-case-sensitive parameter is set to #f, characters in the
+sequence that are not quoted by | or \ are first case-normalized. If the
+reader encounters #ci, #CI, #Ci, or #cI, then it recursively reads the
+following datum in case-insensitive mode. If the reader encounters #cs,
+#CS, #Cs, or #cS, then it recursively reads the following datum in
+case-sensitive mode.
+
+Examples:
+ Apple        reads equal to (string->symbol "Apple")
+ Ap#ple       reads equal to (string->symbol "Ap#ple")
+ Ap ple       reads equal to (string->symbol "Ap")
+ Ap| |ple     reads equal to (string->symbol "Ap ple")
+ Ap\ ple      reads equal to (string->symbol "Ap ple")
+ #ci Apple    reads equal to (string->symbol "apple")
+ #ci |A|pple  reads equal to (string->symbol "Apple")
+ #ci \Apple   reads equal to (string->symbol "Apple")
+ #ci#cs Apple reads equal to (string->symbol "Apple")
+ #%Apple      reads equal to (string->symbol "#%Apple")
+
+3. Reading Numbers
+
++[missing] in [missing] introduces the syntax of numbers.
+
+A sequence that does not start with a delimiter is parsed as a number
+when it matches the following grammar case-insensitively for >number10<
+(decimal), where n is a meta-meta-variable in the grammar. The resulting
+number is interned in read-syntax mode.
+
+A number is optionally prefixed by an exactness specifier, #e (exact) or
+#i (inexact), which specifies its parsing as an exact or inexact number;
+see [missing] for information on number exactness. As the non-terminal
+names suggest, a number that has no exactness specifier and matches only
+>inexact-numbern< is normally parsed as an inexact number, otherwise it
+is parsed as an exact number. If the read-decimal-as-inexact parameter
+is set to #f, then all numbers without an exactness specifier are
+instead parsed as exact.
+
+If the reader encounters #b (binary), #o (octal), #d (decimal), or #x
+(hexadecimal), it must be followed by a sequence that is terminated by a
+delimiter or end-of-file, and that is either an extflonum (see Reading
+Extflonums) or matches the >general-number2<, >general-number8<,
+>general-number10<, or >general-number16< grammar, respectively.
+
+A #e or #i followed immediately by #b, #o, #d, or #x is treated the same
+as the reverse order: #b, #o, #d, or #x followed by #e or #i.
+
+An >exponent-markn< in an inexact number serves both to specify an
+exponent and to specify a numerical precision. If single-precision IEEE
+floating point is supported (see [missing]), the marks f and s specify
+single-precision. Otherwise, or with any other mark, double-precision
+IEEE floating point is used. In addition, single- and double-precision
+specials are distinct; specials with the .0 suffix, like +nan.0 are
+double-precision, whereas specials with the .f suffix are
+single-precision.
+
+A # in an >inexactn< number is the same as 0, but # can be used to
+suggest that the digit’s actual value is unknown.
+
+ >numbern<            ::= >exactn<  |  >inexactn< ~
+ >exactn<             ::= >exact-rationaln<  |  >exact-complexn< ~
+ >exact-rationaln<    ::= [>sign<] >unsigned-rationaln< ~
+ >unsigned-rationaln< ::= >unsigned-integern< ~
+                       |  >unsigned-integern< / >unsigned-integern<
+ >exact-integern<     ::= [>sign<] >unsigned-integern< ~
+ >unsigned-integern<  ::= >digitn<+ ~
+ >exact-complexn<     ::= >exact-rationaln< >sign< >unsigned-rationaln< i ~
+ >inexactn<           ::= >inexact-realn<  |  >inexact-complexn< ~
+ >inexact-realn<      ::= [>sign<] >inexact-normaln< ~
+                       |  >sign< >inexact-specialn<
+ >inexact-unsignedn<  ::= >inexact-normaln<  |  >inexact-specialn< ~
+ >inexact-normaln<    ::= >inexact-simplen< [>exp-markn< >exact-integern<] ~
+ >inexact-simplen<    ::= >digits#n< [.] #* ~
+                       |  [>unsigned-integern<] . >digits#n<
+                       |  >digits#n< / >digits#n<
+ >inexact-specialn<   ::= inf.0  |  nan.0  |  inf.f  |  nan.f ~
+ >digits#n<           ::= >digitn<+ #* ~
+ >inexact-complexn<   ::= [>inexact-realn<] >sign< >inexact-unsignedn< i ~
+                       |  >inexact-realn< @ >inexact-realn<
+ >sign<               ::= +  |  - ~
+ >digit16<            ::= >digit10<  |  a  |  b  |  c  |  d  |  e  |  f ~
+ >digit10<            ::= >digit8<  |  8  |  9 ~
+ >digit8<             ::= >digit2<  |  2  |  3  |  4  |  5  |  6  |  7 ~
+ >digit2<             ::= 0  |  1 ~
+ >exp-mark16<         ::= s  |  l ~
+ >exp-mark10<         ::= >exp-mark16<  |  d  |  e  |  f ~
+ >exp-mark8<          ::= >exp-mark10< ~
+ >exp-mark2<          ::= >exp-mark10< ~
+ >general-numbern<    ::= [>exactness<] >numbern< ~
+ >exactness<          ::= #e  |  #i ~
+
+Examples:
+ -1         reads equal to -1
+ 1/2        reads equal to (/ 1 2)
+ 1.0        reads equal to (exact->inexact 1)
+ 1+2i       reads equal to (make-complex 1 2)
+ 1/2+3/4i   reads equal to (make-complex (/ 1 2) (/ 3 4))
+ 1.0+3.0e7i reads equal to (exact->inexact (make-complex 1 30000000))
+ 2e5        reads equal to (exact->inexact 200000)
+ #i5        reads equal to (exact->inexact 5)
+ #e2e5      reads equal to 200000
+ #x2e5      reads equal to 741
+ #b101      reads equal to 5
+
+4. Reading Extflonums
+
+An extflonum has the same syntax as an >inexact-realn< that includes an
+>exp-markn<, but with t or T in place of the >exp-markn<. In addition,
++inf.t, -inf.t, +nan.t, -nan.t are extflonums. A #b (binary), #o
+(octal), #d (decimal), or #x (hexadecimal) radix specification can
+prefix an extflonum, but #i or #e cannot, and a extflonum cannot be used
+to form a complex number.  The read-decimal-as-inexact parameter has no
+effect on extflonum reading.
+
+5. Reading Booleans
+
+A #true, #t, #T followed by a delimiter is the input syntax for the
+boolean constant “true,” and #false, #f, or #F followed by a delimiter
+is the complete input syntax for the boolean constant “false.”
+
+6. Reading Pairs and Lists
+
+When the reader encounters a (, [, or {, it starts parsing a pair or
+list; see [missing] for information on pairs and lists.
+
+To parse the pair or list, the reader recursively reads data until a
+matching ), ], or } (respectively) is found, and it specially handles a
+delimited ..  Pairs (), [], and {} are treated the same way, so the
+remainder of this section simply uses “parentheses” to mean any of these
+pair.
+
+If the reader finds no delimited . among the elements between
+parentheses, then it produces a list containing the results of the
+recursive reads.
+
+If the reader finds two data between the matching parentheses that are
+separated by a delimited ., then it creates a pair. More generally, if
+it finds two or more data where the last datum is preceded by a
+delimited ., then it constructs nested pairs: the next-to-last element
+is paired with the last, then the third-to-last datum is paired with
+that pair, and so on.
+
+If the reader finds three or more data between the matching parentheses,
+and if a pair of delimited .s surrounds any other than the first and
+last elements, the result is a list containing the element surrounded by
+.s as the first element, followed by the others in the read order. This
+convention supports a kind of infix notation at the reader level.
+
+In read-syntax mode, the recursive reads for the pair/list elements are
+themselves in read-syntax mode, so that the result is a list or pair of
+syntax objects that is itself wrapped as a syntax object. If the reader
+constructs nested pairs because the input included a single delimited .,
+then only the innermost pair and outermost pair are wrapped as syntax
+objects. Whether wrapping a pair or list, if the pair or list was formed
+with [ and ], then a 'paren-shape property is attached to the result
+with the value #\[; if the list or pair was formed with { and }, then a
+'paren-shape property is attached to the result with the value #\{.
+
+If a delimited . appears in any other configuration, then the
+exn:fail:read exception is raised. Similarly, if the reader encounters a
+), ], or } that does not end a list being parsed, then the exn:fail:read
+exception is raised.
+
+Examples:
+ ()          reads equal to (list)
+ (1 2 3)     reads equal to (list 1 2 3)
+ {1 2 3}     reads equal to (list 1 2 3)
+ [1 2 3]     reads equal to (list 1 2 3)
+ (1 (2) 3)   reads equal to (list 1 (list 2) 3)
+ (1 . 3)     reads equal to (cons 1 3)
+ (1 . (3))   reads equal to (list 1 3)
+ (1 . 2 . 3) reads equal to (list 2 1 3)
+
+If the read-square-bracket-as-paren parameter is set to #f, then when
+the reader encounters [ and ], the "exn:fail:read" exception is raised.
+Similarly, if the read-curly-brace-as-paren parameter is set to #f, then
+when the reader encounters { and }, the "exn:fail:read" exception is
+raised.
+
+If the read-accept-dot parameter is set to #f, then a delimited .
+triggers an exn:fail:read exception. If the read-accept-infix-dot
+parameter is set to #f, then multiple delimited .s trigger an
+exn:fail:read exception, instead of the infix conversion.
+
+7. Reading Strings
+
++[missing] in [missing] introduces the syntax of strings.
+
+When the reader encounters ", it begins parsing characters to form a
+string. The string continues until it is terminated by another " (that
+is not escaped by \). The resulting string is interned in read-syntax
+mode.
+
+Within a string sequence, the following escape sequences are
+recognized:
+
+* \a: alarm (ASCII 7)
+
+* \b: backspace (ASCII 8)
+
+* \t: tab (ASCII 9)
+
+* \n: linefeed (ASCII 10)
+
+* \v: vertical tab (ASCII 11)
+
+* \f: formfeed (ASCII 12)
+
+* \r: return (ASCII 13)
+
+* \e: escape (ASCII 27)
+
+* \": double-quotes (without terminating the string)
+
+* \': quote (i.e., the backslash has no effect)
+
+* \\: backslash (i.e., the second is not an escaping backslash)
+
+* \>digit8<{1,3}: Unicode for the octal number specified by digit8{1,3}
+  (i.e., 1 to 3 >digit8<s), where each >digit8< is 0, 1, 2, 3, 4, 5, 6,
+  or 7. A longer form takes precedence over a shorter form, and the
+  resulting octal number must be between 0 and 255 decimal, otherwise
+  the exn:fail:read exception is raised.
+
+* \x>digit16<{1,2}: Unicode for the hexadecimal number specified by
+  >digit16<{1,2}, where each >digit16< is 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
+  a, b, c, d, e, or f (case-insensitive). The longer form takes
+  precedence over the shorter form.
+
+* \u>digit16<{1,4}: like \x, but with up to four hexadecimal digits
+  (longer sequences take precedence). The resulting hexadecimal number
+  must be a valid argument to integer->char, otherwise the exn:fail:read
+  exception is raised—unless the encoding continues with another \u to
+  form a surrogate-style encoding.
+
+* \u>digit16<{4,4}\u>digit16<{4,4}: like \u, but for two hexadecimal
+  numbers, where the first is in the range #xD800 to #xDBFF and the
+  second is in the range #xDC00 to #xDFFF; the resulting character is
+  the one represented by the numbers as a UTF-16 surrogate pair.
+
+* \U>digit16<{1,8}: like \x, but with up to eight hexadecimal digits
+  (longer sequences take precedence). The resulting hexadecimal number
+  must be a valid argument to integer->char, otherwise the exn:fail:read
+  exception is raised.
+
+* \>newline<: elided, where >newline< is either a linefeed, carriage
+  return, or carriage return–linefeed combination. This convention
+  allows single-line strings to span multiple lines in the source.
+
+If the reader encounters any other use of a backslash in a string
+constant, the exn:fail:read exception is raised.
+
++[missing] in [missing] introduces the syntax of byte strings.
+
+A string constant preceded by # is parsed as a byte string. (That is, #"
+starts a byte-string literal.) See [missing] for information on byte
+strings. The resulting byte string is interned in read-syntax mode.
+Byte-string constants support the same escape sequences as character
+strings, except \u and \U. Otherwise, each character within the
+byte-string quotes must have a Unicode code-point number in the range 0
+to 255, which is used as the corresponding byte’s value; if a character
+is not in that range, the exn:fail:read exception is raised.
+
+When the reader encounters #<<, it starts parsing a here string. The
+characters following #<< until a newline character define a terminator
+for the string. The content of the string includes all characters
+between the #<< line and a line whose only content is the specified
+terminator. More precisely, the content of the string starts after a
+newline following #<<, and it ends before a newline that is followed by
+the terminator, where the terminator is itself followed by either a
+newline or end-of-file. No escape sequences are recognized between the
+starting and terminating lines; all characters are included in the
+string (and terminator) literally. A return character is not treated as
+a line separator in this context. If no characters appear between #<<
+and a newline or end-of-file, or if an end-of-file is encountered before
+a terminating line, the exn:fail:read exception is raised.
+
+Examples:
+ "Apple"     reads equal to "Apple"
+ "\x41pple"  reads equal to "Apple"
+ "\"Apple\"" reads equal to "\x22Apple\x22"
+ "\\"        reads equal to "\x5C"
+ #"Apple"    reads equal to (bytes 65 112 112 108 101)
+
+8. Reading Quotes
+
+When the reader encounters ', it recursively reads one datum and forms a
+new list containing the symbol 'quote and the following datum. This
+convention is mainly useful for reading Racket code, where 's can be
+used as a shorthand for (quote s).
+
+Several other sequences are recognized and transformed in a similar way.
+Longer prefixes take precedence over short ones:
+
+ '   adds quote
+ `   adds quasiquote
+ ,   adds unquote
+ ,@  adds unquote-splicing
+ #'  adds syntax
+ #`  adds quasisyntax
+ #,  adds unsyntax
+ #,@ adds unsyntax-splicing
+
+Examples:
+ 'apple  reads equal to (list 'quote 'apple)
+ `(1 ,2) reads equal to (list 'quasiquote (list 1 (list 'unquote 2)))
+
+The `, ,, and ,@ forms are disabled when the read-accept-quasiquote
+parameter is set to #f, in which case the exn:fail:read exception is
+raised instead.
+
+9. Reading Comments
+
+A ; starts a line comment. When the reader encounters ;, it skips past
+all characters until the next linefeed (ASCII 10), carriage return
+(ASCII 13), next-line (Unicode 133), line-separator (Unicode 8232), or
+paragraph-separator (Unicode 8233) character.
+
+A #| starts a nestable block comment.  When the reader encounters #|, it
+skips past all characters until a closing |#. Pairs of matching #| and
+|# can be nested.
+
+A #; starts an S-expression comment. When the reader encounters #;, it
+recursively reads one datum, and then discards it (continuing on to the
+next datum for the read result).
+
+A #!  (which is #! followed by a space) or #!/ starts a line comment
+that can be continued to the next line by ending a line with \. This
+form of comment normally appears at the beginning of a Unix script file.
+
+Examples:
+ ; comment         reads equal to nothing
+ #| a |# 1         reads equal to 1
+ #| #| a |# 1 |# 2 reads equal to 2
+ #;1 2             reads equal to 2
+ #!/bin/sh         reads equal to nothing
+ #! /bin/sh        reads equal to nothing
+
+10. Reading Vectors
+
+When the reader encounters a #(, #[, or #{, it starts parsing a vector;
+see [missing] for information on vectors. A #fl in place of # starts an
+flvector, but is not allowed in read-syntax mode; see [missing] for
+information on flvectors. A #fx in place of # starts an fxvector, but is
+not allowed in read-syntax mode; see [missing] for information on
+fxvectors. The #[, #{, #fl[, #fl{, #fx[, and #fx{ forms can be disabled
+through the read-square-bracket-as-paren and read-curly-brace-as-paren
+parameters.
+
+The elements of the vector are recursively read until a matching ), ],
+or } is found, just as for lists (see Reading Pairs and Lists). A
+delimited . is not allowed among the vector elements. In the case of
+flvectors, the recursive read for element is implicitly prefixed with #i
+and must produce a flonum. In the case of flvectors, the recursive read
+for element is implicitly prefixed with #e and must produce a fixnum.
+
+An optional vector length can be specified between #, #fl, #fx  and (,
+[, or {. The size is specified using a sequence of decimal digits, and
+the number of elements provided for the vector must be no more than the
+specified size. If fewer elements are provided, the last provided
+element is used for the remaining vector slots; if no elements are
+provided, then 0 is used for all slots.
+
+In read-syntax mode, each recursive read for vector elements is also in
+read-syntax mode, so that the wrapped vector’s elements are also wrapped
+as syntax objects, and the vector is immutable.
+
+Examples:
+ #(1 apple 3)         reads equal to (vector 1 'apple 3)
+ #3("apple" "banana") reads equal to (vector "apple" "banana" "banana")
+ #3()                 reads equal to (vector 0 0 0)
+
+11. Reading Structures
+
+When the reader encounters a #s(, #s[, or #s{, it starts parsing an
+instance of a prefab structure type; see [missing] for information on
+structure types.  The #s[ and #s{ forms can be disabled through the
+read-square-bracket-as-paren and read-curly-brace-as-paren parameters.
+
+The elements of the structure are recursively read until a matching ),
+], or } is found, just as for lists (see Reading Pairs and Lists). A
+single delimited . is not allowed among the elements, but two .s can be
+used as in a list for an infix conversion.
+
+The first element is used as the structure descriptor, and it must have
+the form (when quoted) of a possible argument to make-prefab-struct; in
+the simplest case, it can be a symbol. The remaining elements correspond
+to field values within the structure.
+
+In read-syntax mode, the structure type must not have any mutable
+fields. The structure’s elements are read in read-syntax mode, so that
+the wrapped structure’s elements are also wrapped as syntax objects.
+
+If the first structure element is not a valid prefab structure type key,
+or if the number of provided fields is inconsistent with the indicated
+prefab structure type, the exn:fail:read exception is raised.
+
+12. Reading Hash Tables
+
+A #hash starts an immutable hash-table constant with key matching based
+on equal?. The characters after hash must parse as a list of pairs (see
+Reading Pairs and Lists) with a specific use of delimited .: it must
+appear between the elements of each pair in the list and nowhere in the
+sequence of list elements. The first element of each pair is used as the
+key for a table entry, and the second element of each pair is the
+associated value.
+
+A #hasheq starts a hash table like #hash, except that it constructs a
+hash table based on eq? instead of equal?.
+
+A #hasheqv starts a hash table like #hash, except that it constructs a
+hash table based on eqv? instead of equal?.
+
+In all cases, the table is constructed by adding each mapping to the
+hash table from left to right, so later mappings can hide earlier
+mappings if the keys are equivalent.
+
+Examples, where make-... stands for make-immutable-hash:
+ #hash()                  reads equal to (make-... '())
+ #hasheq()                reads equal to (make-...eq '())
+ #hash(("a" . 5))         reads equal to (make-... '(("a" . 5)))
+ #hasheq((a . 5) (b . 7)) reads equal to (make-...eq '((b . 7) (a . 5)))
+ #hasheq((a . 5) (a . 7)) reads equal to (make-...eq '((a . 7)))
+
+13. Reading Boxes
+
+When the reader encounters a #&, it starts parsing a box; see [missing]
+for information on boxes. The content of the box is determined by
+recursively reading the next datum.
+
+In read-syntax mode, the recursive read for the box content is also in
+read-syntax mode, so that the wrapped box’s content is also wrapped as a
+syntax object, and the box is immutable.
+
+Examples:
+ #&17 reads equal to (box 17)
+
+14. Reading Characters
+
++[missing] in [missing] introduces the syntax of characters.
+
+A #\ starts a character constant, which has one of the following forms:
+
+* #\nul or #\null: NUL (ASCII 0); the next character must not be
+  alphabetic.
+
+* #\backspace: backspace  (ASCII 8); the next character must not be
+  alphabetic.
+
+* #\tab: tab (ASCII 9); the next character must not be alphabetic.
+
+* #\newline or #\linefeed: linefeed (ASCII 10); the next character must
+  not be alphabetic.
+
+* #\vtab: vertical tab (ASCII 11); the next character must not be
+  alphabetic.
+
+* #\page: page break (ASCII 12); the next character must not be
+  alphabetic.
+
+* #\return: carriage return (ASCII 13); the next character must not be
+  alphabetic.
+
+* #\space: space (ASCII 32); the next character must not be alphabetic.
+
+* #\rubout: delete (ASCII 127); the next character must not be
+  alphabetic.
+
+* #\>digit8<{3,3}: Unicode for the octal number specified by three octal
+  digits—as in string escapes (see Reading Strings), but constrained to
+  exactly three digits.
+
+* #\u>digit16<{1,4}: Unicode for the hexadecimal number specified by
+  >digit16<{1,4}, as in string escapes (see Reading Strings).
+
+* #\U>digit16<{1,6}: like #\u, but with up to six hexadecimal digits.
+
+* #\>c<: the character >c<, as long as #\>c< and the characters
+  following it do not match any of the previous cases, and as long as
+  the character after >c< is not alphabetic.
+
+Examples:
+ #\newline reads equal to (integer->char 10)
+ #\n       reads equal to (integer->char 110)
+ #\u3BB    reads equal to (integer->char 955)
+ #\λ       reads equal to (integer->char 955)
+
+15. Reading Keywords
+
+A #: starts a keyword. The parsing of a keyword after the #: is the same
+as for a symbol, including case-folding in case-insensitive mode, except
+that the part after #: is never parsed as a number. The resulting
+keyword is interned.
+
+Examples:
+ #:Apple reads equal to (string->keyword "Apple") ~
+ #:1     reads equal to (string->keyword "1") ~
+
+16. Reading Regular Expressions
+
+A #rx or #px starts a regular expression. The characters immediately
+after #rx or #px must parse as a string or byte string (see Reading
+Strings). A #rx prefix starts a regular expression as would be
+constructed by regexp, #px as constructed by pregexp, #rx# as
+constructed by byte-regexp, and #px# as constructed by byte-pregexp. The
+resulting regular expression is interned in read-syntax mode.
+
+Examples:
+ #rx".*"      reads equal to (regexp ".*")
+ #px"[\\s]*"  reads equal to (pregexp "[\\s]*")
+ #rx#".*"     reads equal to (byte-regexp #".*")
+ #px#"[\\s]*" reads equal to (byte-pregexp #"[\\s]*")
+
+17. Reading Graph Structure
+
+A #>digit10<{1,8}= tags the following datum for reference via
+#>digit10<{1,8}#, which allows the reader to produce a datum that has
+graph structure.
+
+For a specific >digit10<{1,8} in a single read result, each
+#>digit10<{1,8}# reference is replaced by the datum read for the
+corresponding #>digit10<{1,8}=; the definition #>digit10<{1,8}= also
+produces just the datum after it. A #>digit10<{1,8}= definition can
+appear at most once, and a #>digit10<{1,8}= definition must appear
+before a #>digit10<{1,8}# reference appears, otherwise the exn:fail:read
+exception is raised. If the read-accept-graph parameter is set to #f,
+then #>digit10<{1,8}= or #>digit10<{1,8}# triggers a exn:fail:read
+exception.
+
+Although a comment parsed via #; discards the datum afterward,
+#>digit10<{1,8}= definitions in the discarded datum still can be
+referenced by other parts of the reader input, as long as both the
+comment and the reference are grouped together by some other form (i.e.,
+some recursive read); a top-level #; comment neither defines nor uses
+graph tags for other top-level forms.
+
+Examples:
+ (#1=100 #1# #1#) reads equal to (list 100 100 100)
+ #0=(1 . #0#)     reads equal to (let* ([ph (make-placeholder #f)]
+                                        [v (cons 1 ph)])
+                                   (placeholder-set! ph v)
+                                   (make-reader-graph v))
+
+
+18. Reading via an Extension
+
++[missing] in [missing] introduces reader extension.
+
+When the reader encounters #reader, it loads an external reader
+procedure and applies it to the current input stream.
+
+The reader recursively reads the next datum after #reader, and passes it
+to the procedure that is the value of the current-reader-guard
+parameter; the result is used as a module path. The module path is
+passed to dynamic-require with either 'read or 'read-syntax (depending
+on whether the reader is in read or read-syntax mode).
+
+The arity of the resulting procedure determines whether it accepts extra
+source-location information: a read procedure accepts either one
+argument (an input port) or five, and a read-syntax procedure accepts
+either two arguments (a name value and an input port) or six. In either
+case, the four optional arguments are the reader’s module path (as a
+syntax object in read-syntax mode) followed by the line (positive exact
+integer or #f), column (non-negative exact integer or #f), and position
+(positive exact integer or #f) of the start of the #reader form. The
+input port is the one whose stream contained #reader, where the stream
+position is immediately after the recursively read module path.
+
+The procedure should produce a datum result.  If the result is a syntax
+object in read mode, then it is converted to a datum using
+syntax->datum; if the result is not a syntax object in read-syntax mode,
+then it is converted to one using datum->syntax. See also [missing] for
+information on the procedure’s results.
+
+If the read-accept-reader parameter is set to #f, then if the reader
+encounters #reader, the exn:fail:read exception is raised.
+
++[missing] in [missing] introduces #lang.
+
+The #lang reader form is similar to #reader, but more constrained: the
+#lang must be followed by a single space (ASCII 32), and then a
+non-empty sequence of alphanumeric ASCII, +, -, _, and/or / characters
+terminated by whitespace or an end-of-file.  The sequence must not start
+or end with /. A sequence #lang >name< is equivalent to either #reader
+(submod >name< reader) or #reader >name</lang/reader, where the former
+is tried first guarded by a module-declared? check (but after filtering
+by current-reader-guard, so both are passed to the value of
+current-reader-guard if the latter is used). Note that the terminating
+whitespace (if any) is not consumed before the external reading
+procedure is called.
+
++[missing] in [missing] introduces the creation languages for #lang.
+
+Finally, #! is an alias for #lang followed by a space when #! is
+followed by alphanumeric ASCII, +, -, or _. Use of this alias is
+discouraged except as needed to construct programs that conform to
+certain grammars, such as that of R6RS [Sperber07].
+
+The syntax/module-reader library provides a domain-specific language for
+writing language readers.
+
+By convention, #lang normally appears at the beginning of a file,
+possibly after comment forms, to specify the syntax of a module.
+
+If the read-accept-reader or read-accept-lang parameter is set to #f,
+then if the reader encounters #lang or equivalent #!, the exn:fail:read
+exception is raised.
+
+18.1. S-Expression Reader Language
+
+ #lang s-exp package: base ~
+
++[missing] in [missing] introduces the s-exp meta-language.
+
+The s-exp “language” is a kind of meta-language. It reads the
+S-expression that follows #lang s-exp and uses it as the language of a
+module form. It also reads all remaining S-expressions until an
+end-of-file, using them for the body of the generated module.
+
+That is,
+
+  #lang s-exp module-path
+  form ...
+
+is equivalent to
+
+  (module name-id module-path
+    form ...)
+
+where name-id is derived from the source input port’s name: if the port
+name is a filename path, the filename without its directory path and
+extension is used for name-id, otherwise name-id is anonymous-module.
+
+18.2. Chaining Reader Language
+
+ #lang reader package: base ~
+
++[missing] in [missing] introduces the reader meta-language.
+
+The reader “language” is a kind of meta-language. It reads the
+S-expression that follows #lang reader and uses it as a module path
+(relative to the module being read) that effectively takes the place of
+reader. In other words, the reader meta-language generalizes the syntax
+of the module specified after #lang to be a module path, and without the
+implicit addition of /lang/reader to the path.

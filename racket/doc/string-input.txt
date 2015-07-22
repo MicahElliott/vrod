@@ -1,0 +1,533 @@
+Byte and String Input
+
+                                        *read-char*
+(read-char [in]) -> (or/c char? eof-object?) ~
+  in : input-port? = (current-input-port) ~
+
+Reads a single character from in—which may involve reading several bytes
+to UTF-8-decode them into a character (see [missing]); a minimal number
+of bytes are read/peeked to perform the decoding. If no bytes are
+available before an end-of-file, then eof is returned.
+
+Examples:
+  > (let ([ip (open-input-string "S2")])
+      (print (read-char ip))
+      (newline)
+      (print (read-char ip))
+      (newline)
+      (print (read-char ip)))
+  #\S
+  #\2
+  #<eof>
+
+  > (let ([ip (open-input-bytes #"\316\273")])
+      ; The byte string contains UTF-8-encoded content: ~
+      (print (read-char ip)))
+  #\λ
+
+
+                                        *read-byte*
+(read-byte [in]) -> (or/c byte? eof-object?) ~
+  in : input-port? = (current-input-port) ~
+
+Reads a single byte from in. If no bytes are available before an
+end-of-file, then eof is returned.
+
+Examples:
+  > (let ([ip (open-input-string "a")])
+      ; The two values in the following list should be the same.
+      (list (read-byte ip) (char->integer #\a)))
+  '(97 97)
+  > (let ([ip (open-input-string (string #\λ))])
+      ; This string has a two byte-encoding.
+      (list (read-byte ip) (read-byte ip) (read-byte ip)))
+  '(206 187 #<eof>)
+
+                                        *read-line*
+(read-line [in mode]) -> (or/c string? eof-object?) ~
+  in : input-port? = (current-input-port) ~
+  mode : (or/c 'linefeed 'return 'return-linefeed 'any 'any-one) ~
+       = 'linefeed
+
+Returns a string containing the next line of bytes from in.
+
+Characters are read from in until a line separator or an end-of-file is
+read. The line separator is not included in the result string (but it is
+removed from the port’s stream). If no characters are read before an
+end-of-file is encountered, eof is returned.
+
+The mode argument determines the line separator(s). It must be one of
+the following symbols:
+
+* 'linefeed breaks lines on linefeed characters.
+
+* 'return breaks lines on return characters.
+
+* 'return-linefeed breaks lines on return-linefeed combinations. If a
+  return character is not followed by a linefeed character, it is
+  included in the result string; similarly, a linefeed that is not
+  preceded by a return is included in the result string.
+
+* 'any breaks lines on any of a return character, linefeed character, or
+  return-linefeed combination. If a return character is followed by a
+  linefeed character, the two are treated as a combination.
+
+* 'any-one breaks lines on either a return or linefeed character,
+  without recognizing return-linefeed combinations.
+
+Return and linefeed characters are detected after the conversions that
+are automatically performed when reading a file in text mode. For
+example, reading a file in text mode on Windows automatically changes
+return-linefeed combinations to a linefeed. Thus, when a file is opened
+in text mode, 'linefeed is usually the appropriate read-line mode.
+
+Examples:
+  > (let ([ip (open-input-string "x\ny\n")])
+      (read-line ip))
+  "x"
+  > (let ([ip (open-input-string "x\ny\n")])
+      (read-line ip 'return))
+  "x\ny\n"
+  > (let ([ip (open-input-string "x\ry\r")])
+      (read-line ip 'return))
+  "x"
+  > (let ([ip (open-input-string "x\r\ny\r\n")])
+      (read-line ip 'return-linefeed))
+  "x"
+  > (let ([ip (open-input-string "x\r\ny\nz")])
+      (list (read-line ip 'any) (read-line ip 'any)))
+  '("x" "y")
+  > (let ([ip (open-input-string "x\r\ny\nz")])
+      (list (read-line ip 'any-one) (read-line ip 'any-one)))
+  '("x" "")
+
+                                        *read-bytes-line*
+(read-bytes-line [in mode]) -> (or/c bytes? eof-object?) ~
+  in : input-port? = (current-input-port) ~
+  mode : (or/c 'linefeed 'return 'return-linefeed 'any 'any-one) ~
+       = 'linefeed
+
+Like read-line, but reads bytes and produces a byte string.
+
+                                        *read-string*
+(read-string amt [in]) -> (or/c string? eof-object?) ~
+  amt : exact-nonnegative-integer? ~
+  in : input-port? = (current-input-port) ~
+
+To read an entire port as a string, use port->string.
+
+Returns a string containing the next amt characters from in.
+
+If amt is 0, then the empty string is returned. Otherwise, if fewer than
+amt characters are available before an end-of-file is encountered, then
+the returned string will contain only those characters before the
+end-of-file; that is, the returned string’s length will be less than
+amt. (A temporary string of size amt is allocated while reading the
+input, even if the size of the result is less than amt characters.) If
+no characters are available before an end-of-file, then eof is returned.
+
+If an error occurs during reading, some characters may be lost; that is,
+if read-string successfully reads some characters before encountering an
+error, the characters are dropped.
+
+Example:
+  > (let ([ip (open-input-string "supercalifragilisticexpialidocious")])
+      (read-string 5 ip))
+  "super"
+
+                                        *read-bytes*
+(read-bytes amt [in]) -> (or/c bytes? eof-object?) ~
+  amt : exact-nonnegative-integer? ~
+  in : input-port? = (current-input-port) ~
+
+To read an entire port as bytes, use port->bytes.
+
+Like read-string, but reads bytes and produces a byte string.
+
+Example:
+  > (let ([ip (open-input-bytes
+                      (bytes 6
+                             115 101 99 114 101
+                             116))])
+      (define length (read-byte ip))
+      (bytes->string/utf-8 (read-bytes length ip)))
+  "secret"
+
+                                        *read-string!*
+(read-string! str [in start-pos end-pos]) ~
+ -> (or/c exact-positive-integer? eof-object?)
+  str : (and/c string? (not/c immutable?)) ~
+  in : input-port? = (current-input-port) ~
+  start-pos : exact-nonnegative-integer? = 0 ~
+  end-pos : exact-nonnegative-integer? = (string-length str) ~
+
+Reads characters from in like read-string, but puts them into str
+starting from index start-pos (inclusive) up to end-pos (exclusive).
+Like substring, the exn:fail:contract exception is raised if start-pos
+or end-pos is out-of-range for str.
+
+If the difference between start-pos and end-pos is 0, then 0 is returned
+and str is not modified. If no bytes are available before an
+end-of-file, then eof is returned. Otherwise, the return value is the
+number of characters read. If m characters are read and
+m<end-pos-start-pos, then str is not modified at indices start-pos+m
+through end-pos.
+
+Example:
+  > (let ([buffer (make-string 10 #\_)]
+          [ip (open-input-string "cketRa")])
+      (printf "~s\n" buffer)
+      (read-string! buffer ip 2 6)
+      (printf "~s\n" buffer)
+      (read-string! buffer ip 0 2)
+      (printf "~s\n" buffer))
+  "__________"
+  "__cket____"
+  "Racket____"
+
+
+                                        *read-bytes!*
+(read-bytes! bstr [in start-pos end-pos]) ~
+ -> (or/c exact-positive-integer? eof-object?)
+  bstr : bytes? ~
+  in : input-port? = (current-input-port) ~
+  start-pos : exact-nonnegative-integer? = 0 ~
+  end-pos : exact-nonnegative-integer? = (bytes-length bstr) ~
+
+Like read-string!, but reads bytes, puts them into a byte string, and
+returns the number of bytes read.
+
+Example:
+  > (let ([buffer (make-bytes 10 (char->integer #\_))]
+          [ip (open-input-string "cketRa")])
+      (printf "~s\n" buffer)
+      (read-bytes! buffer ip 2 6)
+      (printf "~s\n" buffer)
+      (read-bytes! buffer ip 0 2)
+      (printf "~s\n" buffer))
+  #"__________"
+  #"__cket____"
+  #"Racket____"
+
+
+                                        *read-bytes-avail!*
+(read-bytes-avail! bstr [in start-pos end-pos]) ~
+ -> (or/c exact-positive-integer? eof-object? procedure?)
+  bstr : bytes? ~
+  in : input-port? = (current-input-port) ~
+  start-pos : exact-nonnegative-integer? = 0 ~
+  end-pos : exact-nonnegative-integer? = (bytes-length bstr) ~
+
+Like read-bytes!, but returns without blocking after having read the
+immediately available bytes, and it may return a procedure for a
+“special” result. The read-bytes-avail! procedure blocks only if no
+bytes (or specials) are yet available. Also unlike read-bytes!,
+read-bytes-avail! never drops bytes; if read-bytes-avail! successfully
+reads some bytes and then encounters an error, it suppresses the error
+(treating it roughly like an end-of-file) and returns the read bytes.
+(The error will be triggered by future reads.) If an error is
+encountered before any bytes have been read, an exception is raised.
+
+When in produces a special value, as described in [missing], the result
+is a procedure of four arguments. The four arguments correspond to the
+location of the special value within the port, as described in
+[missing]. If the procedure is called more than once with valid
+arguments, the exn:fail:contract exception is raised. If
+read-bytes-avail returns a special-producing procedure, then it does not
+place characters in bstr. Similarly, read-bytes-avail places only as
+many bytes into bstr as are available before a special value in the
+port’s stream.
+
+                                        *read-bytes-avail!**
+(read-bytes-avail!*  bstr       ~
+                    [in        
+                     start-pos 
+                     end-pos]) 
+ -> (or/c exact-nonnegative-integer? eof-object? procedure?)
+  bstr : bytes? ~
+  in : input-port? = (current-input-port) ~
+  start-pos : exact-nonnegative-integer? = 0 ~
+  end-pos : exact-nonnegative-integer? = (bytes-length bstr) ~
+
+Like read-bytes-avail!, but returns 0 immediately if no bytes (or
+specials) are available for reading and the end-of-file is not reached.
+
+                                        *read-bytes-avail!/enable-break*
+(read-bytes-avail!/enable-break  bstr       ~
+                                [in        
+                                 start-pos 
+                                 end-pos]) 
+ -> (or/c exact-positive-integer? eof-object? procedure?)
+  bstr : bytes? ~
+  in : input-port? = (current-input-port) ~
+  start-pos : exact-nonnegative-integer? = 0 ~
+  end-pos : exact-nonnegative-integer? = (bytes-length bstr) ~
+
+Like read-bytes-avail!, but breaks are enabled during the read (see also
+[missing]). If breaking is disabled when read-bytes-avail!/enable-break
+is called, and if the exn:break exception is raised as a result of the
+call, then no bytes will have been read from in.
+
+                                        *peek-string*
+(peek-string amt skip-bytes-amt [in]) -> (or/c string? eof-object?) ~
+  amt : exact-nonnegative-integer? ~
+  skip-bytes-amt : exact-nonnegative-integer? ~
+  in : input-port? = (current-input-port) ~
+
+Similar to read-string, except that the returned characters are peeked:
+preserved in the port for future reads and peeks. (More precisely,
+undecoded bytes are left for future reads and peeks.) The skip-bytes-amt
+argument indicates a number of bytes (not characters) in the input
+stream to skip before collecting characters to return; thus, in total,
+the next skip-bytes-amt bytes plus amt characters are inspected.
+
+For most kinds of ports, inspecting skip-bytes-amt bytes and amt
+characters requires at least skip-bytes-amt+amt bytes of memory overhead
+associated with the port, at least until the bytes/characters are read.
+No such overhead is required when peeking into a string port (see
+[missing]), a pipe port (see [missing]), or a custom port with a
+specific peek procedure (depending on how the peek procedure is
+implemented; see [missing]).
+
+If a port produces eof mid-stream, attempts to skip beyond the eof for a
+peek always produce eof until the eof is read.
+
+                                        *peek-bytes*
+(peek-bytes amt skip-bytes-amt [in]) -> (or/c bytes? eof-object?) ~
+  amt : exact-nonnegative-integer? ~
+  skip-bytes-amt : exact-nonnegative-integer? ~
+  in : input-port? = (current-input-port) ~
+
+Like peek-string, but peeks bytes and produces a byte string.
+
+                                        *peek-string!*
+(peek-string!  str             ~
+               skip-bytes-amt 
+              [in             
+               start-pos      
+               end-pos])      
+ -> (or/c exact-positive-integer? eof-object?)
+  str : (and/c string? (not/c immutable?)) ~
+  skip-bytes-amt : exact-nonnegative-integer? ~
+  in : input-port? = (current-input-port) ~
+  start-pos : exact-nonnegative-integer? = 0 ~
+  end-pos : exact-nonnegative-integer? = (string-length str) ~
+
+Like read-string!, but for peeking, and with a skip-bytes-amt argument
+like peek-string.
+
+                                        *peek-bytes!*
+(peek-bytes!  bstr            ~
+              skip-bytes-amt 
+             [in             
+              start-pos      
+              end-pos])      
+ -> (or/c exact-positive-integer? eof-object?)
+  bstr : (and/c bytes? (not/c immutable?)) ~
+  skip-bytes-amt : exact-nonnegative-integer? ~
+  in : input-port? = (current-input-port) ~
+  start-pos : exact-nonnegative-integer? = 0 ~
+  end-pos : exact-nonnegative-integer? = (bytes-length bstr) ~
+
+Like peek-string!, but peeks bytes, puts them into a byte string, and
+returns the number of bytes read.
+
+                                        *peek-bytes-avail!*
+(peek-bytes-avail!  bstr            ~
+                    skip-bytes-amt 
+                   [progress       
+                    in             
+                    start-pos      
+                    end-pos])      
+ -> (or/c exact-nonnegative-integer? eof-object? procedure?)
+  bstr : (and/c bytes? (not/c immutable?)) ~
+  skip-bytes-amt : exact-nonnegative-integer? ~
+  progress : (or/c progress-evt? #f) = #f ~
+  in : input-port? = (current-input-port) ~
+  start-pos : exact-nonnegative-integer? = 0 ~
+  end-pos : exact-nonnegative-integer? = (bytes-length bstr) ~
+
+Like read-bytes-avail!, but for peeking, and with two extra arguments.
+The skip-bytes-amt argument is as in peek-bytes.  The progress argument
+must be either #f or an event produced by port-progress-evt for in.
+
+To peek, peek-bytes-avail! blocks until finding an end-of-file, at least
+one byte (or special) past the skipped bytes, or until a non-#f progress
+becomes ready. Furthermore, if progress is ready before bytes are
+peeked, no bytes are peeked or skipped, and progress may cut short the
+skipping process if it becomes available during the peek attempt.
+Furthermore, progress is checked even before determining whether the
+port is still open.
+
+The result of peek-bytes-avail! is 0 only in the case that progress
+becomes ready before bytes are peeked.
+
+                                        *peek-bytes-avail!**
+(peek-bytes-avail!*  bstr            ~
+                     skip-bytes-amt 
+                    [progress       
+                     in             
+                     start-pos      
+                     end-pos])      
+ -> (or/c exact-nonnegative-integer? eof-object? procedure?)
+  bstr : (and/c bytes? (not/c immutable?)) ~
+  skip-bytes-amt : exact-nonnegative-integer? ~
+  progress : (or/c progress-evt? #f) = #f ~
+  in : input-port? = (current-input-port) ~
+  start-pos : exact-nonnegative-integer? = 0 ~
+  end-pos : exact-nonnegative-integer? = (bytes-length bstr) ~
+
+Like read-bytes-avail!*, but for peeking, and with skip-bytes-amt and
+progress arguments like peek-bytes-avail!. Since this procedure never
+blocks, it may return before even skip-amt bytes are available from the
+port.
+
+                                        *peek-bytes-avail!/enable-break*
+(peek-bytes-avail!/enable-break  bstr            ~
+                                 skip-bytes-amt 
+                                [progress       
+                                 in             
+                                 start-pos      
+                                 end-pos])      
+ -> (or/c exact-nonnegative-integer? eof-object? procedure?)
+  bstr : (and/c bytes? (not/c immutable?)) ~
+  skip-bytes-amt : exact-nonnegative-integer? ~
+  progress : (or/c progress-evt? #f) = #f ~
+  in : input-port? = (current-input-port) ~
+  start-pos : exact-nonnegative-integer? = 0 ~
+  end-pos : exact-nonnegative-integer? = (bytes-length bstr) ~
+
+Like read-bytes-avail!/enable-break, but for peeking, and with
+skip-bytes-amt and progress arguments like peek-bytes-avail!.
+
+                                        *read-char-or-special*
+(read-char-or-special [in]) -> (or/c char? eof-object? any/c) ~
+  in : input-port? = (current-input-port) ~
+
+Like read-char, but if the input port returns a special value (through a
+value-generating procedure in a custom port; see [missing] and [missing]
+for details), then the special value is returned.
+
+                                        *read-byte-or-special*
+(read-byte-or-special [in]) -> (or/c byte? eof-object? any/c) ~
+  in : input-port? = (current-input-port) ~
+
+Like read-char-or-special, but reads and returns a byte instead of a
+character.
+
+                                        *peek-char*
+(peek-char [in skip-bytes-amt]) -> (or/c char? eof-object?) ~
+  in : input-port? = (current-input-port) ~
+  skip-bytes-amt : exact-nonnegative-integer? = 0 ~
+
+Like read-char, but peeks instead of reading, and skips skip-bytes-amt
+bytes (not characters) at the start of the port.
+
+                                        *peek-byte*
+(peek-byte [in skip-bytes-amt]) -> (or/c byte? eof-object?) ~
+  in : input-port? = (current-input-port) ~
+  skip-bytes-amt : exact-nonnegative-integer? = 0 ~
+
+Like peek-char, but peeks and returns a byte instead of a character.
+
+                                        *peek-char-or-special*
+(peek-char-or-special [in skip-bytes-amt]) ~
+ -> (or/c char? eof-object? any/c)
+  in : input-port? = (current-input-port) ~
+  skip-bytes-amt : exact-nonnegative-integer? = 0 ~
+
+Like peek-char, but if the input port returns a non-byte value after
+skip-bytes-amt byte positions, then it is returned.
+
+                                        *peek-byte-or-special*
+(peek-byte-or-special [in              ~
+                       skip-bytes-amt 
+                       progress])     
+ -> (or/c byte? eof-object? any/c)
+  in : input-port? = (current-input-port) ~
+  skip-bytes-amt : exact-nonnegative-integer? = 0 ~
+  progress : (or/c progress-evt? #f) = #f ~
+
+Like peek-char-or-special, but peeks and returns a byte instead of a
+character, and it supports a progress argument like peek-bytes-avail!.
+
+                                        *port-progress-evt*
+(port-progress-evt [in]) -> progress-evt? ~
+  in : (and/c input-port? port-provides-progress-evts?) ~
+     = (current-input-port)
+
+Returns a synchronizable event (see [missing]) that becomes ready for
+synchronization after any subsequent read from in or after in is closed.
+After the event becomes ready, it remains ready. The synchronization
+result of a progress event is the progress event itself.
+
+                                        *port-provides-progress-evts?*
+(port-provides-progress-evts? in) -> boolean ~
+  in : input-port? ~
+
+Returns #t if port-progress-evt can return an event for in. All built-in
+kinds of ports support progress events, but ports created with
+make-input-port (see [missing]) may not.
+
+                                        *port-commit-peeked*
+(port-commit-peeked amt progress evt [in]) -> boolean? ~
+  amt : exact-nonnegative-integer? ~
+  progress : progress-evt? ~
+  evt : evt? ~
+  in : input-port? = (current-input-port) ~
+
+Attempts to commit as read the first amt previously peeked bytes,
+non-byte specials, and eofs from in, or the first eof or special value
+peeked from in. Mid-stream eofs can be committed, but an eof when the
+port is exhausted does not necessarily commit, since it does not
+correspond to data in the stream.
+
+The read commits only if progress does not become ready first (i.e., if
+no other process reads from in first), and only if evt is chosen by a
+sync within port-commit-peeked (in which case the event result is
+ignored); the evt must be either a channel-put event, channel,
+semaphore, semaphore-peek event, always event, or never event.
+Suspending the thread that calls port-commit-peeked may or may not
+prevent the commit from proceeding.
+
+The result from port-commit-peeked is #t if data has been committed, and
+#f otherwise.
+
+If no data has been peeked from in and progress is not ready, then
+exn:fail:contract exception is raised.  If fewer than amt items have
+been peeked at the current start of in’s stream, then only the peeked
+items are committed as read.  If in’s stream currently starts at an eof
+or a non-byte special value, then only the eof or special value is
+committed as read.
+
+If progress is not a result of port-progress-evt applied to in, then
+exn:fail:contract exception is raised.
+
+                                        *byte-ready?*
+(byte-ready? [in]) -> boolean? ~
+  in : input-port? = (current-input-port) ~
+
+Returns #t if (read-byte in) would not block (at the time that
+byte-ready? was called, at least).  Equivalent to (and (sync/timeout 0
+in) #t).
+
+                                        *char-ready?*
+(char-ready? [in]) -> boolean? ~
+  in : input-port? = (current-input-port) ~
+
+Returns #t if (read-char in) would not block (at the time that
+char-ready? was called, at least). Depending on the initial bytes of the
+stream, multiple bytes may be needed to form a UTF-8 encoding.
+
+                                        *progress-evt?*
+(progress-evt? v) -> boolean? ~
+  v : any/c ~
+(progress-evt? evt in) -> boolean?
+  evt : progress-evt? ~
+  in : input-port? ~
+
+With one argument, returns #t is v is a progress evt for some input
+port, #f otherwise.
+
+With two arguments, returns #t if evt is a progress event for in, #f
+otherwise.

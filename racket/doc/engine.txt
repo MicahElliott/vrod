@@ -1,0 +1,76 @@
+Engines
+
+ (require racket/engine) package: base ~
+
+The bindings documented in this section are provided by the
+racket/engine library, not racket/base or racket.
+
+An engine is an abstraction that models processes that can be preempted
+by a timer or other external trigger. They are inspired by the work of
+Haynes and Friedman [Haynes84].
+
+Engines log their behavior via a logger with the name 'racket/engine.
+The logger is created when the module is instantiated and uses the
+result of (current-logger) as its parent. The library adds logs a 'debug
+level message: when engine-run is called, when the engine timeout
+expires, and when the engine is stopped (either because it terminated or
+it reached a safe point to stop). Each log message holds a value of the
+struct:
+
+  (struct engine-info (msec name) #:prefab) ~
+
+where the msec field holds the result of (current-inexact-milliseconds)
+at the moment of logging, and the name field holds the name of the
+procedure passed to engine.
+
+                                        *engine*
+(engine proc) -> engine? ~
+  proc : ((any/c . -> . void?) . -> . any/c) ~
+
+Returns an engine object to encapsulate a thread that runs only when
+allowed. The proc procedure should accept one argument, and proc is run
+in the engine thread when engine-run is called. If engine-run returns
+due to a timeout, then the engine thread is suspended until a future
+call to engine-run. Thus, proc only executes during the dynamic extent
+of a engine-run call.
+
+The argument to proc is a procedure that takes a boolean, and it can be
+used to disable suspends (in case proc has critical regions where it
+should not be suspended). A true value passed to the procedure enables
+suspends, and #f disables suspends. Initially, suspends are allowed.
+
+                                        *engine?*
+(engine? v) -> any ~
+  v : any/c ~
+
+Returns #t if v is an engine produced by engine, #f otherwise.
+
+                                        *engine-run*
+(engine-run until engine) -> boolean? ~
+  until : (or/c evt? real?) ~
+  engine : engine? ~
+
+Allows the thread associated with engine to execute for up as long as
+until milliseconds (if until is a real number) or until is ready (if
+until is an event). If engine’s procedure disables suspends, then the
+engine can run arbitrarily long until it re-enables suspends.
+
+The engine-run procedure returns #t if engine’s procedure completes (or
+if it completed earlier), and the result is available via engine-result.
+The engine-run procedure returns #f if engine’s procedure does not
+complete before it is suspended after timeout-secs. If engine’s
+procedure raises an exception, then it is re-raised by engine-run.
+
+                                        *engine-result*
+(engine-result engine) -> any ~
+  engine : engine? ~
+
+Returns the result for engine if it has completed with a value (as
+opposed to an exception), #f otherwise.
+
+                                        *engine-kill*
+(engine-kill engine) -> void? ~
+  engine : engine? ~
+
+Forcibly terminates the thread associated with engine if it is still
+running, leaving the engine result unchanged.

@@ -1,0 +1,286 @@
+Threads
+
++[missing] in [missing] introduces threads.
+
+See [missing] for basic information on the Racket thread model. See also
+[missing].
+
+When a thread is created, it is placed into the management of the
+current custodian and added to the current thread group. A thread can
+have any number of custodian managers added through thread-resume.
+
+A thread that has not terminated can be garbage collected (see
+[missing]) if it is unreachable and suspended or if it is unreachable
+and blocked on only unreachable events through functions such as
+semaphore-wait, semaphore-wait/enable-break, channel-put, channel-get,
+sync, sync/enable-break, or thread-wait. Beware, however, of a
+limitation on place-channel blocking; see the caveat in [missing].
+
+In GRacket, a handler thread for an eventspace is blocked on an internal
+semaphore when its event queue is empty. Thus, the handler thread is
+collectible when the eventspace is unreachable and contains no visible
+windows or running timers.
+
+A thread can be used as a synchronizable event (see [missing]).  A
+thread is ready for synchronization when thread-wait would not block;
+the synchronization result of a thread is the thread itself.
+
+All constant-time procedures and operations provided by Racket are
+thread-safe because they are atomic. For example, set! assigns to a
+variable as an atomic action with respect to all threads, so that no
+thread can see a “half-assigned” variable. Similarly, vector-set!
+assigns to a vector atomically. The hash-set! procedure is not atomic,
+but the table is protected by a lock; see [missing] for more
+information. Port operations are generally not atomic, but they are
+thread-safe in the sense that a byte consumed by one thread from an
+input port will not be returned also to another thread, and procedures
+like port-commit-peeked and write-bytes-avail offer specific concurrency
+guarantees.
+
+1. Creating Threads
+
+                                        *thread*
+(thread thunk) -> thread? ~
+  thunk : (-> any) ~
+
+Calls thunk with no arguments in a new thread of control. The thread
+procedure returns immediately with a thread descriptor value. When the
+invocation of thunk returns, the thread created to invoke thunk
+terminates.
+
+                                        *thread?*
+(thread? v) -> thread? ~
+  v : any/c ~
+
+Returns #t if v is a thread descriptor, #f otherwise.
+
+                                        *current-thread*
+(current-thread) -> thread? ~
+
+Returns the thread descriptor for the currently executing thread.
+
+                                        *thread/suspend-to-kill*
+(thread/suspend-to-kill thunk) -> thread? ~
+  thunk : (-> any) ~
+
+Like thread, except that “killing” the thread through kill-thread or
+custodian-shutdown-all merely suspends the thread instead of terminating
+it.
+
+                                        *call-in-nested-thread*
+(call-in-nested-thread thunk [cust]) -> any ~
+  thunk : (-> any) ~
+  cust : custodian? = (current-custodian) ~
+
+Creates a nested thread managed by cust to execute thunk. (The nested
+thread’s current custodian is inherited from the creating thread,
+independent of the cust argument.) The current thread blocks until thunk
+returns, and the result of the call-in-nested-thread call is the result
+returned by thunk.
+
+The nested thread’s exception handler is initialized to a procedure that
+jumps to the beginning of the thread and transfers the exception to the
+original thread. The handler thus terminates the nested thread and
+re-raises the exception in the original thread.
+
+If the thread created by call-in-nested-thread dies before thunk
+returns, the exn:fail exception is raised in the original thread. If the
+original thread is killed before thunk returns, a break is queued for
+the nested thread.
+
+If a break is queued for the original thread (with break-thread) while
+the nested thread is running, the break is redirected to the nested
+thread. If a break is already queued on the original thread when the
+nested thread is created, the break is moved to the nested thread. If a
+break remains queued on the nested thread when it completes, the break
+is moved to the original thread.
+
+2. Suspending, Resuming, and Killing Threads
+
+                                        *thread-suspend*
+(thread-suspend thd) -> void? ~
+  thd : thread? ~
+
+Immediately suspends the execution of thd if it is running. If the
+thread has terminated or is already suspended, thread-suspend has no
+effect. The thread remains suspended (i.e., it does not execute) until
+it is resumed with thread-resume. If the current custodian does not
+solely manage thd (i.e., some custodian of thd is not the current
+custodian or a subordinate), the exn:fail:contract exception is raised,
+and the thread is not suspended.
+
+                                        *thread-resume*
+(thread-resume thd [benefactor]) -> void? ~
+  thd : thread? ~
+  benefactor : (or/c thread? custodian? #f) = #f ~
+
+Resumes the execution of thd if it is suspended and has at least one
+custodian (possibly added through benefactor, as described below). If
+the thread has terminated, or if the thread is already running and
+benefactor is not supplied, or if the thread has no custodian and
+benefactor is not supplied, then thread-resume has no effect. Otherwise,
+if benefactor is supplied, it triggers up to three additional actions:
+
+* If benefactor is a thread, whenever it is resumed from a suspended
+  state in the future, then thd is also resumed. (Resuming thd may
+  trigger the resumption of other threads that were previously attached
+  to thd through thread-resume.)
+
+* New custodians may be added to thd’s set of managers.  If benefactor
+  is a thread, then all of the thread’s custodians are added to thd.
+  Otherwise, benefactor is a custodian, and it is added to thd (unless
+  the custodian is already shut down). If thd becomes managed by both a
+  custodian and one or more of its subordinates, the redundant
+  subordinates are removed from thd.  If thd is suspended and a
+  custodian is added, then thd is resumed only after the addition.
+
+* If benefactor is a thread, whenever it receives a new managing
+  custodian in the future, then thd also receives the custodian. (Adding
+  custodians to thd may trigger adding the custodians to other threads
+  that were previously attached to thd through thread-resume.)
+
+                                        *kill-thread*
+(kill-thread thd) -> void? ~
+  thd : thread? ~
+
+Terminates the specified thread immediately, or suspends the thread if
+thd was created with thread/suspend-to-kill. Terminating the main thread
+exits the application.  If thd has already terminated, kill-thread does
+nothing.  If the current custodian does not manage thd (and none of its
+subordinates manages thd), the exn:fail:contract exception is raised,
+and the thread is not killed or suspended.
+
+Unless otherwise noted, procedures provided by Racket (and GRacket) are
+kill-safe and suspend-safe; that is, killing or suspending a thread
+never interferes with the application of procedures in other threads.
+For example, if a thread is killed while extracting a character from an
+input port, the character is either completely consumed or not consumed,
+and other threads can safely use the port.
+
+                                        *break-thread*
+(break-thread thd [kind]) -> void? ~
+  thd : thread? ~
+  kind : (or/c #f 'hang-up 'terminate) = #f ~
+
+Registers a break with the specified thread, where kind optionally
+indicates the kind of break to register. If breaking is disabled in thd,
+the break will be ignored until breaks are re-enabled (see [missing]).
+
+                                        *sleep*
+(sleep [secs]) -> void? ~
+  secs : (>=/c 0) = 0 ~
+
+Causes the current thread to sleep until at least secs seconds have
+passed after it starts sleeping. A zero value for secs simply acts as a
+hint to allow other threads to execute. The value of secs can be a
+non-integer to request a sleep duration to any precision; the precision
+of the actual sleep time is unspecified.
+
+                                        *thread-running?*
+(thread-running? thd) -> any ~
+  thd : thread? ~
+
+Returns #t if thd has not terminated and is not suspended, #f otherwise.
+
+                                        *thread-dead?*
+(thread-dead? thd) -> any ~
+  thd : thread? ~
+
+Returns #t if thd has terminated, #f otherwise.
+
+3. Synchronizing Thread State
+
+                                        *thread-wait*
+(thread-wait thd) -> void? ~
+  thd : thread? ~
+
+Blocks execution of the current thread until thd has terminated. Note
+that (thread-wait (current-thread)) deadlocks the current thread, but a
+break can end the deadlock (if breaking is enabled; see [missing]).
+
+                                        *thread-dead-evt*
+(thread-dead-evt thd) -> evt? ~
+  thd : thread? ~
+
+Returns a synchronizable event (see [missing]) that is ready for
+synchronization if and only if thd has terminated.  Unlike using thd
+directly, however, a reference to the event does not prevent thd from
+being garbage collected (see [missing]). For a given thd,
+thread-dead-evt always returns the same (i.e., eq?) result. The
+synchronization result of a thread-dead event is the thread-dead event
+itself.
+
+                                        *thread-resume-evt*
+(thread-resume-evt thd) -> evt? ~
+  thd : thread? ~
+
+Returns a synchronizable event (see [missing]) that becomes ready for
+synchronization when thd is running.  (If thd has terminated, the event
+never becomes ready.)  If thd runs and is then suspended after a call to
+thread-resume-evt, the result event remains ready; after each suspend of
+thd a fresh event is generated to be returned by thread-resume-evt.  The
+result of the event is thd, but if thd is never resumed, then reference
+to the event does not prevent thd from being garbage collected (see
+[missing]).
+
+                                        *thread-suspend-evt*
+(thread-suspend-evt thd) -> evt? ~
+  thd : thread? ~
+
+Returns a synchronizable event (see [missing]) that becomes ready for
+synchronization when thd is suspended.  (If thd has terminated, the
+event will never unblock.)  If thd is suspended and then resumes after a
+call to thread-suspend-evt, the result event remains ready; after each
+resume of thd created a fresh event to be returned by
+thread-suspend-evt. The synchronization result of a thread-suspend event
+is the thread-suspend event itself.
+
+4. Thread Mailboxes
+
+Each thread has a mailbox through which it can receive arbitrary
+messages.  In other words, each thread has a built-in asynchronous
+channel.
+
++See also [missing].
+
+                                        *thread-send*
+(thread-send thd v [fail-thunk]) -> any ~
+  thd : thread? ~
+  v : any/c ~
+  fail-thunk : (or/c (-> any) #f) ~
+             = (lambda () (raise-mismatch-error ....))
+
+Queues v as a message to thd without blocking. If the message is queued,
+the result is #<void>. If thd stops running—as in thread-running?—before
+the message is queued, then fail-thunk is called (through a tail call)
+if it is a procedure to produce the result, or #f is returned if
+fail-thunk is #f.
+
+                                        *thread-receive*
+(thread-receive) -> any/c ~
+
+Receives and dequeues a message queued for the current thread, if any.
+If no message is available, thread-receive blocks until one is
+available.
+
+                                        *thread-try-receive*
+(thread-try-receive) -> any/c ~
+
+Receives and dequeues a message queued for the current thread, if any,
+or returns #f immediately if no message is available.
+
+                                        *thread-receive-evt*
+(thread-receive-evt) -> evt? ~
+
+Returns a constant synchronizable event (see [missing]) that becomes
+ready for synchronization when the synchronizing thread has a message to
+receive. The synchronization result of a thread-receive event is the
+thread-receive event itself.
+
+                                        *thread-rewind-receive*
+(thread-rewind-receive lst) -> void? ~
+  lst : list? ~
+
+Pushes the elements of lst back onto the front of the current thread’s
+queue. The elements are pushed one by one, so that the first available
+message is the last element of lst.

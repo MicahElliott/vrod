@@ -1,0 +1,816 @@
+Units
+
++[missing] in [missing] introduces units.
+
+Units organize a program into separately compilable and reusable
+components. The imports and exports of a unit are grouped into a
+signature, which can include “static” information (such as macros) in
+addition to placeholders for run-time values. Units with suitably
+matching signatures can be linked together to form a larger unit, and a
+unit with no imports can be invoked to execute its body.
+
+ (require racket/unit) package: base ~
+
+The bindings documented in this section are provided by the racket/unit
+and racket libraries, but not racket/base. The racket/unit module name
+can be used as a language name with #lang; see Single-Unit Modules.
+
+    1 Creating Units
+
+    2 Invoking Units
+
+    3 Linking Units and Creating Compound Units
+
+    4 Inferred Linking
+
+    5 Generating A Unit from Context
+
+    6 Structural Matching
+
+    7 Extending the Syntax of Signatures
+
+    8 Unit Utilities
+
+    9 Unit Contracts
+
+    10 Single-Unit Modules
+
+    11 Single-Signature Modules
+
+    12 Transformer Helpers
+
+1. Creating Units
+
+                                        *unit*
+(unit ~
+  (import tagged-sig-spec ...)
+  (export tagged-sig-spec ...)
+  init-depends-decl
+  unit-body-expr-or-defn
+  ...)
+ 
+  tagged-sig-spec = sig-spec
+                  | (tag id sig-spec)
+                     
+         sig-spec = sig-id
+                  | (prefix id sig-spec)
+                  | (rename sig-spec (id id) ...)
+                  | (only sig-spec id ...)
+                  | (except sig-spec id ...)
+                     
+init-depends-decl = 
+                  | (init-depend tagged-sig-id ...)
+                     
+    tagged-sig-id = sig-id
+                  | (tag id sig-id)
+
+Produces a unit that encapsulates its unit-body-expr-or-defns.
+Expressions in the unit body can refer to identifiers bound by the
+sig-specs of the import clause, and the body must include one definition
+for each identifier of a sig-spec in the export clause. An identifier
+that is exported cannot be set!ed in either the defining unit or in
+importing units, although the implicit assignment to initialize the
+variable may be visible as a mutation.
+
+Each import or export sig-spec ultimately refers to a sig-id, which is
+an identifier that is bound to a signature by define-signature.
+
+In a specific import or export position, the set of identifiers bound or
+required by a particular sig-id can be adjusted in a few ways:
+
+* (prefix id sig-spec) as an import binds the same as sig-spec, except
+  that each binding is prefixed with id. As an export, this form causes
+  definitions using the id prefix to satisfy the exports required by
+  sig-spec.
+
+* (rename sig-spec (id id) ...) as an import binds the same as sig-spec,
+  except that the first id is used for the binding instead of the second
+  id (where sig-spec by itself must imply a binding that is
+  bound-identifier=? to second id).  As an export, this form causes a
+  definition for the first id to satisfy the export named by the second
+  id in sig-spec.
+
+* (only sig-spec id ...) as an import binds the same as sig-spec, but
+  restricted to just the listed ids (where sig-spec by itself must imply
+  a binding that is bound-identifier=? to each id).  This form is not
+  allowed for an export.
+
+* (except sig-spec id ...) as an import binds the same as sig-spec, but
+  excluding all listed ids (where sig-spec by itself must imply a
+  binding that is bound-identifier=? to each id).  This form is not
+  allowed for an export.
+
+As suggested by the grammar, these adjustments to a signature can be
+nested arbitrarily.
+
+A unit’s declared imports are matched with actual supplied imports by
+signature. That is, the order in which imports are supplied to a unit
+when linking is irrelevant; all that matters is the signature
+implemented by each supplied import. One actual import must be provided
+for each declared import. Similarly, when a unit implements multiple
+signatures, the order of the export signatures does not matter.
+
+To support multiple imports or exports for the same signature, an import
+or export can be tagged using the form (tag id sig-spec). When an import
+declaration of a unit is tagged, then one actual import must be given
+the same tag (with the same signature) when the unit is linked.
+Similarly, when an export declaration is tagged for a unit, then
+references to that particular export must explicitly use the tag.
+
+A unit is prohibited syntactically from importing two signatures that
+are not distinct, unless they have different tags; two signatures are
+distinct only if they share no ancestor through extends. The same
+syntactic constraint applies to exported signatures. In addition, a unit
+is prohibited syntactically from importing the same identifier twice
+(after renaming and other transformations on a sig-spec), exporting the
+same identifier twice (again, after renaming), or exporting an
+identifier that is imported.
+
+When units are linked, the bodies of the linked units are executed in an
+order that is specified at the linking site. An optional (init-depend
+tagged-sig-id ...) declaration constrains the allowed orders of linking
+by specifying that the current unit must be initialized after the unit
+that supplies the corresponding import. Each tagged-sig-id in an
+init-depend declaration must have a corresponding import in the import
+clause.
+
+                                        *define-signature*
+(define-signature id extension-decl ~
+  (sig-elem ...))
+ 
+extension-decl = 
+               | extends sig-id
+                  
+      sig-elem = id
+               | (define-syntaxes (id ...) expr)
+               | (define-values (id ...) expr)
+               | (define-values-for-export (id ...) expr)
+               | (contracted [id contract] ...)
+               | (open sig-spec)
+               | (struct id (field ...) struct-option ...)
+               | (sig-form-id . datum)
+                  
+         field = id
+               | [id #:mutable] ~
+                  
+ struct-option = #:mutable ~
+               | #:constructor-name constructor-id ~
+               | #:extra-constructor-name constructor-id ~
+               | #:omit-constructor ~
+               | #:omit-define-syntaxes ~
+               | #:omit-define-values ~
+
+Binds an identifier to a signature that specifies a group of bindings
+for import or export:
+
+* Each id in a signature declaration means that a unit implementing the
+  signature must supply a variable definition for the id. That is, id is
+  available for use in units importing the signature, and id must be
+  defined by units exporting the signature.
+
+* Each define-syntaxes form in a signature declaration introduces a
+  macro that is available for use in any unit that imports the
+  signature.  Free variables in the definition’s expr refer to other
+  identifiers in the signature first, or the context of the
+  define-signature form if the signature does not include the
+  identifier.
+
+* Each define-values form in a signature declaration introduces code
+  that effectively prefixes every unit that imports the signature.  Free
+  variables in the definition’s expr are treated the same as for
+  define-syntaxes.
+
+* Each define-values-for-export form in a signature declaration
+  introduces code that effectively suffixes every unit that exports the
+  signature.  Free variables in the definition’s expr are treated the
+  same as for define-syntaxes.
+
+* Each contracted form in a signature declaration means that a unit
+  exporting the signature must supply a variable definition for each id
+  in that form.  If the signature is imported, then uses of id inside
+  the unit are protected by the appropriate contracts using the unit as
+  the negative blame.  If the signature is exported, then the exported
+  values are protected by the appropriate contracts which use the unit
+  as the positive blame, but internal uses of the exported identifiers
+  are not protected.  Variables in the contract expressions are treated
+  the same as for define-syntaxes.
+
+* Each (open sig-spec) adds to the signature everything specified by
+  sig-spec.
+
+* Each (struct id (field ...) struct-option ...)  adds all of the
+  identifiers that would be bound by (struct id (field ...) field-option
+  ...), where the extra option #:omit-constructor omits the constructor
+  identifier.
+
+* Each (sig-form-id . datum) extends the signature in a way that is
+  defined by sig-form-id, which must be bound by define-signature-form.
+  One such binding is for struct/ctc.
+
+When a define-signature form includes an extends clause, then the define
+signature automatically includes everything in the extended signature.
+Furthermore, any implementation of the new signature can be used as an
+implementation of the extended signature.
+
+                                        *open*
+(open sig-spec) ~
+
+Allowed only in a sig-elem; see define-signature.
+
+                                        *define-values-for-export*
+(define-values-for-export (id ...) expr) ~
+
+Allowed only in a sig-elem; see define-signature.
+
+                                        *contracted*
+(contracted [id contract] ...) ~
+
+Allowed only in a sig-elem; see define-signature.
+
+                                        *only*
+(only sig-spec id ...) ~
+
+Allowed only in a sig-spec; see unit.
+
+                                        *except*
+(except sig-spec id ...) ~
+
+Allowed only in a sig-spec; see unit.
+
+                                        *rename*
+(rename sig-spec (id id) ...) ~
+
+Allowed only in a sig-spec; see unit.
+
+                                        *prefix*
+(prefix id sig-spec) ~
+
+Allowed only in a sig-spec; see unit.
+
+                                        *import*
+(import tagged-sig-spec ...) ~
+
+Allowed only in certain forms; see, for example, unit.
+
+                                        *export*
+(export tagged-sig-spec ...) ~
+
+Allowed only in certain forms; see, for example, unit.
+
+                                        *link*
+(link linkage-decl ...) ~
+
+Allowed only in certain forms; see, for example, compound-unit.
+
+                                        *tag*
+(tag id sig-spec) ~
+(tag id sig-id)
+
+Allowed only in certain forms; see, for example, unit.
+
+                                        *init-depend*
+(init-depend tagged-sig-id ...) ~
+
+Allowed only in a init-depend-decl; see unit.
+
+extends
+
+Allowed only within define-signature.
+
+2. Invoking Units
+
+                                        *invoke-unit*
+(invoke-unit unit-expr) ~
+(invoke-unit unit-expr (import tagged-sig-spec ...))
+
+Invokes the unit produced by unit-expr. For each of the unit’s imports,
+the invoke-unit expression must contain a tagged-sig-spec in the import
+clause; see unit for the grammar of tagged-sig-spec. If the unit has no
+imports, the import clause can be omitted.
+
+When no tagged-sig-specs are provided, unit-expr must produce a unit
+that expects no imports. To invoke the unit, all bindings are first
+initialized to the #<undefined> value. Next, the unit’s body definitions
+and expressions are evaluated in order; in the case of a definition,
+evaluation sets the value of the corresponding variable(s). Finally, the
+result of the last expression in the unit is the result of the
+invoke-unit expression.
+
+Each supplied tagged-sig-spec takes bindings from the surrounding
+context and turns them into imports for the invoked unit. The unit need
+not declare an import for every provided tagged-sig-spec, but one
+tagged-sig-spec must be provided for each declared import of the unit.
+For each variable identifier in each provided tagged-sig-spec, the value
+of the identifier’s binding in the surrounding context is used for the
+corresponding import in the invoked unit.
+
+                                        *define-values/invoke-unit*
+(define-values/invoke-unit unit-expr ~
+  (import tagged-sig-spec ...)
+  (export tagged-sig-spec ...))
+
+Like invoke-unit, but the values of the unit’s exports are copied to new
+bindings.
+
+The unit produced by unit-expr is linked and invoked as for invoke-unit.
+In addition, the export clause is treated as a kind of import into the
+local definition context. That is, for every binding that would be
+available in a unit that used the export clause’s tagged-sig-spec as an
+import, a definition is generated for the context of the
+define-values/invoke-unit form.
+
+3. Linking Units and Creating Compound Units
+
+                                        *compound-unit*
+(compound-unit ~
+  (import link-binding ...)
+  (export tagged-link-id ...)
+  (link linkage-decl ...))
+ 
+  link-binding = (link-id : tagged-sig-id) ~
+                  
+tagged-link-id = (tag id link-id)
+               | link-id
+                  
+  linkage-decl = ((link-binding ...) unit-expr tagged-link-id ...)
+
+Links several units into one new compound unit without immediately
+invoking any of the linked units.  The unit-exprs in the link clause
+determine the units to be linked in creating the compound unit. The
+unit-exprs are evaluated when the compound-unit form is evaluated.
+
+The import clause determines the imports of the compound unit. Outside
+the compound unit, these imports behave as for a plain unit; inside the
+compound unit, they are propagated to some of the linked units. The
+export clause determines the exports of the compound unit.  Again,
+outside the compound unit, these exports are treated the same as for a
+plain unit; inside the compound unit, they are drawn from the exports of
+the linked units. Finally, the left-hand and right-hand parts of each
+declaration in the link clause specify how the compound unit’s imports
+and exports are propagated to the linked units.
+
+Individual elements of an imported or exported signature are not
+available within the compound unit. Instead, imports and exports are
+connected at the level of whole signatures. Each specific import or
+export (i.e., an instance of some signature, possibly tagged) is given a
+link-id name. Specifically, a link-id is bound by the import clause or
+the left-hand part of a declaration in the link clause. A bound link-id
+is referenced in the right-hand part of a declaration in the link clause
+or by the export clause.
+
+The left-hand side of a link declaration gives names to each expected
+export of the unit produced by the corresponding unit-expr. The actual
+unit may export additional signatures, and it may export an extension of
+a specific signature instead of just the specified one. If the unit does
+not export one of the specified signatures (with the specified tag, if
+any), the exn:fail:contract exception is raised when the compound-unit
+form is evaluated.
+
+The right-hand side of a link declaration specifies the imports to be
+supplied to the unit produced by the corresponding unit-expr. The actual
+unit may import fewer signatures, and it may import a signature that is
+extended by the specified one.  If the unit imports a signature (with a
+particular tag) that is not included in the supplied imports, the
+exn:fail:contract exception is raised when the compound-unit form is
+evaluated. Each link-id supplied as an import must be bound either in
+the import clause or in some declaration within the link clause.
+
+The order of declarations in the link clause determines the order of
+invocation of the linked units. When the compound unit is invoked, the
+unit produced by the first unit-expr is invoked first, then the second,
+and so on. If the order specified in the link clause is inconsistent
+with init-depend declarations of the actual units, then the
+exn:fail:contract exception is raised when the compound-unit form is
+evaluated.
+
+4. Inferred Linking
+
+                                        *define-unit*
+(define-unit unit-id ~
+  (import tagged-sig-spec ...)
+  (export tagged-sig-spec ...)
+  init-depends-decl
+  unit-body-expr-or-defn
+  ...)
+
+Binds unit-id to both a unit and static information about the unit.
+
+Evaluating a reference to a unit-id bound by define-unit produces a
+unit, just like evaluating an id bound by (define id (unit ...)). In
+addition, however, unit-id can be used in compound-unit/infer. See unit
+for information on tagged-sig-spec, init-depends-decl, and
+unit-body-expr-or-defn.
+
+                                        *compound-unit/infer*
+(compound-unit/infer ~
+  (import tagged-infer-link-import ...)
+  (export tagged-infer-link-export ...)
+  (link infer-linkage-decl ...))
+ 
+tagged-infer-link-import = tagged-sig-id
+                         | (link-id : tagged-sig-id) ~
+                            
+tagged-infer-link-export = (tag id infer-link-export)
+                         | infer-link-export
+                            
+       infer-link-export = link-id
+                         | sig-id
+                            
+      infer-linkage-decl = ((link-binding ...) unit-id
+                                               tagged-link-id ...)
+                         | unit-id
+
+Like compound-unit. Syntactically, the difference between compound-unit
+and compound-unit/infer is that the unit-expr for a linked unit is
+replaced with a unit-id, where a unit-id is bound by define-unit (or one
+of the other unit-binding forms that we introduce later in this
+section). Furthermore, an import can name just a sig-id without locally
+binding a link-id, and an export can be based on a sig-id instead of a
+link-id, and a declaration in the link clause can be simply a unit-id
+with no specified exports or imports.
+
+The compound-unit/infer form expands to compound-unit by adding sig-ids
+as needed to the import clause, by replacing sig-ids in the export
+clause by link-ids, and by completing the declarations of the link
+clause. This completion is based on static information associated with
+each unit-id. Links and exports can be inferred when all signatures
+exported by the linked units are distinct from each other and from all
+imported signatures, and when all imported signatures are distinct. Two
+signatures are distinct only if they share no ancestor through extends.
+
+The long form of a link declaration can be used to resolve ambiguity by
+giving names to some of a unit’s exports and supplying specific bindings
+for some of a unit’s imports. The long form need not name all of a
+unit’s exports or supply all of a unit’s imports if the remaining parts
+can be inferred.
+
+When a unit declares initialization dependencies, compound-unit/infer
+checks that the link declaration is consistent with those dependencies,
+and it reports a syntax error if not.
+
+Like compound-unit, the compound-unit/infer form produces a (compound)
+unit without statically binding information about the result unit’s
+imports and exports. That is, compound-unit/infer consumes static
+information, but it does not generate it. Two additional forms,
+define-compound-unit and define-compound-unit/infer, generate static
+information (where the former does not consume static information).
+
+Changed in version 6.1.1.8 of package base: Added static checking of the
+link clause with respect to declared initialization dependencies.
+
+                                        *define-compound-unit*
+(define-compound-unit id ~
+  (import link-binding ...)
+  (export tagged-link-id ...)
+  (link linkage-decl ...))
+
+Like compound-unit, but binds static information about the compound unit
+like define-unit, including the propagation of initialization-dependency
+information (on remaining inports) from the linked units.
+
+                                        *define-compound-unit/infer*
+(define-compound-unit/infer id ~
+  (import link-binding ...)
+  (export tagged-infer-link-export ...)
+  (link infer-linkage-decl ...))
+
+Like compound-unit/infer, but binds static information about the
+compound unit like define-compound-unit.
+
+                                        *define-unit-binding*
+(define-unit-binding unit-id ~
+  unit-expr
+  (import tagged-sig-spec ...+)
+  (export tagged-sig-spec ...+)
+  init-depends-decl)
+
+Like define-unit, but the unit implementation is determined from an
+existing unit produced by unit-expr. The imports and exports of the unit
+produced by unit-expr must be consistent with the declared imports and
+exports, otherwise the exn:fail:contract exception is raised when the
+define-unit-binding form is evaluated.
+
+                                        *invoke-unit/infer*
+(invoke-unit/infer unit-spec) ~
+ 
+unit-spec = unit-id
+          | (link link-unit-id ...)
+
+Like invoke-unit, but uses static information associated with unit-id to
+infer which imports must be assembled from the current context.  If
+given a link form containing multiple link-unit-ids, then the units are
+first linked via define-compound-unit/infer.
+
+                                        *define-values/invoke-unit/infer*
+(define-values/invoke-unit/infer maybe-exports unit-spec) ~
+ 
+maybe-exports = 
+              | (export tagged-sig-spec ...)
+                 
+    unit-spec = unit-id
+              | (link link-unit-id ...)
+
+Like define-values/invoke-unit, but uses static information associated
+with unit-id to infer which imports must be assembled from the current
+context and which exports should be bound by the definition.  If given a
+link form containing multiple link-unit-ids, then the units are first
+linked via define-compound-unit/infer.
+
+5. Generating A Unit from Context
+
+                                        *unit-from-context*
+(unit-from-context tagged-sig-spec) ~
+
+Creates a unit that implements an interface using bindings in the
+enclosing environment.  The generated unit is essentially the same as
+
+  (unit
+    (import)
+    (export tagged-sig-spec)
+    (define id expr) ...)
+
+for each id that must be defined to satisfy the exports, and each
+corresponding expr produces the value of id in the environment of the
+unit-from-context expression. (The unit cannot be written as above,
+however, since each id definition within the unit shadows the binding
+outside the unit form.)
+
+See unit for the grammar of tagged-sig-spec.
+
+                                        *define-unit-from-context*
+(define-unit-from-context id tagged-sig-spec) ~
+
+Like unit-from-context, in that a unit is constructed from the enclosing
+environment, and like define-unit, in that id is bound to static
+information to be used later with inference.
+
+6. Structural Matching
+
+                                        *unit/new-import-export*
+(unit/new-import-export ~
+  (import tagged-sig-spec ...)
+  (export tagged-sig-spec ...)
+  init-depends-decl
+  ((tagged-sig-spec ...) unit-expr tagged-sig-spec))
+
+Similar to unit, except the body of the unit is determined by an
+existing unit produced by unit-expr. The result is a unit whose
+implementation is unit-expr, but whose imports, exports, and
+initialization dependencies are as in the unit/new-import-export form
+(instead of as in the unit produced by unit-expr).
+
+The final clause of the unit/new-import-export form determines the
+connection between the old and new imports and exports. The connection
+is similar to the way that compound-unit propagates imports and exports;
+the difference is that the connection between import and the right-hand
+side of the link clause is based on the names of elements in signatures,
+rather than the names of the signatures. That is, a tagged-sig-spec on
+the right-hand side of the link clause need not appear as a
+tagged-sig-spec in the import clause, but each of the bindings implied
+by the linking tagged-sig-spec must be implied by some tagged-sig-spec
+in the import clause. Similarly, each of the bindings implied by an
+export tagged-sig-spec must be implied by some left-hand-side
+tagged-sig-spec in the linking clause.
+
+                                        *define-unit/new-import-export*
+(define-unit/new-import-export unit-id ~
+  (import tagged-sig-spec ...)
+  (export tagged-sig-spec ...)
+  init-depends-decl
+  ((tagged-sig-spec ...) unit-expr tagged-sig-spec))
+
+Like unit/new-import-export, but binds static information to unit-id
+like define-unit.
+
+                                        *unit/s*
+(unit/s ~
+  (import tagged-sig-spec ...)
+  (export tagged-sig-spec ...)
+  init-depends-decl
+  unit-id)
+
+Like unit/new-import-export, but the linking clause is inferred, so
+unit-id must have the appropriate static information.
+
+                                        *define-unit/s*
+(define-unit/s name-id ~
+  (import tagged-sig-spec ...)
+  (export tagged-sig-spec ...)
+  init-depends-decl
+  unit-id)
+
+Like unit/s, but binds static information to name-id like define-unit.
+
+7. Extending the Syntax of Signatures
+
+                                        *define-signature-form*
+(define-signature-form sig-form-id expr) ~
+(define-signature-form (sig-form-id id) body ...+)
+
+Binds sig-form-id for use within a define-signature form.
+
+In the first form, the result of expr must be a transformer procedure.
+In the second form, sig-form-id is bound to a transformer procedure
+whose argument is id and whose body is the bodys. The result of the
+transformer must be a list of syntax objects, which are substituted for
+a use of sig-form-id in a define-signature expansion. (The result is a
+list so that the transformer can produce multiple declarations;
+define-signature has no splicing begin form.)
+
+                                        *struct/ctc*
+(struct/ctc id ([field contract-expr] ...) struct-option ...) ~
+ 
+        field = id
+              | [id #:mutable] ~
+                 
+struct-option = #:mutable ~
+              | #:omit-constructor ~
+              | #:omit-define-syntaxes ~
+              | #:omit-define-values ~
+
+For use with define-signature. The struct/ctc form works similarly to
+struct, but the constructor, predicate, field accessors, and field
+mutators are contracted appropriately.
+
+8. Unit Utilities
+
+                                        *unit?*
+(unit? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a unit, #f otherwise.
+
+                                        *provide-signature-elements*
+(provide-signature-elements sig-spec ...) ~
+
+Expands to a provide of all identifiers implied by the sig-specs. See
+unit for the grammar of sig-spec.
+
+9. Unit Contracts
+
+                                        *unit/c*
+(unit/c (import sig-block ...) (export sig-block ...)) ~
+ 
+sig-block = (tagged-sig-id [id contract] ...)
+          | tagged-sig-id
+
+A unit contract wraps a unit and checks both its imported and exported
+identifiers to ensure that they match the appropriate contracts. This
+allows the programmer to add contract checks to a single unit value
+without adding contracts to the imported and exported signatures.
+
+The unit value must import a subset of the import signatures and export
+a superset of the export signatures listed in the unit contract.  Any
+identifier which is not listed for a given signature is left alone.
+Variables used in a given contract expression first refer to other
+variables in the same signature, and then to the context of the unit/c
+expression.
+
+                                        *define-unit/contract*
+(define-unit/contract unit-id ~
+  (import sig-spec-block ...)
+  (export sig-spec-block ...)
+  init-depends-decl
+  unit-body-expr-or-defn
+  ...)
+ 
+sig-spec-block = (tagged-sig-spec [id contract] ...)
+               | tagged-sig-spec
+
+The define-unit/contract form defines a unit compatible with link
+inference whose imports and exports are contracted with a unit contract.
+The unit name is used for the positive blame of the contract.
+
+10. Single-Unit Modules
+
+When racket/unit is used as a language name with #lang, the module body
+is treated as a unit body.  The body must match the following
+module-body grammar:
+
+   module-body = require-decl ...
+                 (import tagged-sig-expr ...)
+                 (export tagged-sig-expr ...)
+                 init-depends-decl
+                 unit-body-expr-or-defn
+                 ...
+                  
+  require-decl = (require require-spec ...)
+               | (begin require-decl ...)
+               | derived-require-form
+
+After any number of require-decls, the content of the module is the same
+as a unit body.
+
+The resulting unit is exported as base@, where base is derived from the
+enclosing module’s name (i.e., its symbolic name, or its path without
+the directory and file suffix). If the module name ends in -unit, then
+base corresponds to the module name before -unit. Otherwise, the module
+name serves as base.
+
+11. Single-Signature Modules
+
+ #lang racket/signature package: base ~
+
+The racket/signature language treats a module body as a unit signature.
+
+The body must match the following module-body grammar:
+
+  module-body = (require require-spec ...) ... sig-spec ...
+
+See Creating Units for the grammar of sig-spec. Unlike the body of a
+racket/unit module, a require in a racket/signature module must be a
+literal use of require.
+
+The resulting signature is exported as base^, where base is derived from
+the enclosing module’s name (i.e., its symbolic name, or its path
+without the directory and file suffix). If the module name ends in -sig,
+then base corresponds to the module name before -sig. Otherwise, the
+module name serves as base.
+
+A struct form as a sig-spec is consistent with the definitions
+introduced by define-struct, as opposed to definitions introduced
+struct. (That behavior was originally a bug, but it is preserved for
+compatibility.)
+
+12. Transformer Helpers
+
+ (require racket/unit-exptime) package: base ~
+
+The racket/unit-exptime library provides procedures that are intended
+for use by macro transformers. In particular, the library is typically
+imported using for-syntax into a module that defines macro with
+define-syntax.
+
+                                        *unit-static-signatures*
+(unit-static-signatures unit-identifier  ~
+                        err-syntax)     
+ -> (list/c (cons/c (or/c symbol? #f)
+                    identifier?))
+    (list/c (cons/c (or/c symbol? #f)
+                    identifier?))
+  unit-identifier : identifier? ~
+  err-syntax : syntax? ~
+
+If unit-identifier is bound to static unit information via define-unit
+(or other such forms), the result is two values. The first value is for
+the unit’s imports, and the second is for the unit’s exports. Each
+result value is a list, where each list element pairs a symbol or #f
+with an identifier. The symbol or #f indicates the import’s or export’s
+tag (where #f indicates no tag), and the identifier indicates the
+binding of the corresponding signature.
+
+If unit-identifier is not bound to static unit information, then the
+exn:fail:syntax exception is raised. In that case, the given err-syntax
+argument is used as the source of the error, where unit-identifier is
+used as the detail source location.
+
+                                        *signature-members*
+(signature-members sig-identifier      ~
+                   err-syntax)    -> (or/c identifier? #f)
+                                     (listof identifier?)
+                                     (listof identifier?)
+                                     (listof identifier?)
+  sig-identifier : identifier? ~
+  err-syntax : syntax? ~
+
+If sig-identifier is bound to static unit information via
+define-signature (or other such forms), the result is four values:
+
+* an identifier or #f indicating the signature (of any) that is extended
+  by the sig-identifier binding;
+
+* a list of identifiers representing the variables supplied/required by
+  the signature;
+
+* a list of identifiers for variable definitions in the signature (i.e.,
+  variable bindings that are provided on import, but not defined by
+  units that implement the signature); and
+
+* a list of identifiers with syntax definitions in the signature.
+
+If sig-identifier is not bound to a signature, then the exn:fail:syntax
+exception is raised. In that case, the given err-syntax argument is used
+as the source of the error, where sig-identifier is used as the detail
+source location.
+
+                                        *unit-static-init-dependencies*
+(unit-static-init-dependencies unit-identifier  ~
+                               err-syntax)     
+ -> (list/c (cons/c (or/c symbol? #f)
+                    identifier?))
+  unit-identifier : identifier? ~
+  err-syntax : syntax? ~
+
+If unit-identifier is bound to static unit information via define-unit
+(or other such forms), the result is a list of pairs. Each pair combines
+a tag (or #f for no tag) and a signature name, indicating an
+initialization dependency of the unit on the specified import (i.e., the
+same tag and signature are included in the first result from
+unit-static-signatures).
+
+If unit-identifier is not bound to static unit information, then the
+exn:fail:syntax exception is raised. In that case, the given err-syntax
+argument is used as the source of the error, where unit-identifier is
+used as the detail source location.
+
+Added in version 6.1.1.8 of package base.

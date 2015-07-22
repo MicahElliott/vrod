@@ -1,0 +1,31 @@
+Kernel Forms and Functions
+
+ #lang racket/kernel package: base ~
+
+The racket/kernel library is a cross-phase persistent module that
+provides a minimal set of syntactic forms and functions.
+
+“Minimal” means that racket/kernel includes only forms that are built
+into the Racket compiler and only functions that are built into the
+run-time system. Currently, the set of bindings is not especially small,
+nor is it particularly well-defined, since the set of built-in functions
+can change frequently. Use racket/kernel with care, and beware that its
+use can create compatibility problems.
+
+The racket/kernel module exports all of the bindings in the grammar of
+fully expanded programs (see [missing]), but it provides #%plain-lambda
+as lambda and λ, #%plain-app as #%app, and #%plain-module-begin as
+#%module-begin. Aside from #%datum (which expands to quote),
+racket/kernel provides no other syntactic bindings.
+
+The racket/kernel module also exports many of the function bindings from
+racket/base, and it exports a few other functions that are not exported
+by racket/base because racket/base exports improved variants. The exact
+set of function bindings exported by racket/kernel is unspecified and
+subject to change across versions.
+
+ (require racket/kernel/init) package: base ~
+
+The racket/kernel/init library re-provides all of racket/kernel. It also
+provides #%top-interaction, which makes racket/kernel/init useful with
+the -I command-line flag for racket.

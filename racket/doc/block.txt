@@ -1,0 +1,32 @@
+Blocks: block
+
+ (require racket/block) package: base ~
+
+The bindings documented in this section are provided by the racket/block
+library, not racket/base or racket.
+
+                                        *block*
+(block defn-or-expr ...) ~
+
+Supports a mixture of expressions and mutually recursive definitions, as
+in a module body. Unlike an internal-definition context, the last
+defn-or-expr need not be an expression.
+
+The result of the block form is the result of the last defn-or-expr if
+it is an expression, #<void> otherwise. If no defn-or-expr is provided
+(after flattening begin forms), the result is #<void>.
+
+The final defn-or-expr is executed in tail position, if it is an
+expression.
+
+Examples:
+  > (define (f x)
+      (block
+        (define y (add1 x))
+        (displayln y)
+        (define z (* 2 y))
+        (+ 3 z)))
+
+  > (f 12)
+  13
+  29

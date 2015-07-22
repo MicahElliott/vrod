@@ -1,0 +1,57 @@
+Code Inspectors
+
+In the same way that inspectors control access to structure fields (see
+[missing]), inspectors also control access to module bindings. The
+default inspector for module bindings is determined by the
+current-code-inspector parameter, instead of the current-inspector
+parameter.
+
+When a module declaration is evaluated, the value of the
+current-code-inspector parameter is associated with the module
+declaration. When the module is invoked via require or dynamic-require,
+a sub-inspector of the module’s declaration-time inspector is created,
+and this sub-inspector is associated with the module invocation. Any
+inspector that controls the sub-inspector (including the
+declaration-time inspector and its superior) controls the module
+invocation. In particular, if the value of current-code-inspector never
+changes, then no control is lost for any module invocation, since the
+module’s invocation is associated with a sub-inspector of
+current-code-inspector.
+
+When an inspector that controls a module invocation is installed
+current-code-inspector, it enables the following module->namespace on
+the module, and it enables access to the module’s protected exports
+(i.e., those identifiers exported from the module with protect-out) via
+dynamic-require.
+
+When a module form is expanded or a namespace is created, the value of
+current-code-inspector is associated with the module or namespace’s
+top-level lexical information. Syntax objects with that lexical
+information gain access to the protected and unexported bindings of any
+module that the inspector controls. In the case of a module, the
+inspector sticks with such syntax objects even the syntax object is used
+in the expansion of code in a less powerful context; furthermore, if the
+syntax object is an identifier that is compiled as a variable reference,
+the inspector sticks with the variable reference even if it appears in a
+module form that is evaluated (i.e., declared) with a weaker inspector.
+When a syntax object or variable reference is within compiled code that
+is printed (see [missing]), the associated inspector is not preserved.
+
+When compiled code in printed form is read back in, no inspectors are
+associated with the code. When the code is evaluated, the instantiated
+syntax-object literals and module-variable references acquire value of
+current-code-inspector as their inspector.
+
+When a module instantiation is attached to multiple namespaces, each
+with its own module registry, the inspector for the module invocation
+can be registry-specific. The invocation inspector in a particular
+module registry can be changed via namespace-unprotect-module (but
+changing the inspector requires control over the old one).
+
+                                        *current-code-inspector*
+(current-code-inspector) -> inspector? ~
+(current-code-inspector insp) -> void?
+  insp : inspector? ~
+
+A parameter that determines an inspector to control access to module
+bindings and redefinitions.

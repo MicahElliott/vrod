@@ -1,0 +1,147 @@
+Symbols
+
++[missing] in [missing] introduces symbols.
+
+A symbol is like an immutable string, but symbols are normally interned,
+so that two symbols with the same character content are normally eq?.
+All symbols produced by the default reader (see [missing]) are interned.
+
+The two procedures string->uninterned-symbol and gensym generate
+uninterned symbols, i.e., symbols that are not eq?, eqv?, or equal? to
+any other symbol, although they may print the same as other symbols.
+
+The procedure string->unreadable-symbol returns an unreadable symbol
+that is partially interned.  The default reader (see [missing]) never
+produces a unreadable symbol, but two calls to string->unreadable-symbol
+with equal? strings produce eq? results. An unreadable symbol can print
+the same as an interned or uninterned symbol. Unreadable symbols are
+useful in expansion and compilation to avoid collisions with symbols
+that appear in the source; they are usually not generated directly, but
+they can appear in the result of functions like identifier-binding.
+
+Interned and unreadable symbols are only weakly held by the internal
+symbol table. This weakness can never affect the result of an eq?, eqv?,
+or equal? test, but a symbol may disappear when placed into a weak box
+(see [missing]) used as the key in a weak hash table (see [missing]), or
+used as an ephemeron key (see [missing]).
+
+See [missing]     for information on reading     symbols and [missing]
+for information on printing symbols.
+
+                                        *symbol?*
+(symbol? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is  a symbol, #f otherwise.
+
+Examples:
+  > (symbol? 'Apple)
+  #t
+  > (symbol? 10)
+  #f
+
+                                        *symbol-interned?*
+(symbol-interned? sym) -> boolean? ~
+  sym : symbol? ~
+
+Returns #t if sym is  interned, #f otherwise.
+
+Examples:
+  > (symbol-interned? 'Apple)
+  #t
+  > (symbol-interned? (gensym))
+  #f
+  > (symbol-interned? (string->unreadable-symbol "Apple"))
+  #f
+
+                                        *symbol-unreadable?*
+(symbol-unreadable? sym) -> boolean? ~
+  sym : symbol? ~
+
+Returns #t if sym is  an unreadable symbol, #f otherwise.
+
+Examples:
+  > (symbol-unreadable? 'Apple)
+  #f
+  > (symbol-unreadable? (gensym))
+  #f
+  > (symbol-unreadable? (string->unreadable-symbol "Apple"))
+  #t
+
+                                        *symbol->string*
+(symbol->string sym) -> string? ~
+  sym : symbol? ~
+
+Returns a freshly  allocated mutable string whose characters are the
+same as in  sym.
+
+Example:
+  > (symbol->string 'Apple)
+  "Apple"
+
+                                        *string->symbol*
+(string->symbol str) -> symbol? ~
+  str : string? ~
+
+Returns an  interned symbol whose characters are the same as in  str.
+
+Examples:
+  > (string->symbol "Apple")
+  'Apple
+  > (string->symbol "1")
+  '|1|
+
+                                        *string->uninterned-symbol*
+(string->uninterned-symbol str) -> symbol? ~
+  str : string? ~
+
+Like  (string->symbol str), but the resulting symbol is a new
+uninterned symbol. Calling string->uninterned-symbol  twice with the
+same str returns two distinct symbols.
+
+Examples:
+  > (string->uninterned-symbol "Apple")
+  'Apple
+  > (eq? 'a (string->uninterned-symbol "a"))
+  #f
+  > (eq? (string->uninterned-symbol "a")
+         (string->uninterned-symbol "a"))
+  #f
+
+                                        *string->unreadable-symbol*
+(string->unreadable-symbol str) -> symbol? ~
+  str : string? ~
+
+Like  (string->symbol str), but the resulting symbol is a new
+unreadable symbol. Calling string->unreadable-symbol  twice with
+equivalent strs returns the same symbol, but  read never produces the
+symbol.
+
+Examples:
+  > (string->unreadable-symbol "Apple")
+  'Apple
+  > (eq? 'a (string->unreadable-symbol "a"))
+  #f
+  > (eq? (string->unreadable-symbol "a")
+         (string->unreadable-symbol "a"))
+  #t
+
+                                        *gensym*
+(gensym [base]) -> symbol? ~
+  base : (or/c string? symbol?) = "g" ~
+
+Returns a new uninterned symbol with an automatically-generated name.
+The optional base argument is a prefix symbol or string.
+
+Example:
+  > (gensym "apple")
+  'apple173
+
+                                        *symbol<?*
+(symbol<? a-sym b-sym ...) -> boolean? ~
+  a-sym : symbol? ~
+  b-sym : symbol? ~
+
+Returns #t if the arguments are sorted, where the comparison for each
+pair of symbols is the same as using symbol->string with
+string->bytes/utf-8 and bytes<?.

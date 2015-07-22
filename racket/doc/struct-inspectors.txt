@@ -1,0 +1,174 @@
+Structure Inspectors
+
+An inspector provides access to structure fields and structure type
+information without the normal field accessors and mutators. (Inspectors
+are also used to control access to module bindings; see [missing].)
+Inspectors are primarily intended for use by debuggers.
+
+When a structure type is created, an inspector can be supplied. The
+given inspector is not the one that will control the new structure type;
+instead, the given inspector’s parent will control the type. By using
+the parent of the given inspector, the structure type remains opaque to
+“peer” code that cannot access the parent inspector.
+
+The current-inspector parameter determines a default inspector argument
+for new structure types. An alternate inspector can be provided though
+the #:inspector option of the define-struct form (see [missing]), or
+through an optional inspector argument to make-struct-type.
+
+                                        *inspector?*
+(inspector? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is an inspector, #f otherwise.
+
+                                        *make-inspector*
+(make-inspector [inspector]) -> inspector? ~
+  inspector : inspector? = (current-inspector) ~
+
+Returns a new inspector that is a subinspector of inspector. Any
+structure type controlled by the new inspector is also controlled by its
+ancestor inspectors, but no other inspectors.
+
+                                        *make-sibling-inspector*
+(make-sibling-inspector [inspector]) -> inspector? ~
+  inspector : inspector? = (current-inspector) ~
+
+Returns a new inspector that is a subinspector of the same inspector as
+inspector. That is, inspector and the result inspector control mutually
+disjoint sets of structure types.
+
+                                        *current-inspector*
+(current-inspector) -> inspector? ~
+(current-inspector insp) -> void?
+  insp : inspector? ~
+
+A parameter that determines the default inspector for newly created
+structure types.
+
+                                        *struct-info*
+(struct-info v) -> (or/c struct-type? #f) boolean? ~
+  v : any/c ~
+
+Returns two values:
+
+* struct-type: a structure type descriptor or #f; the result is a
+  structure type descriptor of the most specific type for which v is an
+  instance, and for which the current inspector has control, or the
+  result is #f if the current inspector does not control any structure
+  type for which the struct is an instance.
+
+* skipped?: #f if the first result corresponds to the most specific
+  structure type of v, #t otherwise.
+
+                                        *struct-type-info*
+(struct-type-info struct-type) ~
+ -> symbol?
+    exact-nonnegative-integer?
+    exact-nonnegative-integer?
+    struct-accessor-procedure?
+    struct-mutator-procedure?
+    (listof exact-nonnegative-integer?)
+    (or/c struct-type? #f)
+    boolean?
+  struct-type : struct-type? ~
+
+Returns eight values that provide information about the structure type
+descriptor struct-type, assuming that the type is controlled  by the
+current inspector:
+
+* name: the structure type’s name as a symbol;
+
+* init-field-cnt: the number of fields defined by the structure type
+  provided to the constructor procedure (not counting fields created by
+  its ancestor types);
+
+* auto-field-cnt: the number of fields defined by the structure type
+  without a counterpart in the constructor procedure (not counting
+  fields created by its ancestor types);
+
+* accessor-proc: an accessor procedure for the structure type, like the
+  one returned by make-struct-type;
+
+* mutator-proc: a mutator procedure for the structure type, like the one
+  returned by make-struct-type;
+
+* immutable-k-list: an immutable list of exact non-negative integers
+  that correspond to immutable fields for the structure type;
+
+* super-type: a structure type descriptor for the most specific ancestor
+  of the type that is controlled by the current inspector, or #f if no
+  ancestor is controlled by the current inspector;
+
+* skipped?: #f if the seventh result is the most specific ancestor type
+  or if the type has no supertype, #t otherwise.
+
+If the type for struct-type is not controlled by the current inspector,
+the exn:fail:contract exception is raised.
+
+                                        *struct-type-make-constructor*
+(struct-type-make-constructor struct-type) ~
+ -> struct-constructor-procedure?
+  struct-type : struct-type? ~
+
+Returns a constructor procedure to create instances of the type for
+struct-type.  If the type for struct-type is not controlled by the
+current inspector, the exn:fail:contract exception is raised.
+
+                                        *struct-type-make-predicate*
+(struct-type-make-predicate struct-type) -> any ~
+  struct-type : any/c ~
+
+Returns a predicate procedure to recognize instances of the type for
+struct-type.  If the type for struct-type is not controlled by the
+current inspector, the exn:fail:contract exception is raised.
+
+                                        *object-name*
+(object-name v) -> any ~
+  v : any/c ~
+
+Returns a value for the name of v if v has a name, #f otherwise. The
+argument v can be any value, but only (some) procedures, structures,
+structure types, structure type properties, regexp values, ports, and
+loggers have names. See also [missing].
+
+The name (if any) of a procedure is always a symbol. The
+procedure-rename function creates a procedure with a specific name.
+
+If a structure’s type implements the prop:object-name property, and the
+value of the prop:object-name property is an integer, then the
+corresponding field of the structure is the name of the structure.
+Otherwise, the property value must be a procedure, which is called with
+the structure as argument, and the result is the name of the structure.
+If a structure is a procedure as implemented by one of its fields (i.e.,
+the prop:procedure property value for the structure’s type is an
+integer), then its name is the implementing procedure’s name. Otherwise,
+its name matches the name of the structure type that it instantiates.
+
+The name of a regexp value is a string or byte string. Passing the
+string or byte string to regexp, byte-regexp, pregexp, or byte-pregexp
+(depending on the kind of regexp whose name was extracted) produces a
+value that matches the same inputs.
+
+The name of a port can be any value, but many tools use a path or string
+name as the port’s for (to report source locations, for example).
+
+The name of a logger is either a symbol or #f.
+
+prop:object-name : struct-type-property? ~
+
+A structure type property that allows structure types to customize  the
+result of object-name applied to their instances. The property value can
+be any of the following:
+
+* A procedure proc of one argument: In this case, procedure proc
+  receives the structure as an argument, and the result of proc is the
+  object-name of the structure.
+
+* An exact, non-negative integer between 0 (inclusive) and the number of
+  non-automatic fields in the structure type (exclusive, not counting
+  supertype fields): The integer identifies a field in the structure,
+  and the field must be designated as immutable. The value of the field
+  is used as the object-name of the structure.
+
+Added in version 6.2.

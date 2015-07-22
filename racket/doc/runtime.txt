@@ -1,0 +1,204 @@
+Environment and Runtime Information
+
+                                        *system-type*
+(system-type [mode]) ~
+ -> (or/c symbol? string? bytes? exact-positive-integer? vector?)
+  mode : (or/c 'os 'word 'gc 'link 'machine    = 'os ~
+               'so-suffix 'so-mode 'fs-change)
+
+Returns information about the operating system, build mode, or machine
+for a running Racket.
+
+In 'os mode,  the possible symbol results are:
+
+* 'unix
+
+* 'windows
+
+* 'macosx
+
+In 'word mode, the result is either 32 or 64 to indicate whether Racket
+is running as a 32-bit program or 64-bit program.
+
+In 'gc mode, the possible symbol results are:
+
+* 'cgc
+
+* '3m
+
+In 'link mode, the possible symbol results are:
+
+* 'static (Unix)
+
+* 'shared (Unix)
+
+* 'dll (Windows)
+
+* 'framework (Mac OS X)
+
+Future ports of Racket may expand the list of 'os, 'gc, and 'link
+results.
+
+In 'machine mode, then the result is a string, which contains further
+details about the current machine in a platform-specific format.
+
+In 'so-suffix mode, then the result is a byte string that represents the
+file extension used for shared objects on the current platform. The byte
+string starts with a period, so it is suitable as a second argument to
+path-replace-suffix.
+
+In 'so-mode mode, then the result is 'local if foreign libraries should
+be opened in “local” mode by default (as on most platforms) or 'global
+if foreign libraries should be opened in “global” mode.
+
+In 'fs-change mode, the result is an immutable vector of four elements.
+Each element is either #f or a symbol, where a symbol indicates the
+presence of a property and #f indicates the absence of a property. The
+possible symbols, in order, are:
+
+* 'supported — filesystem-change-evt can produce a filesystem change
+  event to monitor filesystem changes; if this symbol is not first in
+  the vector, all other vector elements are #f
+
+* 'scalable — resources consumed by a filesystem change event are
+  effectively limited only by available memory, as opposed to
+  file-descriptor limits; this property is #f on Mac OS X and BSD
+  variants of Unix
+
+* 'low-latency — creation and checking of a filesystem change event is
+  practically instantaneous; this property is #f on Linux
+
+* 'file-level — a filesystem change event can track changes at the level
+  of a file, as opposed to the file’s directory; this property is #f on
+  Windows
+
+                                        *system-language+country*
+(system-language+country) -> string? ~
+
+Returns a string to identify the current user’s language and country.
+
+On Unix and Mac OS X, the string is five characters: two lowercase ASCII
+letters for the language, an underscore, and two uppercase ASCII letters
+for the country. On Windows, the string can be arbitrarily long, but the
+language and country are in English (all ASCII letters or spaces)
+separated by an underscore.
+
+On Unix, the result is determined by checking the LC_ALL, LC_TYPE, and
+LANG environment variables, in that order (and the result is used if the
+environment variable’s value starts with two lowercase ASCII letters, an
+underscore, and two uppercase ASCII letters, followed by either nothing
+or a period). On Windows and Mac OS X, the result is determined by
+system calls.
+
+                                        *system-library-subpath*
+(system-library-subpath [mode]) -> path? ~
+  mode : (or/c 'cgc '3m #f) = (system-type 'gc) ~
+
+Returns a relative directory path. This string can be used to build
+paths to system-specific files. For example, when Racket is running on
+Solaris on a Sparc architecture, the subpath starts "sparc-solaris",
+while the subpath for Windows on an i386 architecture starts
+"win32\\i386".
+
+The optional mode argument specifies the relevant garbage-collection
+variant, which one of the possible results of (system-type 'gc): 'cgc or
+'3m. It can also be #f, in which case the result is independent of the
+garbage-collection variant.
+
+                                        *version*
+(version) -> (and/c string? immutable?) ~
+
+Returns an string indicating the currently executing version of Racket.
+
+                                        *banner*
+(banner) -> (and/c string? immutable?) ~
+
+Returns an immutable string for Racket’s start-up banner text (or the
+banner text for an embedding program, such as GRacket). The banner
+string ends with a newline.
+
+                                        *current-command-line-arguments*
+(current-command-line-arguments) -> (vectorof string?) ~
+(current-command-line-arguments argv) -> void?
+  argv : (vectorof (and/c string? immutable?)) ~
+
+A parameter that is initialized with command-line arguments when Racket
+starts (not including any command-line arguments that were treated as
+flags for the system).
+
+                                        *current-thread-initial-stack-size*
+(current-thread-initial-stack-size) -> exact-positive-integer? ~
+(current-thread-initial-stack-size size) -> void?
+  size : exact-positive-integer? ~
+
+A parameter that provides a hint about how much space to reserve for a
+newly created thread’s local variables. The actual space used by a
+computation is affected by JIT compilation, but it is otherwise
+platform-independent.
+
+                                        *vector-set-performance-stats!*
+(vector-set-performance-stats! results [thd]) -> void? ~
+  results : (and/c vector? ~
+                   (not/c immutable?))
+  thd : (or/c thread? #f) = #f ~
+
+Sets elements in results to report current performance statistics. If
+thd is not #f, a particular set of thread-specific statistics are
+reported, otherwise a different set of global (within the current place)
+statics are reported.
+
+For global statistics, up to 12 elements are set in the vector, starting
+from the beginning. If results has n elements where n < 12, then the n
+elements are set to the first n performance-statistics values. The
+reported statistics values are as follows, in the order that they are
+set within results:
+
+* 0: The same value as returned by current-process-milliseconds.
+
+* 1: The same value as returned by current-milliseconds.
+
+* 2: The same value as returned by current-gc-milliseconds.
+
+* 3: The number of garbage collections performed since start-up within
+  the current place.
+
+* 4: The number of thread context switches performed since start-up.
+
+* 5: The number of internal stack overflows handled since start-up.
+
+* 6: The number of threads currently scheduled for execution (i.e.,
+  threads that are running, not suspended, and not unscheduled due to a
+  synchronization).
+
+* 7: The number of syntax objects read from compiled code since
+  start-up.
+
+* 8: The number of hash-table searches performed. When this counter
+  reaches the maximum value of a fixnum, it overflows to the most
+  negative fixnum.
+
+* 9: The number of additional hash slots searched to complete hash
+  searches (using double hashing).  When this counter reaches the
+  maximum value of a fixnum, it overflows to the most negative fixnum.
+
+* 10: The number of bytes allocated for machine code that is not
+  reported by current-memory-use.
+
+* 11: The peak number of allocated bytes just before a garbage
+  collection.
+
+For thread-specific statistics, up to 4 elements are set in the vector:
+
+* 0: #t if the thread is running, #f otherwise (same result as
+  thread-running?).
+
+* 1: #t if the thread has terminated, #f otherwise (same result as
+  thread-dead?).
+
+* 2: #t if the thread is currently blocked on a synchronizable event (or
+  sleeping for some number of milliseconds), #f otherwise.
+
+* 3: The number of bytes currently in use for the thread’s continuation.
+
+Changed in version 6.1.1.8: Added vector position 11 for global
+statistics.

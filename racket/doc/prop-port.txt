@@ -1,0 +1,29 @@
+Structures as Ports
+
+prop:input-port : struct-type-property? ~
+
+prop:output-port : struct-type-property? ~
+
+The prop:input-port and prop:output-port structure type properties
+identify structure types whose instances can serve as input and output
+ports, respectively.
+
+Each property value can be either of the following:
+
+* An input port (for prop:input-port) or output port (for
+  prop:output-port): In this case, using the structure as port is
+  equivalent to using the given input or output port.
+
+* An exact, non-negative integer between 0 (inclusive) and the number of
+  non-automatic fields in the structure type (exclusive, not counting
+  supertype fields): The integer identifies a field in the structure,
+  and the field must be designated as immutable. If the field contains
+  an input port (for prop:input-port) or output port (for
+  prop:output-port), the port is used. Otherwise, an empty string input
+  port is used for prop:input-port, and a port that discards all data is
+  used for prop:output-port.
+
+Some procedures, such as file-position, work on both input and output
+ports. When given an instance of a structure type with both the
+prop:input-port and prop:output-port properties, the instance is used as
+an input port.

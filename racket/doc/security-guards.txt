@@ -1,0 +1,129 @@
+Security Guards
+
+                                        *security-guard?*
+(security-guard? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a security guard value as created by
+make-security-guard, #f otherwise.
+
+A security guard provides a set of access-checking procedures to be
+called when a thread initiates access of a file, directory, or network
+connection through a primitive procedure. For example, when a thread
+calls open-input-file, the thread’s current security guard is consulted
+to check whether the thread is allowed read access to the file. If
+access is granted, the thread receives a port that it may use
+indefinitely, regardless of changes to the security guard (although the
+port’s custodian could shut down the port; see [missing]).
+
+A thread’s current security guard is determined by the
+current-security-guard parameter. Every security guard has a parent, and
+a parent’s access procedures are called whenever a child’s access
+procedures are called. Thus, a thread cannot increase its own access
+arbitrarily by installing a new guard. The initial security guard
+enforces no access restrictions other than those enforced by the host
+platform.
+
+                                        *make-security-guard*
+(make-security-guard  parent             ~
+                      file-guard        
+                      network-guard     
+                     [link-guard])  -> security-guard?
+  parent : security-guard? ~
+  file-guard : (symbol? ~
+                (or/c path? #f)
+                (listof symbol?)
+                . -> . any)
+  network-guard : (symbol? ~
+                   (or/c (and/c string? immutable?) #f)
+                   (or/c (integer-in 1 65535) #f)
+                   (or/c 'server 'client)
+                   . -> . any)
+  link-guard : (or/c (symbol? path? path? . -> . any) #f) = #f ~
+
+Creates a new security guard as child of parent.
+
+The file-guard procedure must accept three arguments:
+
+* a symbol for the primitive procedure that triggered the access check,
+  which is useful for raising an exception to deny access.
+
+* a path (see [missing]) or #f for pathless queries, such as
+  (current-directory), (filesystem-root-list), and (find-system-path
+  symbol). A path provided to file-guard is not expanded or otherwise
+  normalized before checking access; it may be a relative path, for
+  example.
+
+* a list containing one or more of the following  symbols:
+
+  * 'read — read a file or directory
+
+  * 'write — modify or create a file or directory
+
+  * 'execute — execute a file
+
+  * 'delete — delete a file or directory
+
+  * 'exists — determine whether a file or directory exists, or that a
+    path string is well-formed
+
+  The 'exists symbol is never combined with other symbols in the last
+  argument to file-guard, but any other combination is possible. When
+  the second argument to file-guard is #f, the last argument always
+  contains only 'exists.
+
+The network-guard procedure must accept four arguments:
+
+* a symbol for the primitive operation that triggered the access check,
+  which is useful for raising an exception to deny access.
+
+* an immutable string representing the target hostname for a client
+  connection or the accepting hostname for a listening server; #f for a
+  listening server or UDP socket that accepts connections at all of the
+  host’s address; or #f an unbound UDP socket.
+
+* an exact integer between 1 and 65535 (inclusive) representing the port
+  number, or #f for an unbound UDP socket. In the case of a client
+  connection, the port number is the target port on the server. For a
+  listening server, the port number is the local port number.
+
+* a symbol, either 'client or 'server, indicating whether the check is
+  for the creation of a client connection or a listening server. The
+  opening of an unbound UDP socket is identified as a 'client
+  connection; explicitly binding the socket is identified as a 'server
+  action.
+
+The link-guard argument can be #f or a procedure of three arguments:
+
+* a symbol for the primitive procedure that triggered the access check,
+  which is useful for raising an exception to deny access.
+
+* a complete path (see [missing]) representing the file to create as
+  link.
+
+* a path representing the content of the link, which may be relative the
+  second-argument path; this path is not expanded or otherwise
+  normalized before checking access.
+
+If link-guard is #f, then a default procedure is used that always raises
+exn:fail.
+
+The return value of file-guard, network-guard, or link-guard is ignored.
+To deny access, the procedure must raise an exception or otherwise
+escape from the context of the primitive call. If the procedure returns,
+the parent’s corresponding procedure is called on the same inputs, and
+so on up the chain of security guards.
+
+The file-guard, network-guard, and link-guard procedures are invoked in
+the thread that called the access-checked primitive. Breaks may or may
+not be enabled (see [missing]). Full continuation jumps are blocked
+going into or out of the file-guard or network-guard call (see
+[missing]).
+
+                                        *current-security-guard*
+(current-security-guard) -> security-guard? ~
+(current-security-guard guard) -> void?
+  guard : security-guard? ~
+
+A parameter that determines the current security guard that controls
+access to the filesystem and network.

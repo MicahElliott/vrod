@@ -1,0 +1,45 @@
+Multiple Values
+
+See [missing] for general information about multiple result values. In
+addition to call-with-values (described in this section), the
+let-values, let*-values, letrec-values, and define-values forms (among
+others) create continuations that receive multiple values.
+
+                                        *values*
+(values v ...) -> any ~
+  v : any/c ~
+
+Returns the given vs. That is, values returns its provided arguments.
+
+Examples:
+  > (values 1)
+  1
+  > (values 1 2 3)
+  1
+  2
+  3
+  > (values)
+
+
+                                        *call-with-values*
+(call-with-values generator receiver) -> any ~
+  generator : (-> any) ~
+  receiver : procedure? ~
+
+Calls generator, and passes the values that generator produces as
+arguments to receiver. Thus, call-with-values creates a continuation
+that accepts any number of values that receiver can accept. The receiver
+procedure is called in tail position with respect to the
+call-with-values call.
+
+Examples:
+  > (call-with-values (lambda () (values 1 2)) +)
+  3
+  > (call-with-values (lambda () 1) (lambda (x y) (+ x y)))
+  #<procedure>: arity mismatch;
+   the expected number of arguments does not match the given
+  number
+    expected: 2 ~
+    given: 1 ~
+    arguments...: ~
+     1

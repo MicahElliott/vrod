@@ -1,0 +1,539 @@
+Processes
+
+                                        *subprocess*
+(subprocess stdout    ~
+            stdin    
+            stderr   
+            command  
+            arg ...) 
+ -> subprocess?
+    (or/c (and/c input-port? file-stream-port?) #f)
+    (or/c (and/c output-port? file-stream-port?) #f)
+    (or/c (and/c input-port? file-stream-port?) #f)
+  stdout : (or/c (and/c output-port? file-stream-port?) #f) ~
+  stdin : (or/c (and/c input-port? file-stream-port?) #f) ~
+  stderr : (or/c (and/c output-port? file-stream-port?) #f 'stdout) ~
+  command : path-string? ~
+  arg : (or/c path? string-no-nuls? bytes-no-nuls?) ~
+(subprocess stdout  
+            stdin   
+            stderr  
+            command 
+            exact   
+            arg)    
+ -> subprocess?
+    (or/c (and/c input-port? file-stream-port?) #f)
+    (or/c (and/c output-port? file-stream-port?) #f)
+    (or/c (and/c input-port? file-stream-port?) #f)
+  stdout : (or/c (and/c output-port? file-stream-port?) #f) ~
+  stdin : (or/c (and/c input-port? file-stream-port?) #f) ~
+  stderr : (or/c (and/c output-port? file-stream-port?) #f) ~
+  command : path-string? ~
+  exact : 'exact ~
+  arg : string? ~
+
+Creates a new process in the underlying operating system to execute
+command asynchronously, providing the new process with environment
+variables current-environment-variables. See also system and process
+from racket/system.
+
+On Unix and Mac OS X, subprocess creation is separate from starting the
+program indicated by command. In particular, if command refers to a
+non-existent or non-executable file, an error will be reported (via
+standard error and a non-0 exit code) in the subprocess, not in the
+creating process.
+
+The command argument is a path to a program executable, and the args are
+command-line arguments for the program. See find-executable-path for
+locating an executable based on the PATH environment variable. On Unix
+and Mac OS X, command-line arguments are passed as byte strings, and
+string args are converted using the current locale’s encoding (see
+[missing]). On Windows, command-line arguments are passed as strings,
+and bytes strings are converted using UTF-8.
+
+On Windows, the first arg can be replaced with 'exact, which triggers a
+Windows-specific behavior: the sole arg is used exactly as the
+command-line for the subprocess. Otherwise, on Windows, a command-line
+string is constructed from command and arg so that a typical Windows
+console application can parse it back to an array of arguments. If
+'exact is provided on a non-Windows platform, the exn:fail:contract
+exception is raised.
+
+For information on the Windows command-line conventions, search for
+“command line parsing” at http://msdn.microsoft.com/.
+
+When provided as a port, stdout is used for the launched process’s
+standard output, stdin is used for the process’s standard input, and
+stderr is used for the process’s standard error.  All provided ports
+must be file-stream ports. Any of the ports can be #f, in which case a
+system pipe is created and returned by subprocess. The stderr argument
+can be 'stdout, in which case the same file-stream port or system pipe
+that is supplied as standard output is also used for standard error. For
+each port or 'stdout that is provided, no pipe is created and the
+corresponding returned value is #f.
+
+The subprocess procedure returns four values:
+
+* a subprocess value representing the created process;
+
+* an input port piped from the process’s standard output, or #f if
+  stdout-output-port was a port;
+
+* an output port piped to the process standard input, or #f if
+  stdin-input-port was a port;
+
+* an input port piped from the process’s standard error, or #f if
+  stderr-output-port was a port or 'stdout.
+
+Important: All ports returned from subprocess must be explicitly closed,
+usually with close-input-port or close-output-port.
+
+A file-stream port for communicating with a subprocess is normally a
+pipe with a limited capacity. Beware of creating deadlock by serializing
+a write to a subprocess followed by a read, while the subprocess does
+the same, so that both processes end up blocking on a write because the
+other end must first read to make room in the pipe. Beware also of
+waiting for a subprocess to finish without reading its output, because
+the subprocess may be blocked attempting to write output into a full
+pipe.
+
+The returned ports are file-stream ports (see [missing]), and they are
+placed into the management of the current custodian (see [missing]).
+The exn:fail exception is raised when a low-level error prevents the
+spawning of a process or the creation of operating system pipes for
+process communication.
+
+If the subprocess-group-enabled parameter’s value is true, then the new
+process is created as a new OS-level process group. In that case,
+subprocess-kill attempts to terminate all processes within the group,
+which may include additional processes created by the subprocess. See
+subprocess-kill for details, and see subprocess-group-enabled for
+additional caveats.
+
+The current-subprocess-custodian-mode parameter determines whether the
+subprocess itself is registered with the current custodian so that a
+custodian shutdown calls subprocess-kill for the subprocess.
+
+A subprocess can be used as a synchronizable event (see [missing]). A
+subprocess value is ready for synchronization when subprocess-wait would
+not block; the synchronization result of a subprocess value is the
+subprocess value itself.
+
+                                        *subprocess-wait*
+(subprocess-wait subproc) -> void? ~
+  subproc : subprocess? ~
+
+Blocks until the process represented by subproc terminates. The subproc
+value also can be used with sync and sync/timeout.
+
+                                        *subprocess-status*
+(subprocess-status subproc) -> (or/c 'running ~
+                                     exact-nonnegative-integer?)
+  subproc : subprocess? ~
+
+Returns 'running if the process represented by subproc is still running,
+or its exit code otherwise. The exit code is an exact integer, and 0
+typically indicates success. If the process terminated due to a fault or
+signal, the exit code is non-zero.
+
+                                        *subprocess-kill*
+(subprocess-kill subproc force?) -> void? ~
+  subproc : subprocess? ~
+  force? : any/c ~
+
+Terminates the subprocess represented by subproc. The precise action
+depends on whether force? is true, whether the process was created in
+its own group by setting the subprocess-group-enabled parameter to a
+true value, and the current platform:
+
+* force? is true, not a group, all platforms: Terminates the process if
+  the process still running.
+
+* force? is false, not a group, on Unix or Mac OS X: Sends the process
+  an interrupt signal instead of a kill signal.
+
+* force? is false, not a group, on Windows: No action is taken.
+
+* force? is true, a group, on Unix or Mac OS X: Terminates all processes
+  in the group, but only if subprocess-status has never produced a
+  non-'running result for the subprocess and only if functions like
+  subprocess-wait and sync have not detected the subprocess’s
+  completion. Otherwise, no action is taken (because the immediate
+  process is known to have terminated while the continued existence of
+  the group is unknown).
+
+* force? is true, a group, on Windows: Terminates the process if the
+  process still running.
+
+* force? is false, a group, on Unix or Mac OS X: The same as when force?
+  is #t, but when the group is sent a signal, it is an interrupt signal
+  instead of a kill signal.
+
+* force? is false, a group, on Windows: All processes in the group
+  receive a CTRL-BREAK signal (independent of whether the immediate
+  subprocess has terminated).
+
+If an error occurs during termination, the exn:fail exception is raised.
+
+                                        *subprocess-pid*
+(subprocess-pid subproc) -> exact-nonnegative-integer? ~
+  subproc : subprocess? ~
+
+Returns the operating system’s numerical ID (if any) for the process
+represented by subproc. The result is valid only as long as the process
+is running.
+
+                                        *subprocess?*
+(subprocess? v) -> boolean? ~
+  v : any/c ~
+
+Returns #t if v is a subprocess value, #f otherwise.
+
+                                        *current-subprocess-custodian-mode*
+(current-subprocess-custodian-mode) ~
+ -> (or/c #f 'kill 'interrupt)
+(current-subprocess-custodian-mode mode) -> void?
+  mode : (or/c #f 'kill 'interrupt) ~
+
+A parameter that determines whether a subprocess (as created by
+subprocess or wrappers like process) is registered with the current
+custodian. If the parameter value is #f, then the subprocess is not
+registered with the custodian—although any created ports are registered.
+If the parameter value is 'kill or 'interrupt, then the subprocess is
+shut down through subprocess-kill, where 'kill supplies a #t value for
+the force? argument and 'interrupt supplies a #f value. The shutdown may
+occur either before or after ports created for the subprocess are
+closed.
+
+Custodian-triggered shutdown is limited by details of process handling
+in the host system. For example, process and system may create an
+intermediate shell process to run a program, in which case
+custodian-based termination shuts down the shell process and probably
+not the process started by the shell. See also subprocess-kill. Process
+groups (see subprocess-group-enabled) can address some limitations, but
+not all of them.
+
+                                        *subprocess-group-enabled*
+(subprocess-group-enabled) -> boolean? ~
+(subprocess-group-enabled on?) -> void?
+  on? : any/c ~
+
+A parameter that determines whether a subprocess is created as a new
+process group. See subprocess-kill for more information.
+
+Beware that creating a group may interfere with the job control in an
+interactive shell, since job control is based on process groups.
+
+                                        *shell-execute*
+(shell-execute verb            ~
+               target         
+               parameters     
+               dir            
+               show-mode) -> #f
+  verb : (or/c string? #f) ~
+  target : string? ~
+  parameters : string? ~
+  dir : path-string? ~
+  show-mode : symbol? ~
+
+Performs the action specified by verb on target in Windows. For
+platforms other than Windows, the exn:fail:unsupported exception is
+raised.
+
+For example,
+
+  (shell-execute #f "http://racket-lang.org" "" ~
+                 (current-directory) 'sw_shownormal)
+
+Opens the Racket home page in a browser window.
+
+The verb can be #f, in which case the operating system will use a
+default verb. Common verbs include "open", "edit", "find", "explore",
+and "print".
+
+The target is the target for the action, usually a filename path. The
+file could be executable, or it could be a file with a recognized
+extension that can be handled by an installed application.
+
+The parameters argument is passed on to the system to perform the
+action. For example, in the case of opening an executable, the
+parameters is used as the command line (after the executable name).
+
+The dir is used as the current directory when performing the action.
+
+The show-mode sets the display mode for a Window affected by the action.
+It must be one of the following symbols; the description of each
+symbol’s meaning is taken from the Windows API documentation.
+
+* 'sw_hide or 'SW_HIDE — Hides the window and activates another window.
+
+* 'sw_maximize or 'SW_MAXIMIZE — Maximizes the window.
+
+* 'sw_minimize or 'SW_MINIMIZE — Minimizes the window and activates the
+  next top-level window in the z-order.
+
+* 'sw_restore or 'SW_RESTORE — Activates and displays the window. If the
+  window is minimized or maximized, Windows restores it to its original
+  size and position.
+
+* 'sw_show or 'SW_SHOW — Activates the window and displays it in its
+  current size and position.
+
+* 'sw_showdefault or 'SW_SHOWDEFAULT — Uses a default.
+
+* 'sw_showmaximized or 'SW_SHOWMAXIMIZED — Activates the window and
+  displays it as a maximized window.
+
+* 'sw_showminimized or 'SW_SHOWMINIMIZED — Activates the window and
+  displays it as a minimized window.
+
+* 'sw_showminnoactive or 'SW_SHOWMINNOACTIVE — Displays the window as a
+  minimized window. The active window remains active.
+
+* 'sw_showna or 'SW_SHOWNA — Displays the window in its current state.
+  The active window remains active.
+
+* 'sw_shownoactivate or 'SW_SHOWNOACTIVATE — Displays a window in its
+  most recent size and position. The active window remains active.
+
+* 'sw_shownormal or 'SW_SHOWNORMAL — Activates and displays a window. If
+  the window is minimized or maximized, Windows restores it to its
+  original size and position.
+
+If the action fails, the exn:fail exception is raised. If the action
+succeeds, the result is #f.
+
+In future versions of Racket, the result may be a subprocess value if
+the operating system did returns a process handle (but if a subprocess
+value is returned, its process ID will be 0 instead of the real process
+ID).
+
+1. Simple Subprocesses
+
+ (require racket/system) package: base ~
+
+The bindings documented in this section are provided by the
+racket/system and racket libraries, but not racket/base.
+
+                                        *system*
+(system command [#:set-pwd? set-pwd?]) -> boolean? ~ ~
+  command : (or/c string-no-nuls? bytes-no-nuls?) ~
+  set-pwd? : any/c = (member (system-type) '(unix macosx)) ~
+
+Executes a Unix, Mac OS X, or Windows shell command synchronously (i.e.,
+the call to system does not return until the subprocess has ended). The
+command argument is a string or byte string containing no nul
+characters. If the command succeeds, the return value is #t, #f
+otherwise.
+
+See also subprocess for notes about error handling and the limited
+buffer capacity of subprocess pipes.
+
+If set-pwd? is true, then the PWD environment variable is set to the
+value of (current-directory) when starting the shell process.
+
+See also current-subprocess-custodian-mode and subprocess-group-enabled,
+which affect the subprocess used to implement system.
+
+The resulting process writes to (current-output-port), reads from
+(current-input-port), and logs errors to (current-error-port). To gather
+the process’s non-error output to a string, for example, use
+with-output-to-string, which sets current-output-port while calling the
+given function:
+
+  (with-output-to-string (lambda () (system "date")))
+
+                                        *system**
+(system* command arg ... [#:set-pwd? set-pwd?]) -> boolean? ~ ~
+  command : path-string? ~
+  arg : (or/c path? string-no-nuls? bytes-no-nuls?) ~
+  set-pwd? : any/c = (member (system-type) '(unix macosx)) ~
+(system*  command                   
+          exact                     
+          arg                       
+         [#:set-pwd? set-pwd?]) -> boolean? ~
+  command : path-string? ~
+  exact : 'exact ~
+  arg : string? ~
+  set-pwd? : any/c = (member (system-type) '(unix macosx)) ~
+
+Like system, except that command is a filename that is executed directly
+(instead of through a shell command; see find-executable-path for
+locating an executable based on the PATH environment variable), and the
+args are the arguments. The executed file is passed the specified string
+arguments (which must contain no nul characters).
+
+On Windows, the first argument after command can be 'exact, and the
+final arg is a complete command line. See subprocess for details.
+
+                                        *system/exit-code*
+(system/exit-code  command                    ~
+                  [#:set-pwd? set-pwd?]) -> byte? ~
+  command : (or/c string-no-nuls? bytes-no-nuls?) ~
+  set-pwd? : any/c = (member (system-type) '(unix macosx)) ~
+
+Like system, except that the result is the exit code returned by the
+subprocess. A 0 result normally indicates success.
+
+                                        *system*/exit-code*
+(system*/exit-code  command                    ~
+                    arg ...                   
+                   [#:set-pwd? set-pwd?]) -> byte? ~
+  command : path-string? ~
+  arg : (or/c path? string-no-nuls? bytes-no-nuls?) ~
+  set-pwd? : any/c = (member (system-type) '(unix macosx)) ~
+(system*/exit-code  command                   
+                    exact                     
+                    arg                       
+                   [#:set-pwd? set-pwd?]) -> byte? ~
+  command : path-string? ~
+  exact : 'exact ~
+  arg : string? ~
+  set-pwd? : any/c = (member (system-type) '(unix macosx)) ~
+
+Like system*, but returns the exit code like system/exit-code.
+
+                                        *process*
+(process command [#:set-pwd? set-pwd?]) ~ ~
+ -> (list input-port?
+          output-port?
+          exact-nonnegative-integer?
+          input-port?
+          ((or/c 'status 'wait 'interrupt 'kill) . -> . any))
+  command : (or/c string-no-nuls? bytes-no-nuls?) ~
+  set-pwd? : any/c = (member (system-type) '(unix macosx)) ~
+
+Executes a shell command asynchronously (using sh on Unix and Mac OS X,
+cmd on Windows). The result is a list of five values:
+
+See also subprocess for notes about error handling and the limited
+buffer capacity of subprocess pipes.
+
+* an input port piped from the subprocess’s standard output,
+
+* an output port piped to the subprocess standard input,
+
+* the system process id of the subprocess,
+
+* an input port piped from the subprocess’s standard error, and
+
+* a procedure of one argument, either 'status, 'wait, 'interrupt,
+  'exit-code or 'kill:
+
+  * 'status returns the status of the subprocess as one of 'running,
+    'done-ok, or 'done-error.
+
+  * 'exit-code returns the integer exit code of the subprocess or #f if
+    it is still running.
+
+  * 'wait blocks execution in the current thread until the subprocess
+    has completed.
+
+  * 'interrupt sends the subprocess an interrupt signal on Unix and Mac
+    OS X, and takes no action on Windows. The result is #<void>.
+
+    On Unix and Mac OS X, if command runs a single program, then sh
+    typically runs the program in such a way that it replaces sh in the
+    same process. For reliable and precise control over process
+    creation, however, use process*.
+
+  * 'kill terminates the subprocess and returns #<void>.  Note that the
+    immediate process created by process is a shell process that may run
+    another program; terminating the shell process may not terminate
+    processes that the shell starts, particularly on Windows.
+
+Important: All three ports returned from process must be explicitly
+closed with close-input-port or close-output-port.
+
+If set-pwd? is true, then PWD is set in the same way as system.
+
+See also current-subprocess-custodian-mode and subprocess-group-enabled,
+which affect the subprocess used to implement process. In particular,
+the 'interrupt and 'kill process-control messages are implemented via
+subprocess-kill, so they can affect a process group instead of a single
+process.
+
+                                        *process**
+(process*  command                    ~
+           arg ...                   
+          [#:set-pwd? set-pwd?]) -> list? ~
+  command : path-string? ~
+  arg : (or/c path? string-no-nuls? bytes-no-nuls?) ~
+  set-pwd? : any/c = (member (system-type) '(unix macosx)) ~
+(process*  command                   
+           exact                     
+           arg                       
+          [#:set-pwd? set-pwd?]) -> list? ~
+  command : path-string? ~
+  exact : 'exact ~
+  arg : string? ~
+  set-pwd? : any/c = (member (system-type) '(unix macosx)) ~
+
+Like process, except that command is a filename that is executed
+directly like system*, and the args are the arguments. On Windows, as
+for system*, the first arg can be replaced with 'exact.
+
+                                        *process/ports*
+(process/ports  out                        ~
+                in                        
+                error-out                 
+                command                   
+               [#:set-pwd? set-pwd?]) -> list? ~
+  out : (or/c #f output-port?) ~
+  in : (or/c #f input-port?) ~
+  error-out : (or/c #f output-port? 'stdout) ~
+  command : (or/c path? string-no-nuls? bytes-no-nuls?) ~
+  set-pwd? : any/c = (member (system-type) '(unix macosx)) ~
+
+Like process, except that out is used for the process’s standard output,
+in is used for the process’s standard input, and error-out is used for
+the process’s standard error.  Any of the ports can be #f, in which case
+a system pipe is created and returned, as in process. If error-out is
+'stdout, then standard error is redirected to standard output.  For each
+port or 'stdout that is provided, no pipe is created, and the
+corresponding value in the returned list is #f.
+
+                                        *process*/ports*
+(process*/ports  out                        ~
+                 in                        
+                 error-out                 
+                 command                   
+                 arg ...                   
+                [#:set-pwd? set-pwd?]) -> list? ~
+  out : (or/c #f output-port?) ~
+  in : (or/c #f input-port?) ~
+  error-out : (or/c #f output-port? 'stdout) ~
+  command : path-string? ~
+  arg : (or/c path? string-no-nuls? bytes-no-nuls?) ~
+  set-pwd? : any/c = (member (system-type) '(unix macosx)) ~
+(process*/ports  out                       
+                 in                        
+                 error-out                 
+                 command                   
+                 exact                     
+                 arg                       
+                [#:set-pwd? set-pwd?]) -> list? ~
+  out : (or/c #f output-port?) ~
+  in : (or/c #f input-port?) ~
+  error-out : (or/c #f output-port? 'stdout) ~
+  command : path-string? ~
+  exact : 'exact ~
+  arg : string? ~
+  set-pwd? : any/c = (member (system-type) '(unix macosx)) ~
+
+Like process*, but with the port handling of process/ports.
+
+The contracts of system and related functions may signal a contract
+error with references to the following functions.
+
+                                        *string-no-nuls?*
+(string-no-nuls? x) -> boolean? ~
+  x : any/c ~
+
+Ensures that x is a string and does not contain "\u0000".
+
+                                        *bytes-no-nuls?*
+(bytes-no-nuls? x) -> boolean? ~
+  x : any/c ~
+
+Ensures that x is a byte-string and does not contain #"\0".
