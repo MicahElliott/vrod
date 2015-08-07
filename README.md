@@ -1,4 +1,6 @@
-# Vim omnicomplete and Built-in Documentation for Racket
+# VROD: Vim built-in Racket Omnicompletion and Documentation
+
+Why browse HTML pages when you can view docs right in Vim with `K`?
 
 This plugin turns Racket reference docs into Vim help. That’s kinda’ weird,
 but works out well. Racket doesn’t have help built into its repl or source
@@ -9,7 +11,9 @@ Use <kbd>K</kbd> while on any Racket function to access its reference help
 documentation through Vim’s help system.
 
 _BONUS:_ Use <kbd>Ctrl</kbd><kbd>X</kbd><kbd>O</kbd> to omni-complete any
-standard Racket function.
+standard Racket function. Actually, just use
+<kbd>Ctrl</kbd><kbd>N</kbd>/<kbd>Ctrl</kbd><kbd>P</kbd>, since it’s not yet
+smart enough to bother with true Omnicompletion.
 
 ## How It’s Made
 
@@ -25,3 +29,7 @@ If you use Vundle/Pathogen, note that the doc generation phase is not like
 other Vim plugins. The tags file is already part of this plugin (it’s a pain
 to build), so you don’t want Vundle/Pathogen trying to build it. But don’t
 worry about this; it should be transparent.
+
+## Shortcomings
+- Not completing functions from packages.
+- Not real omnicompletion; using dictionary instead for now
