@@ -35,7 +35,7 @@ munge() {
   #perl -0777 -i -pe 's/\n\n(\(([a-z?!\/*>-]+).*?\n)/\n\n                                        *'$prefix'\2*\n\1/igms' $fl
   # ftp://ftp.cs.utexas.edu/pub/garbage/cs345/schintro-v13/schintro_104.html
   # + - . * / < = > ! ? : $ % _ & ~ ^ .
-  perl -0777 -i -pe 's/\n\n(\(([a-z?!\/*<>\+\.:\$%_&~\^-]+).*?\n)/\n\n                                        *'$prefix'\2*\n\1/igms' $fl
+  perl -0777 -i -pe 's/\n\n(\(([a-z0-9?!\/*<>\+\.:\$%_&~\^-]+).*?\n)/\n\n                                        *'$prefix'\2*\n\1/igms' $fl
 }
 
 for t in *.txt; do print $t; munge $t; done
