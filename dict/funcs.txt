@@ -1323,7 +1323,6 @@ even?
 odd?
 exact?
 inexact?
-doc/numbers.txt:                                        *-*
 quotient
 remainder
 modulo

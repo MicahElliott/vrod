@@ -1,4 +1,4 @@
-# VROD: Vim built-in Racket Omnicompletion and Documentation
+# VROD: Vim built-in Racket Omni-completion and Documentation
 
 Why browse HTML pages when you can view docs right in Vim with `K`?
 
@@ -14,6 +14,12 @@ _BONUS:_ Use <kbd>Ctrl</kbd><kbd>X</kbd><kbd>O</kbd> to omni-complete any
 standard Racket function. Actually, just use
 <kbd>Ctrl</kbd><kbd>N</kbd>/<kbd>Ctrl</kbd><kbd>P</kbd>, since it’s not yet
 smart enough to bother with true Omnicompletion.
+
+There is also an extended syntax file for carefully highlighting all the
+programmatically discovered functions, yet carefully excluding Racket
+primitives. This is helpful because
+[vim-racket](https://github.com/wlangstroth/vim-racket) misses quite a few
+functions.
 
 ## How It’s Made
 
