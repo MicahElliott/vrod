@@ -1,5 +1,7 @@
 # VROD: Vim built-in Racket Omni-completion and Documentation
 
+![VROD!](https://raw.githubusercontent.com/MicahElliott/vrod/master/vrod.png)
+
 Why browse HTML pages when you can view docs right in Vim with `K`?
 
 This plugin turns Racket reference docs into Vim help. That’s kinda’ weird,
