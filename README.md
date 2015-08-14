@@ -4,10 +4,10 @@
 
 Why browse HTML pages when you can view docs right in Vim with `K`?
 
-This plugin turns Racket reference docs into Vim help. That’s kinda’ weird,
-but works out well. Racket doesn’t have help built into its repl or source
-code, so the niceties of Clojure inline docs are not very possible without
-things like this plugin.
+This plugin programmatically turns Racket reference docs into Vim help. That’s
+kinda’ weird, but works out well. Racket doesn’t have help built into its repl
+or source code, so the niceties of Clojure inline docs are not very possible
+without things like this plugin.
 
 Use <kbd>K</kbd> while on any Racket function to access its reference help
 documentation through Vim’s help system.
@@ -29,7 +29,7 @@ The full set of Racket’s Reference scribble docs has been converted to text,
 and parsed/munged a bit to add `*foo*` markers that Vim’s `:helptags` uses.
 
 Then those markers were collected into a list that Vim uses for
-omnicompletion.
+omnicompletion and syntax recognition.
 
 ## Installation
 
@@ -39,5 +39,5 @@ to build), so you don’t want Vundle/Pathogen trying to build it. But don’t
 worry about this; it should be transparent.
 
 ## Shortcomings
-- Not completing functions from packages.
-- Not real omnicompletion; using dictionary instead for now
+- Cannot completing functions from _all_ packages
+- Not smart omnicompletion yet; using dictionary instead for now
